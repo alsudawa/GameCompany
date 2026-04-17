@@ -734,6 +734,57 @@ The actual engineering meat is not choosing swatches — it's the **cache invali
 
 ---
 
+## Sprint 18 — PWA-lite install surface + theme-responsive chrome (2026-04-17)
+
+### Lens
+
+**From "website" to "app-on-the-home-screen" without touching the build pipeline.** The game is already a single HTML + CSS + JS + inline-SVG bundle. It is install-ready — it just hasn't declared itself. A manifest, a few meta tags, and a runtime `theme-color` sync are enough to (a) let users add it to their home screen with a proper name/icon, (b) launch it in standalone mode (no URL bar, own task-switcher card), and (c) keep the OS chrome color synced with the active in-game theme. No service worker, no offline layer — just the identity layer.
+
+### Changes
+
+- **New `games/001-void-pulse/manifest.webmanifest`** — name, short_name, description, start_url + scope pinned to `./`, display `standalone`, portrait orientation, theme/background color matching `--bg` default. Two inline-SVG icons: one `purpose: any` and one `purpose: maskable` with a solid background rect for launcher-crop safety.
+- **Icons are URL-encoded data URIs, not base64** — SVG compresses better URL-encoded, and JSON-embedded strings need escaped `<`/`>`/`"` anyway.
+- **`<link rel="manifest">` wired in index.html** plus a set of iOS/Android compatibility metas (`mobile-web-app-capable`, `apple-mobile-web-app-capable`, `apple-mobile-web-app-title`, `apple-mobile-web-app-status-bar-style: black-translucent`).
+- **New `<link rel="apple-touch-icon">` with inline SVG** — 180×180 viewBox, unescaped SVG inside the href attribute (works in Safari 13+). iOS Safari ignores manifest `icons` so this sidecar is mandatory.
+- **`syncThemeColorMeta()` helper** reads `getComputedStyle().getPropertyValue('--bg')` and pushes it into `<meta name="theme-color">`. Called from `applyTheme()` alongside cache invalidation and radio-group sync.
+- **Zero image files introduced** — still the project-long constraint. Every icon rasterizes from inline SVG.
+
+### Patterns extracted → `company/skills/mobile/pwa-lite-install.md`
+
+- **Lite-tier PWA = install-ready without offline** — a manifest + meta tags does 80% of what players want without the service-worker complexity or the stale-cache failure mode.
+- **Two icons, two purposes** — `any` for launchers that don't mask, `maskable` with solid-background padding for Android.
+- **`scope: "./"` pins the install to the game folder** — critical for multi-game repos where a root scope would capture every other URL.
+- **`apple-mobile-web-app-capable: yes` is mandatory for iOS** — without it, iOS add-to-home-screen silently opens Safari instead of standalone.
+- **`theme_color` in manifest is install-time only** — post-install changes require updating the `<meta name="theme-color">` at runtime via `applyTheme`.
+- **Read `--bg` via `getComputedStyle` on every apply** — don't duplicate the palette in JS; CSS is the source of truth.
+- **URL-encode SVG data URIs in JSON manifests; don't base64** — 33% smaller, human-readable, parseable by old JSON consumers.
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 18 | Distribution / identity | Manifest + install-ready metas + theme-responsive OS chrome, new mobile skill doc |
+
+### Cost
+
+- manifest.webmanifest: +30 lines (new file)
+- index.html: +6 lines (link + 4 metas + apple-touch-icon)
+- game.js: +13 lines (themeColorMeta + syncThemeColorMeta + applyTheme hookup)
+- style.css: +0
+- One new skill doc (`mobile/pwa-lite-install.md`)
+
+### Next candidates
+
+- **Service worker for offline play** — would complete the PWA story, but the 3 files are ~60KB total so the value-vs-complexity trade-off is debatable.
+- **Ghost replay scrubber** — record `{t, outcome}` per pulse into best-run storage; overlay as a faded silhouette on the next run for the same seed.
+- **Rarer / harder achievements** — "no-miss 30s", "5-day streak", "3 perfects in one heartbeat". Stat plumbing is already there.
+- **First-run onboarding softness** — 3 tutorial pulses with a floating hint arrow for first-ever visitors.
+- **Per-theme score-sweetener** — high-combo overtone layer (≥10), rarity keeps it fresh.
+- **"Reset to system default" link** — small help-modal surface closing out Sprint 17's auto-mode discoverability.
+- **Ambient density preference** — still open.
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

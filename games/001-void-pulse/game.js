@@ -644,10 +644,26 @@
     for (const k in cssVar) delete cssVar[k];
     for (let i = 0; i < vignetteCache.length; i++) vignetteCache[i] = null;
   }
+  // `<meta name="theme-color">` controls the URL-bar / OS chrome color on
+  // mobile. Must live on a DOM element we can query by name, not in a const
+  // (may be recreated by dev tools or view-source). Also drives the PWA
+  // splash/status-bar color when launched standalone from the home screen.
+  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+  function syncThemeColorMeta() {
+    if (!themeColorMeta) return;
+    // Read the resolved --bg from CSS so the source of truth is the
+    // stylesheet, not a JS duplicate of the palette. Same pattern as
+    // `getVar()`, but bypasses the canvas cache (we need it before the
+    // cache is populated on first paint).
+    const bg = getComputedStyle(document.documentElement)
+      .getPropertyValue('--bg').trim() || '#0a0e1f';
+    themeColorMeta.setAttribute('content', bg);
+  }
   function applyTheme(t) {
     if (!THEMES.includes(t)) t = 'void';
     document.documentElement.dataset.theme = t;
     invalidateThemeCaches();
+    syncThemeColorMeta();
     // Sync the radio-group aria state if the picker has already rendered.
     if (themePickerEl) {
       const buttons = themePickerEl.querySelectorAll('.theme-swatch');

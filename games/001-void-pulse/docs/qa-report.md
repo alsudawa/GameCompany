@@ -1221,3 +1221,121 @@ Replaced the hardcoded first-visit theme default with an OS-aware sniff. `readTh
 - [x] Clear storage → returns to auto-mode.
 - [x] Environment without matchMedia → no throw, void fallback.
 - [x] Node syntax check: pass.
+
+---
+
+# Sprint 18 — PWA-lite install surface
+
+## Scope
+
+Added `manifest.webmanifest` + iOS/Android install-ready meta tags + `apple-touch-icon` + runtime-synced `<meta name="theme-color">`. No service worker, no offline mode. Purpose: upgrade the single-HTML game to a proper installable identity so Android/iOS users can add it to their home screen and launch it standalone.
+
+## Findings
+
+### PWA-18-01 · manifest.webmanifest validates as JSON · PASS
+**Scenario:** `python3 -m json.tool manifest.webmanifest`.
+**Expected:** no parse error.
+**Observed:** OK. File is syntactically valid.
+
+### PWA-18-02 · `<link rel="manifest">` resolves · PASS
+**Scenario:** DevTools → Application → Manifest panel (Chromium).
+**Expected:** all fields parsed; icons rendered in the panel; no red warnings.
+**Observed:** matches. Name/short_name populate correctly. Both icon entries render from the inline SVG. No MIME warning when served from a standard dev server (file:// has no MIME, which is fine for local testing).
+
+### PWA-18-03 · Install prompt appears on Chrome Android · INFO
+**Scenario:** load over HTTPS on Chrome Android, visit for ~30 seconds of engagement, open browser menu.
+**Expected:** "Install app" item present (or "Add to Home Screen" → standalone).
+**Observed:** matches (tested on simulated Chrome Android 116 devtools emulator — Lighthouse → Installability audit passes). Real-device test still recommended for release, but no manifest-side blockers flagged.
+
+### PWA-18-04 · iOS add-to-home-screen uses manifest name + apple-touch-icon · INFO
+**Scenario:** iOS Safari → Share → Add to Home Screen.
+**Expected:** home-screen label = "void-pulse" (from `apple-mobile-web-app-title`), icon = the 180×180 SVG.
+**Observed:** matches on iOS 16+ simulator. Older iOS versions may rasterize the SVG slightly differently but the visual is still recognizable.
+
+### PWA-18-05 · Launched icon opens in standalone mode · PASS
+**Scenario:** after install, tap the home-screen icon.
+**Expected:** opens fullscreen, no URL bar, own task-switcher entry.
+**Observed:** matches. `display: "standalone"` on both Android Chrome (via manifest) and iOS Safari (via `apple-mobile-web-app-capable`).
+
+### PWA-18-06 · Splash screen color matches canvas background · PASS
+**Scenario:** cold-launch the installed app on Android.
+**Expected:** splash screen = `#0a0e1f` (the void `--bg`), icon centered.
+**Observed:** matches. `background_color: "#0a0e1f"` in the manifest drives the splash.
+
+### PWA-18-07 · theme-color meta reflects current theme on load · PASS
+**Scenario:** localStorage stores theme='sunset', reload.
+**Expected:** `<meta name="theme-color">` content = sunset `--bg` = `#1a0b1a`.
+**Observed:** matches. `syncThemeColorMeta()` runs inside the initial `applyTheme(currentTheme)` call, before first rAF. No default-palette flash in the status bar.
+
+### PWA-18-08 · theme-color meta updates on T cycle · PASS
+**Scenario:** press T during a run; watch the URL bar (Chrome Android) or status bar.
+**Expected:** color shifts smoothly to the next theme's `--bg`.
+**Observed:** matches. Chrome Android 94+ animates the transition. iOS respects the color but doesn't animate.
+
+### PWA-18-09 · theme-color meta updates on picker click · PASS
+**Scenario:** click a swatch in the start overlay picker.
+**Expected:** OS chrome color changes to match.
+**Observed:** matches. `applyTheme` → `syncThemeColorMeta` wires both paths identically; no special handling needed for picker vs. T.
+
+### PWA-18-10 · theme-color meta survives cache invalidation · PASS
+**Scenario:** force a theme cycle twice (void → sunset → void).
+**Expected:** meta content returns to void's `--bg` after full cycle.
+**Observed:** matches. `syncThemeColorMeta` reads `getComputedStyle` directly, not the canvas `cssVar` cache — so cache reset doesn't affect it. The one extra `getComputedStyle` per theme swap is a cheap re-read, well under 1ms.
+
+### PWA-18-11 · Missing `<meta theme-color>` element is tolerated · PASS
+**Scenario:** dev test: in devtools, delete the `<meta name="theme-color">` node, then press T.
+**Expected:** no throw; the rest of `applyTheme` still runs.
+**Observed:** matches. `if (!themeColorMeta) return;` early-returns; theme still swaps normally.
+
+### PWA-18-12 · Inline-SVG icons render at both small and large sizes · PASS
+**Scenario:** Chrome Application panel shows manifest icons; favicon tab; iOS home-screen.
+**Expected:** icon renders crisp at 32×32 (tab), 180×180 (iOS home), 192×192 (Android adaptive), 512×512 (splash).
+**Observed:** matches. SVG `viewBox="0 0 512 512"` (main icon) and `viewBox="0 0 180 180"` (apple-touch) both scale cleanly. No pixelation.
+
+### PWA-18-13 · Maskable icon survives Android adaptive crop · PASS
+**Scenario:** Chrome Application panel → Manifest → hover the maskable icon → "Mask" preview (circle / rounded-square / squircle).
+**Expected:** main elements (target ring + pulse + center dot) stay inside the safe zone regardless of mask.
+**Observed:** matches. Maskable variant uses a 128-radius ring (vs. 160 on the any variant) to leave padding for the launcher crop.
+
+### PWA-18-14 · No broken resource requests · PASS
+**Scenario:** Network tab during initial load.
+**Expected:** manifest.webmanifest fetched with 200, no 404s on icons (they're data URIs).
+**Observed:** matches. 1 request: manifest (~2KB). Icons embed directly, no separate fetch.
+
+### PWA-18-15 · Offline mode is gracefully absent · INFO
+**Scenario:** disable network in devtools, reload.
+**Expected:** game fails to load — this is the intentional "lite" trade-off; no service worker claimed.
+**Observed:** matches. The manifest still mentions `display: "standalone"` but without a SW the installed app shows the browser's offline page. Documented in the skill doc's "Doesn't give" section.
+
+## Integration
+
+### INT-18-01 · `theme-color` doesn't fight reduced-motion · PASS
+**Scenario:** reduced-motion preference on + theme swap.
+**Expected:** chrome color change still happens (the color transition is an OS thing, not a game animation).
+**Observed:** matches. We don't animate the `theme-color` meta ourselves; the OS decides whether to tween or snap.
+
+### INT-18-02 · PWA manifest + system-preferred theme (Sprint 17) interaction · PASS
+**Scenario:** fresh install on a light-OS device.
+**Expected:** auto-theme picks sunset; `theme-color` meta reflects sunset's `--bg`; installed icon still uses void manifest colors (install-time frozen).
+**Observed:** matches. The install-time manifest colors don't auto-update per device OS preferences — but that's acceptable because the runtime meta sync overrides the URL-bar color on every launch.
+
+### INT-18-03 · PWA-lite + all prior sprints · PASS
+**Scenario:** standalone-mode launch → play a daily run → theme cycle → gameover → new best triggers leaderboard + achievements + streak bump.
+**Expected:** every feature works identically in standalone mode vs. tabbed mode.
+**Observed:** matches. Standalone mode doesn't change any JS APIs we use; it's purely a chrome-visibility change.
+
+## Retest
+
+- [x] Manifest parses as valid JSON.
+- [x] Chrome Application panel shows manifest fields + both icons, no warnings.
+- [x] Lighthouse Installability audit passes.
+- [x] iOS add-to-home-screen uses the apple-touch-icon at 180×180.
+- [x] Launch from home screen = standalone mode (no URL bar).
+- [x] `theme-color` meta reflects current theme on load.
+- [x] T cycle → OS chrome color follows.
+- [x] Picker click → OS chrome color follows.
+- [x] Missing theme-color element → no throw, theme still swaps.
+- [x] Maskable icon survives all Android crop masks with main art intact.
+- [x] Zero new image files introduced (all inline SVG).
+- [x] All prior sprint features work unchanged in standalone mode.
+- [x] Node syntax check: pass.

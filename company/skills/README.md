@@ -35,6 +35,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 ### Mobile
 - [`mobile/dpr-canvas.md`](mobile/dpr-canvas.md) — DPR-aware canvas for crisp rendering on retina
 - [`mobile/haptics.md`](mobile/haptics.md) — `navigator.vibrate()` patterns + reduced-motion gating
+- [`mobile/pwa-lite-install.md`](mobile/pwa-lite-install.md) — manifest + apple-touch-icon + dynamic theme-color for add-to-home-screen (no service worker needed)
 
 ### UX
 - [`ux/retention.md`](ux/retention.md) — run-end stats, NEW BEST gating, mute persistence
