@@ -521,6 +521,54 @@
       osc.start(t0);
       osc.stop(t0 + dur + 0.02);
     },
+    // White-noise buffer, built once per session and reused. A 1-second mono
+    // buffer at sampleRate is tiny (<200KB @ 48kHz) and gives us an endless
+    // source for short bursts — we just clip the envelope.
+    _noiseBuf: null,
+    _getNoise() {
+      if (this._noiseBuf) return this._noiseBuf;
+      const sr = this.ctx.sampleRate;
+      const buf = this.ctx.createBuffer(1, sr, sr);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      this._noiseBuf = buf;
+      return buf;
+    },
+    // Filtered-noise burst: highpass ≈ crackle (sunset ember), lowpass ≈
+    // rustle (forest leaves). Same exponential envelope as _env so the two
+    // helpers compose predictably when layered.
+    _noise(dur, vol, filterType, filterFreq) {
+      if (!this.ctx) return;
+      const t0 = this.ctx.currentTime;
+      const src = this.ctx.createBufferSource();
+      src.buffer = this._getNoise();
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = filterType;
+      filter.frequency.value = filterFreq;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(vol, t0);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+      src.connect(filter).connect(g).connect(this.master);
+      src.start(t0);
+      src.stop(t0 + dur + 0.02);
+    },
+    // Theme accent for the "punish" moments (miss, gameover). Returns without
+    // doing anything on void so the baseline synth character is preserved.
+    // Reads currentTheme at call-time so mid-run theme swaps are honored.
+    _themeAccent(kind) {
+      if (currentTheme === 'void') return;
+      if (currentTheme === 'sunset') {
+        // Dry ember crackle — short, bright, low-volume so it sits as "texture"
+        // under the base sawtooth rather than competing with it.
+        if (kind === 'miss')      this._noise(0.09, 0.18, 'highpass', 2400);
+        else if (kind === 'over') this._noise(0.22, 0.14, 'highpass', 1800);
+      } else if (currentTheme === 'forest') {
+        // Leaf rustle — longer, darker, softer. Lowpass cuts the hiss so it
+        // reads as "soft" rather than "static".
+        if (kind === 'miss')      this._noise(0.18, 0.10, 'lowpass', 900);
+        else if (kind === 'over') this._noise(0.38, 0.08, 'lowpass', 700);
+      }
+    },
     click()  { this._env('square',   660, 0.05, 0.15); },
     score(combo = 0) {
       const f = 660 * Math.pow(1.06, Math.min(combo, 12));
@@ -530,10 +578,16 @@
       const f = 500 * Math.pow(1.04, Math.min(combo, 12));
       this._env('sine', f, 0.08, 0.15);
     },
-    miss() { this._env('sawtooth', 180, 0.22, 0.26, 70); },
+    miss() {
+      this._env('sawtooth', 180, 0.22, 0.26, 70);
+      this._themeAccent('miss');   // additive; void is a no-op
+    },
     gameover() {
       this._env('sawtooth', 330, 0.5, 0.3, 60);
       setTimeout(() => this._env('sawtooth', 220, 0.6, 0.25, 40), 120);
+      // Theme accent lands with the second thud so the whole death beat has
+      // atmosphere, not just the attack.
+      setTimeout(() => this._themeAccent('over'), 140);
     },
     levelup() {
       [523, 659, 784, 1047].forEach((f, i) => {

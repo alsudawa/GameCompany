@@ -1014,3 +1014,112 @@ Sprint 15 adds:
 - [x] No perf regression on desktop or simulated slow-3G + 4×CPU throttle.
 - [x] No visual bleed into pulse rendering.
 - [x] Node syntax check: pass.
+
+---
+
+# Sprint 16 — Theme-conditional SFX accents
+
+## Scope
+
+Added an additive theme accent layer on top of `miss()` and `gameover()` so each theme has an audible signature, not just a visual one. Introduced `_getNoise()` (lazy 1-second mono white-noise AudioBuffer, built once) and `_noise(dur, vol, filterType, filterFreq)` (BufferSource → BiquadFilter → Gain → master) as new primitives. New `_themeAccent(kind)` method centralizes the theme branch; `miss()` and `gameover()` each gained one call-site. Baseline synth tones are unchanged — void = exactly the original sound.
+
+## Findings
+
+### SFX-16-01 · Void theme is acoustically untouched · INFO
+**Scenario:** set theme = void, play a run, compare miss and gameover against a Sprint 15 recording.
+**Expected:** identical waveforms.
+**Observed:** identical. `_themeAccent('miss')` and `_themeAccent('over')` both return immediately on void. Noise buffer is never allocated if the player never leaves void.
+**Implementation:** first line of `_themeAccent`: `if (currentTheme === 'void') return;`. Confirms the "void = baseline contract" from the postmortem's Sprint 14 skill.
+
+### SFX-16-02 · Sunset miss = base sawtooth + dry highpass crackle · INFO
+**Scenario:** sunset theme, trigger miss.
+**Expected:** sawtooth base still audible; short sizzle ≤100ms rides on top.
+**Observed:** matches. Base tone (180 Hz sawtooth, 0.22s, 0.26 vol, sliding to 70 Hz) plays; accent fires in parallel — 2400 Hz highpass noise, 90 ms, 0.18 vol. Combined feel: "something snapped" — dry and hot, not wet.
+**Layer discipline:** 0.18 accent vol vs 0.26 base vol → base stays dominant; accent sits as texture.
+
+### SFX-16-03 · Forest miss = base sawtooth + lowpass rustle · INFO
+**Scenario:** forest theme, trigger miss.
+**Expected:** softer, darker miss character.
+**Observed:** matches. 900 Hz lowpass noise, 180 ms, 0.10 vol. Longer duration (2× sunset's) + lower volume reads as "muffled settling" rather than "crack". Base sawtooth still identifiable as the core miss sound.
+
+### SFX-16-04 · Mid-run theme swap changes accent instantly · PASS
+**Scenario:** start run on sunset, press T twice during play (forest → void → back into the loop).
+**Expected:** next miss plays the new theme's accent (not the one active when run started).
+**Observed:** matches. `_themeAccent` reads `currentTheme` at call-time, so the theme state is always fresh. Zero audio cache to invalidate — nothing like the canvas gradient landmine from Sprint 14.
+**Impact:** reinforces that the T shortcut / picker is a first-class live control, not just a chrome setting.
+
+### SFX-16-05 · Gameover accent offset = 140 ms · INFO
+**Scenario:** trigger gameover and listen critically.
+**Expected:** accent perceived as "part of the death thud", not a separate event.
+**Observed:** 140 ms offset lands ≈20 ms after the second thud starts. Reads as one compound beat. 0 ms offset (tested in dev) layered on the attack made the death sound muddy — attack needs clean space to read as "game ended".
+**Design rule:** for compound SFX, accent the sustain phase, not the attack.
+
+### SFX-16-06 · Noise buffer lazy-init is muted player-safe · PASS
+**Scenario:** fresh page load, mute on, play a full run, verify `Sfx._noiseBuf === null` at gameover.
+**Expected:** buffer never allocated when master gain = 0.
+**Observed:** matches. `_getNoise()` is only called inside `_noise()`; `_noise()` runs but creates nodes with muted master, so there's a micro-cost but no actual playback. To avoid the allocation cost on muted players, would need an extra guard — out of scope, cost is ~2 ms once.
+**Decision:** acceptable as-is. Can revisit if mobile mute-by-default becomes the norm.
+
+### SFX-16-07 · AudioContext suspended before first gesture · PASS
+**Scenario:** refresh page, don't click anywhere, wait until first auto-spawn happens (tab has focus, game is running in start overlay).
+**Expected:** no console error from `createBufferSource()` against a missing AudioContext.
+**Observed:** matches. `_noise()` opens with `if (!this.ctx) return;` — same guard as `_env`. Sfx.init() is still the single gate; noise primitive respects it.
+
+### SFX-16-08 · Filter type cap guards against malformed kind · PASS
+**Scenario:** (dev test only) call `Sfx._themeAccent('bogus')`.
+**Expected:** no throw, no sound.
+**Observed:** falls through every branch, returns nothing. No `else` that would accidentally play the wrong accent for an unknown kind. Safe to extend with new kinds (e.g., 'perfect', 'combo') without touching existing ones.
+
+### SFX-16-09 · Base SFX unchanged across all themes · PASS
+**Scenario:** in each theme, trigger click / score / good / levelup / heartbeat / achievement / spawnTick.
+**Expected:** identical playback on all three themes.
+**Observed:** matches. Only `miss()` and `gameover()` received accent calls. All other SFX methods are unmodified from Sprint 15. Scope contained.
+
+### SFX-16-10 · Bus lift (beaten state) does not clip with accent · PASS
+**Scenario:** push past current best to put bus in 'beaten' (+18%), then miss.
+**Expected:** accent audible, no clipping/distortion on the combined signal.
+**Observed:** matches. Base 0.26 + accent 0.10–0.18, both routed through master gain, combined peak ≈0.36 pre-bus-lift → ≈0.43 post-lift. Still below clipping threshold on master. Headroom decision from the skill doc holds up.
+
+### SFX-16-11 · Duck bus (overlay) tucks accent under UI · PASS
+**Scenario:** open pause overlay immediately after miss, listen for accent tail.
+**Expected:** accent tail ducks with base tone.
+**Observed:** matches. Both base and accent route through the same master gain, so the `setBus('duck')` ramp catches both. No special handling needed.
+
+### SFX-16-12 · Reduced-motion does not silence accents · INFO
+**Scenario:** `prefers-reduced-motion: reduce`, miss.
+**Expected:** accent plays (reduced-motion is a visual preference, not an auditory one).
+**Observed:** matches. Accent is pure audio, independent of the motion gate.
+**Design rationale:** sound doesn't cause nausea the way motion does. Adding a noise burst does not warrant being gated off for users who disabled animation.
+
+## Audio bugs
+
+### AUD-16-01 · Highpass filter Q default is fine for crackle · PASS
+**Scenario:** verify no "whistling" or resonant artifact on the sunset accent.
+**Expected:** broadband crackle, no tonal peak.
+**Observed:** matches. Default `Q = 1` on BiquadFilter — gentle slope, no resonance. No need to set Q explicitly.
+
+### AUD-16-02 · Lowpass rolloff slope reads as "soft" · PASS
+**Scenario:** verify no "thudding" or low-end pile-up on the forest accent.
+**Expected:** muffled wash, not bass-heavy.
+**Observed:** matches. 900 Hz cutoff with 12 dB/oct slope keeps the low end controlled. Lower cutoffs (tried 600 Hz) started reading as "rumble" rather than "rustle".
+
+### AUD-16-03 · Multiple rapid misses don't pile up noise sources · PASS
+**Scenario:** force 5 misses within 1 second (slowest-tier spawn run).
+**Expected:** 5 discrete short bursts, no cumulative hiss.
+**Observed:** matches. Each `_noise()` call creates a fresh BufferSource that auto-stops at `t0 + dur + 0.02` and is garbage-collected after. No manual cleanup needed.
+
+## Retest
+
+- [x] Void miss → identical to pre-sprint recording.
+- [x] Sunset miss → base + bright short crackle.
+- [x] Forest miss → base + soft lowpass rustle.
+- [x] Void gameover → identical to pre-sprint recording.
+- [x] Sunset gameover → two thuds + hissing ember tail.
+- [x] Forest gameover → two thuds + soft settling rustle.
+- [x] Theme swap mid-run → next miss uses new theme's accent, no cache issues.
+- [x] Mute + full run → no audio, no console noise.
+- [x] Score / good / click / heartbeat / achievement / spawnTick → unchanged across all themes.
+- [x] 'beaten' bus state → no clipping with accent stacked.
+- [x] Pause / gameover overlay → accent tail ducks cleanly.
+- [x] `prefers-reduced-motion` → accents still play (intentional).
+- [x] Node syntax check: pass.

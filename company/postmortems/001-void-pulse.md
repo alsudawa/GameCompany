@@ -630,6 +630,59 @@ The actual engineering meat is not choosing swatches — it's the **cache invali
 
 ---
 
+## Sprint 16 — Theme-conditional SFX accents (2026-04-17)
+
+### Lens
+
+**Theme as an audible signature, not just a visual one.** Sprint 14 gave the player three palettes; Sprint 15 gave them three atmospheres on the canvas. Close your eyes during gameplay and all three themes still sounded identical — the synthesizer palette (sawtooth miss, triangle score, sine heartbeat) read as "void" regardless of which theme was live. This sprint closes that gap: the player now *hears* the theme at the two most emotionally-loaded moments (miss, gameover), while every other SFX stays exactly as it was. Additive, not replacing.
+
+### Changes
+
+- **New `_getNoise()` lazy white-noise buffer** — 1 second mono, built on first use, then reused for every subsequent accent. Memory cost ≈ 180KB @ 48kHz, paid only if the player misses at least once.
+- **New `_noise(dur, vol, filterType, filterFreq)` helper** — `createBufferSource()` → BiquadFilter → Gain → master. Same exponential envelope as `_env` so oscillator tones and noise bursts mix coherently.
+- **New `_themeAccent(kind)` branch point** — single function reads `currentTheme` at call-time (mid-run theme swap works instantly, matching the Sprint 15 `ambient-drift` contract). `kind ∈ {'miss', 'over'}` today; extensible to more kinds without touching callers.
+- **`miss()` now plays `_themeAccent('miss')` after the base tone**:
+  - Void → no accent (baseline sawtooth unchanged)
+  - Sunset → dry ember crackle (`highpass @ 2400 Hz`, 90 ms, vol 0.18)
+  - Forest → leaf rustle (`lowpass @ 900 Hz`, 180 ms, vol 0.10)
+- **`gameover()` schedules `_themeAccent('over')` 140 ms after the initial attack** — lands on the sustain/thud phase of the death beat so atmosphere reads without muddying the "game ended" attack:
+  - Void → no accent
+  - Sunset → long ember hiss (`highpass @ 1800 Hz`, 220 ms, vol 0.14)
+  - Forest → settling rustle (`lowpass @ 700 Hz`, 380 ms, vol 0.08)
+
+### Patterns extracted → `company/skills/audio/theme-conditional-sfx.md`
+
+- **Lazy white-noise buffer** as a reusable primitive for crackle/rustle/wind/rain accents — build on first use, mono, 1-second length clipped by envelope.
+- **Filter type as character** — `highpass` ≈ crackle/pop, `lowpass` ≈ rustle/muffle, `bandpass` ≈ sizzle/spray. Same buffer, three different sounds via one parameter.
+- **`_themeAccent(kind)` centralization** — one function holds the theme branch; callers stay one-liners. Adding a new theme = adding an `else if` in one place.
+- **Additive layer, never replacement** — base tone always plays; accent is pure sugar. A player who picked void hears exactly the original game.
+- **Volume headroom 0.10–0.18 vs. base 0.26** — leaves room for the 'beaten' bus +18% lift without clipping, and keeps the base tone readable as "the miss sound".
+- **Schedule accent on the sustain phase, not the attack** — for compound SFX (gameover's two-thud beat), the attack carries meaning and the accent rides the sustain for atmosphere.
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 16 | Theme as audible signature | Additive noise-accent layer for miss + gameover, lazy-init buffer, new audio skill doc |
+
+### Cost
+
+- game.js: +52 lines (noise buffer + `_noise` + `_themeAccent` + two call-sites)
+- index.html: +0
+- style.css: +0
+- One new skill doc (`audio/theme-conditional-sfx.md`)
+
+### Next candidates
+
+- **Ghost replay scrubber** — record `{t, heartbeat, hit/miss}` per pulse into best-run storage, overlay as a faded silhouette on subsequent runs.
+- **System-preference auto-theme** — on first visit, default from `prefers-color-scheme` (light → sunset, dark → void) and `prefers-contrast`.
+- **Rarer / harder achievements** — "no-miss 30s", "5-day streak", "3 perfects in one heartbeat". Stat plumbing is mostly there.
+- **Theme-conditional hit/spawn accents** — extending the accent layer into the high-frequency SFX. Needs care: spawnTick plays 15–30×/second, easy to overdo.
+- **Ambient density preference toggle** — give the drift layer its own on/off independent of reduced-motion.
+- **Per-theme score-sweetener** — bright bell for sunset, wood-tock for forest, on high-combo score events only (rarity keeps it from wearing out).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

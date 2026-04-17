@@ -30,6 +30,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 ### Audio
 - [`audio/web-audio-sfx.md`](audio/web-audio-sfx.md) — oscillator + envelope SFX recipes; spawn-tick anchor
 - [`audio/audio-dynamics.md`](audio/audio-dynamics.md) — three-state master bus (normal / beaten / duck) with smooth ramps
+- [`audio/theme-conditional-sfx.md`](audio/theme-conditional-sfx.md) — additive theme accent layer (lazy noise buffer + filter branch for crackle/rustle, void = no-op)
 
 ### Mobile
 - [`mobile/dpr-canvas.md`](mobile/dpr-canvas.md) — DPR-aware canvas for crisp rendering on retina
