@@ -268,6 +268,7 @@
   const achListEl = document.getElementById('achList');
   const achProgressEl = document.getElementById('achProgress');
   const themePickerEl = document.getElementById('themePicker');
+  const achToastEl = document.getElementById('achievementToast');
   bestScoreEl.textContent = state.best;
   if (SEED !== null) {
     historyLabel.textContent = 'Daily progress';
@@ -517,11 +518,11 @@
     // Rare tier — introduced Sprint 23. Each targets a different play style
     // (skill ceiling, endurance, retention, precision, flawlessness) so no
     // single "good run" sweeps them all.
-    { id: 'combo-100',       label: 'Combo 100',       desc: 'Chain 100 hits in a single run',             test: c => c.peakCombo >= 100 },
-    { id: 'score-2500',      label: '2500 Points',     desc: 'Reach 2500 in a single run',                 test: c => c.score >= 2500 },
+    { id: 'combo-100',       label: 'Combo 100',       desc: 'Chain 100 hits in a single run',             test: c => c.peakCombo >= 100,                                  midRun: true },
+    { id: 'score-2500',      label: '2500 Points',     desc: 'Reach 2500 in a single run',                 test: c => c.score >= 2500,                                     midRun: true },
     { id: 'streak-7',        label: 'Week Zealot',     desc: 'Finish the daily 7 days in a row',           test: c => c.streak >= 7 },
-    { id: 'perfect-purity',  label: 'Perfect Purity',  desc: '20+ perfects in a run, zero goods',          test: c => c.perfectCount >= 20 && c.hitCount === c.perfectCount },
-    { id: 'flawless-60',     label: 'Flawless 60',     desc: 'Survive 60 seconds with zero misses',        test: c => c.duration >= 60 && c.missCount === 0 },
+    { id: 'perfect-purity',  label: 'Perfect Purity',  desc: '20+ perfects in a run, zero goods',          test: c => c.perfectCount >= 20 && c.hitCount === c.perfectCount, midRun: true },
+    { id: 'flawless-60',     label: 'Flawless 60',     desc: 'Survive 60 seconds with zero misses',        test: c => c.duration >= 60 && c.missCount === 0,               midRun: true },
   ];
   function readAchievements() {
     try {
@@ -544,6 +545,60 @@
     }
     if (justNow.length) writeAchievements(unlocked);
     return { unlocked, justNow };
+  }
+  // Mid-run variant — tests only entries flagged `midRun: true` and writes
+  // the unlock to storage immediately, so a player who achieves combo-100
+  // and dies the next tap still banks the credit. Returns the entries that
+  // *just* unlocked on this call, so the caller can toast them.
+  // Called from the frame loop (cheap: 4 tests once per frame), not tied
+  // to individual score events — keeps the hot path simple.
+  function evaluateMidRunAchievements(ctx) {
+    const unlocked = readAchievements();
+    const justNow = [];
+    for (const a of ACHIEVEMENTS) {
+      if (!a.midRun) continue;
+      if (!unlocked[a.id] && a.test(ctx)) {
+        unlocked[a.id] = 1;
+        justNow.push(a);
+      }
+    }
+    if (justNow.length) writeAchievements(unlocked);
+    return justNow;
+  }
+  // Toast queue: if two achievements unlock on the same frame (unlikely but
+  // possible — e.g., score-2500 + combo-100 on the same perfect tap), show
+  // them serially rather than stacking visually. Each toast holds the
+  // element for ~2.2s; serial presentation keeps them individually readable.
+  const toastQueue = [];
+  let toastShowing = false;
+  function showAchievementToast(ach) {
+    toastQueue.push(ach);
+    if (!toastShowing) _drainToastQueue();
+  }
+  function _drainToastQueue() {
+    if (toastQueue.length === 0) { toastShowing = false; return; }
+    toastShowing = true;
+    const ach = toastQueue.shift();
+    const el = achToastEl;
+    if (!el) { toastShowing = false; return; }
+    el.querySelector('.ach-toast-label').textContent = ach.label;
+    el.classList.remove('hidden');
+    // Force a reflow so the subsequent class-add retriggers the slide-in
+    // animation even on a back-to-back unlock.
+    void el.offsetWidth;
+    el.classList.add('visible');
+    // Soft ping — reuse the existing achievement cue at reduced volume by
+    // playing its third note only, so it reads as "bonus!" not "unlock
+    // ceremony" (the full cascade is reserved for the gameover context).
+    Sfx.achievementToast();
+    haptic([12, 22, 40]);
+    setTimeout(() => {
+      el.classList.remove('visible');
+      setTimeout(() => {
+        el.classList.add('hidden');
+        _drainToastQueue();
+      }, 220);  // match CSS transition
+    }, 2200);
   }
 
   // ---------- Sfx ----------
@@ -702,6 +757,13 @@
       [880, 1175, 1568].forEach((f, i) => {
         setTimeout(() => this._env('triangle', f, 0.12, 0.14), i * 90);
       });
+    },
+    // Mid-run toast variant — softer single ping (~third note of the full
+    // cascade) so it registers as "bonus!" without hijacking attention like
+    // the gameover-context cascade does. Volume is deliberately below the
+    // base hit tone: the toast is visual primary, audio garnish.
+    achievementToast() {
+      this._env('triangle', 1175, 0.14, 0.11);
     },
     // Brief high-register blip at spawn — gives the player a rhythm anchor
     // so tap timing isn't purely visual. Quiet enough to not dominate the mix.
@@ -1587,6 +1649,22 @@
 
     updateParticles(simDt);
     updateAmbient(simDt);
+
+    // Mid-run achievement evaluation: 4 rare-tier tests, cheap enough to run
+    // each frame. Gated off the deathcam so the end-of-run stats page handles
+    // normal unlocks; toasts fire only while the player is actually playing.
+    if (!state.deathCam) {
+      const justUnlocked = evaluateMidRunAchievements({
+        score: state.score,
+        peakCombo: state.peakCombo,
+        perfectCount: state.perfectCount,
+        hitCount: state.hitCount,
+        missCount: state.missCount,
+        duration: state.t,
+        streak: 0,
+      });
+      for (const ach of justUnlocked) showAchievementToast(ach);
+    }
   }
 
   // HUD diff-tracking — avoids DOM churn when values haven't changed.

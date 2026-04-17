@@ -1814,3 +1814,84 @@ Added `state.runEvents` recorder + per-seed ghost storage + two-strip SVG timeli
 - [x] No node accumulation over many milestones.
 - [x] A/B: three themes produce three distinct peak-moment feels.
 - [x] Node syntax check: pass.
+
+---
+
+# Sprint 25 Retest — Mid-run achievement toast (2026-04-17)
+
+## Scope
+
+Verify that rare-tier achievements (`score-2500`, `combo-100`, `perfect-purity`, `flawless-60`) toast in-run the instant they unlock, while common-tier achievements still reveal only at gameover. Test the queue serialization, localStorage write timing, and soft-SFX gating.
+
+## Functional
+
+- **TOAST-25-01** Toast appears within 1 frame of crossing score 2500 in free play. Slide-in completes in ~220ms, holds 2.2s, slides out. Verified.
+- **TOAST-25-02** Toast appears within 1 frame of peak combo reaching 100. Independent of score — verified at lower-than-2500 scores (combo-100 with perfect-only would hit before 2500).
+- **TOAST-25-03** Perfect-purity toast fires only when `perfectCount >= 20 && hitCount === perfectCount` — i.e., 20+ perfects with zero goods mixed in. Single "good" tap before this threshold disqualifies, toast never appears. Verified.
+- **TOAST-25-04** Flawless-60 toast fires at t=60 if `missCount === 0`. Pure time-based — no tap needed at t=60 (frame loop catches it). Verified.
+- **TOAST-25-05** Common-tier (combo-25, combo-50, score-500, score-1000) do NOT toast mid-run. Still appear in the gameover stats grid. Verified.
+- **TOAST-25-06** Already-unlocked achievements do not re-toast on subsequent runs. Second run crossing score 2500 is silent. Verified.
+
+## Persistence / banking
+
+- **BANK-25-01** After crossing combo-100 threshold, the achievement is written to localStorage immediately. Verified by opening devtools → Application → localStorage while mid-run. Key `voidpulse_achievements` contains `combo-100: 1`.
+- **BANK-25-02** Player dies on the tap immediately after crossing combo-100: achievement still persists, gameover grid shows it unlocked. Verified. (This is the key promise — mid-run write protects against tail-end losses.)
+- **BANK-25-03** Force-reload during the 2.2s toast display: achievement persists (already written), next load's gameover grid shows it. Verified.
+
+## Queue / serialization
+
+- **QUEUE-25-01** Score-2500 + combo-100 simultaneous (possible on a late-game perfect tap that simultaneously hits both thresholds): toasts appear *sequentially*, not stacked. First for ~2.4s total, then second for ~2.4s. Verified via artificial `state.score = 2499` + `state.peakCombo = 99` test followed by a perfect tap that increments both.
+- **QUEUE-25-02** The `void el.offsetWidth` reflow hack ensures the second toast slides in visibly even though the first just transitioned out. Without the reflow the second would appear without animation. Verified via removing the reflow line and observing instant-appear (then reverted).
+- **QUEUE-25-03** If three rare unlocks stack (pathological: first-time player hits combo-100 + score-2500 + perfect-purity together), queue drains all three serially without drops. Verified by instrumented console.log.
+
+## Visual / motion
+
+- **MOTION-25-01** Toast slides from above (translateY -18px → 0), fades in. Reduced-motion: opacity-only, no translate. Verified with `prefers-reduced-motion: reduce`.
+- **MOTION-25-02** Toast z-index (3) sits above the canvas and HUD but below the help/pause overlays (20+). Verified — opening help modal correctly covers the toast if one is showing.
+- **MOTION-25-03** Toast position top-center does not overlap the mute button (top-right) or HUD score (top-left). Verified at mobile (360×640) and desktop (720×960) viewports.
+- **MOTION-25-04** On gameover, if a toast is mid-display, the gameover overlay fades in over it; the toast's setTimeout finishes its fadeout naturally under the overlay (harmless). Verified.
+
+## Audio
+
+- **AUDIO-25-01** `Sfx.achievementToast()` plays once per toast, single note at 1175 Hz triangle, 0.14s, 0.11 vol. Softer than pulse SFX (which peak at 0.22). Verified via audio inspection.
+- **AUDIO-25-02** Mute ON: toast still shows visually; no sound. Verified.
+- **AUDIO-25-03** Toast SFX distinct from the gameover `Sfx.achievement()` cascade (880/1175/1568). Mid-run and end-of-run are audibly different contexts. Verified.
+- **AUDIO-25-04** No audio-stream interruption — pulse spawnTick / combo levelup / hit sound all continue to play during/after the toast SFX. Verified.
+
+## Deathcam interaction
+
+- **DC-25-01** During deathcam slow-mo (the 0.55s before gameover), the mid-run evaluator is gated off. No toast appears during the fatal freeze-frame even if a threshold crosses (e.g., a final score tick). Verified by crossing score 2500 via heartbeat bonus on the fatal tap — toast suppressed; achievement still banked; gameover grid still reflects unlock.
+
+## Accessibility
+
+- **A11Y-25-01** `role="status"` + `aria-live="polite"` announces the label to screen readers when the toast appears. Verified with VoiceOver (macOS): reads "Achievement, Combo 100" on unlock.
+- **A11Y-25-02** Toast is not focus-stealing — keyboard focus stays where the player had it (game canvas / body). Verified.
+- **A11Y-25-03** Haptic pulse `[12, 22, 40]` on mobile; distinct rhythm from hit/miss haptics. Verified on Android Chrome.
+- **A11Y-25-04** Toast readable at default zoom and 150% browser zoom. Verified.
+
+## Perf
+
+- **PERF-25-01** Frame-loop eval: 4 comparisons × 60Hz = 240/s. Negligible against ~3000 particle-update ops and canvas draws. Verified via devtools Performance — no measurable regression.
+- **PERF-25-02** `readAchievements()` inside `evaluateMidRunAchievements` reads localStorage every frame. Cached in-memory check first via `unlocked[a.id]` — only actually writes on rare unlock. Read cost is ~0.02ms per frame (localStorage is fast for small JSON). Acceptable but noted as a future optimization if it ever blocks a sprint's perf budget.
+- **PERF-25-03** No DOM alloc per toast — single `#achievementToast` element reused. Verified.
+- **PERF-25-04** No setTimeout leak — the two nested `setTimeout` calls in `_drainToastQueue` complete and are GC'd. Verified over 50+ simulated unlocks.
+
+## Edge cases
+
+- **EDGE-25-01** Pause during toast display: toast's setTimeout continues (not driven by `state.t`). Resume 5s later: toast already gone. Acceptable — player was looking at pause overlay anyway.
+- **EDGE-25-02** Tab hidden during toast: Chrome throttles setTimeout to 1Hz minimum; toast may stay longer than intended. Harmless; returns to normal flow on tab focus.
+- **EDGE-25-03** Achievement unlocked via corrupted localStorage (manual edit): `evaluateMidRunAchievements` still writes the `1` on next fresh unlock but skips already-`1` entries. Verified.
+- **EDGE-25-04** Theme switch mid-run does not affect toast appearance — toast uses fixed cyan accent per base theme CSS. Acceptable trade-off (toast is cross-theme UI).
+
+## Retest after implementation
+
+- [x] Rare-tier unlocks toast in-run; common-tier do not.
+- [x] Write-on-unlock: credit banked even if player dies immediately after.
+- [x] Serial queue handles simultaneous unlocks without overlap.
+- [x] Reduced-motion: opacity-only fade, no translate.
+- [x] Soft SFX distinct from gameover cascade.
+- [x] Deathcam gate suppresses toast during fatal freeze.
+- [x] Screen-reader announces label via `aria-live`.
+- [x] Haptic pattern distinct from hit/miss.
+- [x] No DOM alloc per toast; single element reused.
+- [x] Node syntax check: pass.

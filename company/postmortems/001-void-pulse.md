@@ -1092,6 +1092,59 @@ Deliberately along five different axes: a combo-grinder, a marathon runner, a da
 
 ---
 
+## Sprint 25 — Juice / mid-run reward (2026-04-17)
+
+### Lens
+
+Mid-run feedback loop. Achievements currently reveal only on the gameover stats screen — the player earns them, then finds out 30+ seconds later. For common-tier milestones (combo-25, combo-50) this is fine: the combo meter and score already telegraph the moment. But for *rare-tier* unlocks — score-2500, combo-100, perfect-purity, flawless-60 — the "I just earned that!" signal is delayed so long that the dopamine spike misses the moment. This sprint adds a mid-run toast for rare-tier unlocks only, preserving the gameover summary for the full ladder.
+
+### Changes
+
+- **`midRun: true` flag** on the 4 rare-tier entries in `ACHIEVEMENTS` (`score-2500`, `combo-100`, `perfect-purity`, `flawless-60`). Common-tier entries stay unflagged and reveal only at gameover as before.
+- **`evaluateMidRunAchievements(ctx)`** in game.js: filters on the flag, reads localStorage, tests each, writes immediately on unlock (banks credit even if the player dies the next tap), returns just-unlocked entries. Cheap enough to call every frame (4 integer comparisons).
+- **Frame-loop hook** in `update(dt)` after the particle/ambient update, gated off `state.deathCam`. The loop is the only path that reliably catches time-based unlocks like `flawless-60` (fires at t=60 with no tap event).
+- **Toast queue machinery** — `toastQueue[]` + `toastShowing` flag + `showAchievementToast(ach)` entry point + `_drainToastQueue()` worker. Serial presentation: each toast holds for 2.2s then slides out over 220ms before the next drains. Handles the rare case of two simultaneous unlocks on the same frame.
+- **`#achievementToast` DOM element** in index.html: top-center positioned, badge + "Achievement" headline + label. Hidden by default, `role="status"` + `aria-live="polite"` for screen readers.
+- **`.ach-toast` CSS** — slide-from-above transform (`translateY(-18px) → 0`), 220ms transition, opacity fade, reduced-motion fallback (opacity-only, no translate). Mobile-responsive padding.
+- **`Sfx.achievementToast()`** — softer single-note variant of the full `achievement()` cascade. Plays only the middle note (1175Hz triangle, 0.14s, 0.11 vol) so mid-run it reads as "bonus!" not "ceremony". Full cascade stays reserved for the gameover context where it plays alone.
+- **Haptic cue** — `haptic([12, 22, 40])` tri-pulse; distinct rhythm from the score/miss haptics so it's tactilely recognizable.
+
+### Patterns extracted → `company/skills/ux/mid-run-toast.md` (new)
+
+- **`midRun: true` flag on entry** — single source of truth; flag decides whether the toast fires, evaluation stays centralized.
+- **Frame-loop evaluation** — 4 integer comparisons at 60Hz is free, catches time-based unlocks that event-hooks can't reach, avoids hook proliferation.
+- **Bank on unlock, not at gameover** — writes localStorage the instant the test passes; credit is safe even if the next input crashes the run. Breaking the "you earned it" promise is worse than never showing the toast.
+- **Serial toast queue** — one DOM element, content-swap per toast, 2.2s hold + 220ms transition, `void el.offsetWidth` reflow trick to re-trigger the transition on back-to-back unlocks.
+- **Soft SFX variant for mid-run context** — the full ceremony cascade competes with ongoing gameplay audio; a single middle note at 80% volume reads as related-but-lighter.
+- **Top-center slide, not corner** — corners are claimed by mute/help; center reads as "announcement"; transform animation only (GPU-composited) with reduced-motion fallback to opacity-only.
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 25 | Juice / mid-run reward | Rare-tier achievement toast during play, queue-serialized, bank-on-unlock; 71-line skill doc |
+
+### Cost
+
+- game.js: +19 lines (Sfx.achievementToast method + frame-loop hook + achToastEl lookup)
+- index.html: +7 lines (toast element)
+- style.css: +64 lines (.ach-toast + children + reduced-motion + mobile)
+- New `ux/mid-run-toast.md` (~115 lines); README index updated
+
+### Next candidates
+
+- **Tap-to-zoom ghost strip** — still open.
+- **Service worker for offline play** — still open.
+- **Stats page** — lifetime perfect count, miss count, longest streak.
+- **Per-theme heartbeat variant** — heartbeat ping through theme-conditional layer.
+- **Sweetener pulse on achievement unlock** — hint theme signature as part of the unlock cue.
+- **Ambient-density preference** — slider for drift particle count.
+- **Social proof counter** — "N people played today" tiny HUD line (needs backend; out of scope for local-only build).
+- **Keyboard-only tutorial mode** — discover keyboard controls without launching the help modal.
+- **Replay-my-best** — stash the best run's event log and offer a one-shot replay on the start screen.
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

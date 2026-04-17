@@ -948,6 +948,76 @@ html, body {
   .ach-chip .ach-desc { display: none; }
 }
 
+/* ---------- Mid-run achievement toast (Sprint 25) ---------- */
+/* Anchored top-center beneath the HUD; slides from above to avoid colliding
+   with the mute/help buttons pinned to the corners. Hidden by default (no
+   layout/paint cost), .visible unlocks the slide. Serialized by a queue in
+   game.js so two simultaneous unlocks show one after the other. */
+.ach-toast {
+  position: absolute;
+  top: 76px;
+  left: 50%;
+  transform: translate(-50%, -18px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px 9px 11px;
+  background: rgba(10, 14, 31, .88);
+  border: 1px solid rgba(0, 212, 255, .55);
+  border-radius: 999px;
+  color: #e6f4ff;
+  font-size: 12px;
+  letter-spacing: .03em;
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .35),
+              0 0 18px rgba(0, 212, 255, .25);
+  transition: opacity .22s ease-out, transform .22s ease-out;
+  z-index: 3;
+}
+.ach-toast.hidden { display: none; }
+.ach-toast.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.ach-toast-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(0, 212, 255, .18);
+  border: 1px solid rgba(0, 212, 255, .55);
+  color: #7fe6ff;
+  font-size: 11px;
+  line-height: 1;
+}
+.ach-toast-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+.ach-toast-head {
+  font-size: 9px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: rgba(127, 230, 255, .75);
+}
+.ach-toast-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f4fbff;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ach-toast { transition: opacity .18s linear; transform: translate(-50%, 0); }
+  .ach-toast.visible { transform: translate(-50%, 0); }
+}
+@media (max-width: 460px) {
+  .ach-toast { top: 62px; padding: 7px 12px 7px 9px; font-size: 11px; }
+  .ach-toast-label { font-size: 12px; }
+}
+
 /* ---------- Theme picker (start overlay) ---------- */
 .theme-picker {
   display: flex;
