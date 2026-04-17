@@ -157,5 +157,91 @@ html, body {
 .flash { animation: flash .4s ease; }
 
 @media (prefers-reduced-motion: reduce) {
-  .shake, .pop, .flash { animation: none !important; }
+  .shake, .pop, .flash, .new-best { animation: none !important; }
+}
+
+/* Mute toggle (top-right) */
+.icon-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(42, 46, 92, .5);
+  color: var(--fg);
+  border: 1px solid rgba(232, 233, 255, .14);
+  border-radius: 50%;
+  cursor: pointer;
+  z-index: 30;
+  transition: background .12s ease, transform .08s ease, color .12s ease;
+}
+.icon-btn:hover { background: rgba(42, 46, 92, .8); }
+.icon-btn:active { transform: scale(.92); }
+.icon-btn.muted { color: var(--danger); }
+
+/* Run-end stats panel */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 4px 22px;
+  justify-content: center;
+  margin-top: 14px;
+  font-size: 13px;
+  opacity: .82;
+}
+.stats > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.stats span:first-child {
+  opacity: .62;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+.stats span:last-child {
+  color: var(--accent);
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* NEW BEST badge */
+.new-best {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .24em;
+  color: #061028;
+  background: linear-gradient(90deg, #ffd24a, #ff8fb1 50%, #8ad6ff);
+  padding: 5px 14px;
+  border-radius: 999px;
+  display: none;
+  margin: 0 auto 8px;
+  animation: newBestPulse 1.2s ease-in-out infinite;
+  box-shadow: 0 0 24px rgba(255, 210, 74, .4);
+}
+.new-best.visible { display: inline-block; }
+@keyframes newBestPulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.06); }
+}
+
+.kbhint {
+  font-size: 12px;
+  color: var(--fg);
+  opacity: .5;
+  margin-top: 4px;
+}
+.kbhint kbd {
+  font-family: inherit;
+  background: rgba(232, 233, 255, .08);
+  border: 1px solid rgba(232, 233, 255, .14);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
 }

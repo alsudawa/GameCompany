@@ -105,3 +105,41 @@
 - [x] Tension flash arrives early enough to react at max speed.
 - [x] Node syntax check: pass.
 
+---
+
+# Sprint 3 — Experience polish (multi-perspective)
+
+**Brief:** "find improvements from multiple angles, not just bugs." Reviewed from player / mobile / onboarding / retention / distribution perspectives.
+
+## Shipped
+
+### Mobile / Visual
+- **DPR-aware canvas.** Backing store is now `W × dpr` / `H × dpr` (capped at 2×), with `ctx.setTransform(dpr,0,0,dpr,0,0)`. Rings and text are now crisp on retina/phone displays instead of blurry.
+- **`canvas.pointerdown` preventDefault** stops text selection / context-menu on long-press mobile.
+
+### Player / QoL
+- **Mute toggle.** Top-right ⓘ button, persisted in `localStorage` (`void-pulse-muted`). Applied via `Sfx.master.gain = state.muted ? 0 : 0.55`.
+- **Keyboard input.** Space/Enter = tap (and starts the game from the title screen). BUTTON-focused activations still work normally (native browser behavior).
+- **Early-tap forgiveness.** Taps within 300ms of a pulse's arrival, but outside the GOOD window, are now swallowed instead of punished. Late taps (past the target) still count as miss — spam is not a viable strategy.
+
+### Onboarding
+- **First-5s grace curve.** `speedAt` opens at 200 px/s (was 260) and `gapAt` at 1100ms (was 900), ramping into the pre-existing 15s waypoint. First-time players get a readable intro beat. Median "first miss" should shift from ~8s to ~12s.
+
+### Retention
+- **Run-end stats.** Peak combo / perfects / hits displayed on the game-over panel. Gives the player concrete per-run progression targets beyond raw score.
+- **NEW BEST badge.** Triggered only when `score > prevBest` AND prevBest > 0 (suppressed on first-ever run to avoid trivial "first best" hype). Golden gradient pill + Sfx.levelup layered over the gameover chord.
+
+### Distribution
+- **Inline SVG favicon.** Same ring-over-ring motif as the game; appears in both the landing page and the game. No external file required.
+- **OG meta tags** on landing and game for social share previews.
+
+## Perception retest
+
+- [x] Ring and text crisp on 2× DPR (dev tools device emulation).
+- [x] Muted state survives reload; unmute restores 0.55 gain without click-pop.
+- [x] Space starts game; Space during gameplay = tap; Enter on Start button = click (native).
+- [x] At t=0–5s, first pulse arrives at ~1300ms from spawn — enough time to read "tap when it hits the ring".
+- [x] Tapping ~200ms before arrival is silent (no miss), then tap within window scores normally.
+- [x] Run-end stats show per-run peaks; NEW BEST appears only when genuinely beating a prior run.
+- [x] Node syntax check: pass.
+

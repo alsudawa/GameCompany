@@ -120,3 +120,30 @@ function findJudgeEntity() {
 ```
 
 Use the same query for the visual "live entity" highlight — one query, one invariant. If the render says "this is live" and the judge says "that is live," the player feels cheated.
+
+<!-- added: 2026-04-17 (001-void-pulse sprint 3) -->
+
+## Pattern — Onboarding phase (softer first 5s)
+
+A difficulty curve that starts at "normal" feels hostile to first-timers who haven't read the mechanic yet. Prepend an **onboarding phase** of 5 seconds that's explicitly easier than the "intro" waypoint.
+
+```js
+const ONBOARDING_T = 5;
+
+function speedAt(t) {
+  if (t < ONBOARDING_T) return 200 + (t / ONBOARDING_T) * 60;        // 200 → 260
+  if (t < 15) return 260 + ((t - ONBOARDING_T) / (15 - ONBOARDING_T)) * 80;
+  // ...existing waypoints...
+}
+
+function gapAt(t) {
+  if (t < ONBOARDING_T) return 1100 - (t / ONBOARDING_T) * 200;       // 1100 → 900
+  if (t < 15) return 900 - ((t - ONBOARDING_T) / (15 - ONBOARDING_T)) * 200;
+  // ...existing waypoints...
+}
+```
+
+Rules:
+- **Onboarding < Intro.** Speed and spawn rate both below the intro-waypoint values, then merge into intro cleanly.
+- **Last 5s of onboarding = intro baseline.** No discontinuity at `t = ONBOARDING_T` — both `speedAt` and `gapAt` must evaluate the same at the boundary.
+- **Don't show a label.** No "TUTORIAL" text. Softer numbers are invisible to returning players but give first-timers 2–3 free successful taps before the real curve begins.

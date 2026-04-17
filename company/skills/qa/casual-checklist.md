@@ -80,3 +80,38 @@ A correctness pass says "it works." A felt-timing pass asks "does it feel fair?"
 - [ ] **Auditory rhythm anchor present** — for any tap-timing game, is there a spawn-time sound? Pure visual is fatiguing past 60s.
 - [ ] **Combo visible at any count** — HUD shouldn't hide the streak when combo ∈ [1, 4]. Show the count even before the multiplier activates.
 - [ ] **Per-entity locked speed + "oldest" judge = overtake bug** — if `entity.speed = speedAt(spawnT)` and later spawns are faster, newer entities overtake older ones. "Judge oldest" then disagrees with the player's spatial visual model. Judge nearest-to-target instead.
+
+<!-- added: 2026-04-17 (001-void-pulse sprint 3) -->
+
+## Multi-perspective sweep
+
+Correctness passes miss whole bug classes. Every QA session should rotate through these five perspectives:
+
+### Player / QoL
+- [ ] Mute toggle present and persisted across reloads
+- [ ] Keyboard parity — Space/Enter mirror tap; works without a pointing device
+- [ ] Early-tap anticipation isn't punished (bounded-lead grace window)
+- [ ] Focus behavior sensible — pressing Space with a button focused doesn't double-fire the game action
+
+### Mobile / Visual
+- [ ] Canvas is DPR-aware — backing store sized to `W×dpr` (capped at 2×), not blurry on retina
+- [ ] `pointerdown.preventDefault()` on canvas prevents long-press context menu / text selection
+- [ ] `touch-action: none` on canvas (no scroll hijack on mobile)
+- [ ] HUD overlays (mute button, stats) are reachable by thumb on small screens
+
+### Onboarding
+- [ ] First 5s is visibly easier than the "intro" waypoint — new players get 2–3 free taps before difficulty kicks in
+- [ ] Game readable in < 60s without any tutorial text
+- [ ] Hook line on the title screen explains the input in one sentence
+
+### Retention
+- [ ] Run-end panel shows 2–4 orthogonal stats beyond raw score (streak, precision, volume)
+- [ ] NEW BEST badge is gated — suppressed on the first-ever score to avoid trivial hype
+- [ ] Retry path is ≤ 3s from death
+- [ ] Best score persisted in localStorage (try/catch for Safari private mode)
+
+### Distribution
+- [ ] Favicon present (inline SVG, no external file)
+- [ ] `<meta name="theme-color">` matches the game's dominant background color
+- [ ] OG meta tags (`og:title`, `og:description`, `og:type`) on the landing page
+- [ ] Page title differentiates between landing ("GameCompany") and individual game ("void-pulse — GameCompany")

@@ -25,6 +25,9 @@
   const STARTING_LIVES = 3;
   const TAP_DEBOUNCE_MS = 120;
   const GAMEOVER_LOCKOUT_MS = 400;
+  const ONBOARDING_T = 5;               // seconds of softer ramp for first-timers
+  const EARLY_TAP_LEAD_MS = 300;         // taps within 300ms of arrival are swallowed, not missed
+  const MASTER_GAIN = 0.55;
 
   const PULSE_POOL_SIZE = 32;
   const PARTICLE_CAP = 256;
@@ -47,6 +50,12 @@
     nextSpawnAt: 0,
     lastTapMs: 0,
     gameoverAtMs: 0,
+    muted: readMuted(),
+    // run stats
+    peakCombo: 0,
+    perfectCount: 0,
+    hitCount: 0,
+    newBestThisRun: false,
     // fx timers
     targetPopT: 0,
     shakeT: 0,
@@ -77,15 +86,42 @@
   const overlay = document.getElementById('overlay');
   const gameoverEl = document.getElementById('gameover');
   const btnStart = document.getElementById('start');
+  const btnMute = document.getElementById('mute');
+  const muteIconOn = document.getElementById('muteIconOn');
+  const muteIconOff = document.getElementById('muteIconOff');
   const finalScoreEl = document.getElementById('finalScore');
   const bestScoreEl = document.getElementById('bestScore');
+  const statPeakEl = document.getElementById('statPeak');
+  const statPerfectEl = document.getElementById('statPerfect');
+  const statHitsEl = document.getElementById('statHits');
+  const newBestEl = document.getElementById('newBest');
   bestScoreEl.textContent = state.best;
+
+  // DPR-aware canvas sizing — render at device pixels for crispness, keep
+  // logical coords at 720×960 via ctx transform. Cap DPR at 2 to avoid
+  // 4× fill-rate on ultra-high-density screens.
+  function setupCanvas() {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    if (canvas.width !== W * dpr) {
+      canvas.width  = W * dpr;
+      canvas.height = H * dpr;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  setupCanvas();
+  window.addEventListener('resize', setupCanvas);
 
   function readBest() {
     try { return +(localStorage.getItem('void-pulse-best') || 0); } catch { return 0; }
   }
   function writeBest(v) {
     try { localStorage.setItem('void-pulse-best', String(v)); } catch {}
+  }
+  function readMuted() {
+    try { return localStorage.getItem('void-pulse-muted') === '1'; } catch { return false; }
+  }
+  function writeMuted(v) {
+    try { localStorage.setItem('void-pulse-muted', v ? '1' : '0'); } catch {}
   }
 
   // ---------- Sfx ----------
@@ -96,8 +132,11 @@
       if (this.ctx) return;
       this.ctx = new (window.AudioContext || window.webkitAudioContext)();
       this.master = this.ctx.createGain();
-      this.master.gain.value = 0.55;
+      this.master.gain.value = state.muted ? 0 : MASTER_GAIN;
       this.master.connect(this.ctx.destination);
+    },
+    applyMute() {
+      if (this.master) this.master.gain.value = state.muted ? 0 : MASTER_GAIN;
     },
     _env(type, freq, dur, vol, slideTo) {
       if (!this.ctx) return;
@@ -150,7 +189,7 @@
   }
 
   // ---------- 4. Input ----------
-  function onPointerDown(e) {
+  function handleInputAction() {
     const now = performance.now();
     if (state.over) {
       if (now - state.gameoverAtMs >= GAMEOVER_LOCKOUT_MS) {
@@ -164,14 +203,46 @@
     state.lastTapMs = now;
     judgeTap();
   }
-  canvas.addEventListener('pointerdown', onPointerDown);
-  gameoverEl.addEventListener('pointerdown', onPointerDown);
+  canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); handleInputAction(); });
+  gameoverEl.addEventListener('pointerdown', handleInputAction);
 
   btnStart.addEventListener('click', (e) => {
     e.stopPropagation();
     Sfx.init(); Sfx.click();
     start();
   });
+
+  // Keyboard input — Space / Enter mirrors tap; gameplay accessible without pointer.
+  // When a BUTTON is focused, let the browser activate it (Space/Enter = click).
+  document.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' && e.code !== 'Enter') return;
+    const t = e.target;
+    if (t && (t.tagName === 'BUTTON' || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+    e.preventDefault();
+    if (!state.running && !state.over) {
+      Sfx.init(); Sfx.click();
+      start();
+      return;
+    }
+    handleInputAction();
+  });
+
+  // Mute toggle
+  function applyMuteUI() {
+    muteIconOn.style.display  = state.muted ? 'none' : '';
+    muteIconOff.style.display = state.muted ? '' : 'none';
+    btnMute.classList.toggle('muted', state.muted);
+    btnMute.setAttribute('aria-pressed', state.muted ? 'true' : 'false');
+    btnMute.setAttribute('title', state.muted ? 'Unmute' : 'Mute');
+  }
+  btnMute.addEventListener('click', (e) => {
+    e.stopPropagation();
+    state.muted = !state.muted;
+    writeMuted(state.muted);
+    Sfx.applyMute();
+    applyMuteUI();
+  });
+  applyMuteUI();
 
   function retriggerClass(el, cls) {
     el.classList.remove(cls);
@@ -214,6 +285,8 @@
       const mult = comboMult();
       state.score += Math.round(100 * mult * heartbeatMul);
       state.combo += 1;
+      state.perfectCount += 1;
+      state.hitCount += 1;
       spawnBurst(CENTER_X, CENTER_Y, p.heartbeat ? getVar('--danger') : getVar('--accent'), 12, 280);
       state.targetPopT = 0.18;
       Sfx.score(state.combo);
@@ -229,17 +302,25 @@
       const mult = comboMult();
       state.score += Math.round(50 * mult * heartbeatMul);
       state.combo += 1;
+      state.hitCount += 1;
       spawnBurst(CENTER_X, CENTER_Y, getVar('--accent'), 6, 210);
       Sfx.good(Math.max(0, state.combo - 2));
       p.active = false;
     } else {
-      // tapped outside the good window — consume the pulse so it can't also pass-through
+      // Early-tap forgiveness: if the player taps before the pulse arrives
+      // and within the grace-lead window, swallow the input instead of punishing.
+      // Late taps (past the target) still count as miss — no spam-through.
+      const toArriveMs = (TARGET_R - p.r) / p.speed * 1000;
+      if (toArriveMs > 0 && toArriveMs <= EARLY_TAP_LEAD_MS) {
+        return; // swallowed
+      }
       p.active = false;
       loseLife();
       Sfx.miss();
       state.shakeT = 0.2;
       retriggerClass(app, 'shake');
     }
+    if (state.combo > state.peakCombo) state.peakCombo = state.combo;
   }
 
   function loseLife() {
@@ -259,14 +340,18 @@
   }
 
   // ---------- Spawning ----------
+  // Onboarding: first ONBOARDING_T (5s) starts slower + wider gaps so a new
+  // player can read the mechanic before the main curve kicks in.
   function speedAt(t) {
-    if (t < 15) return 260 + (t / 15) * 80;
+    if (t < ONBOARDING_T) return 200 + (t / ONBOARDING_T) * 60;       // 200 → 260
+    if (t < 15) return 260 + ((t - ONBOARDING_T) / (15 - ONBOARDING_T)) * 80;
     if (t < 45) return 340 + ((t - 15) / 30) * 120;
     if (t < 90) return 460 + ((t - 45) / 45) * 140;
     return Math.min(720, 600 + (t - 90) * 1.2);
   }
   function gapAt(t) {
-    if (t < 15) return 900 - (t / 15) * 200;
+    if (t < ONBOARDING_T) return 1100 - (t / ONBOARDING_T) * 200;      // 1100 → 900
+    if (t < 15) return 900 - ((t - ONBOARDING_T) / (15 - ONBOARDING_T)) * 200;
     if (t < 45) return 700 - ((t - 15) / 30) * 200;
     return Math.max(300, 500 - (t - 45) * 4.5);
   }
@@ -489,6 +574,10 @@
     state.pulsesSpawned = 0;
     state.nextSpawnAt = 0;
     state.lastTapMs = 0;
+    state.peakCombo = 0;
+    state.perfectCount = 0;
+    state.hitCount = 0;
+    state.newBestThisRun = false;
     state.targetPopT = 0;
     state.shakeT = 0;
     state.comboMilestoneText = '';
@@ -498,6 +587,7 @@
     for (const p of particles) p.active = false;
     extraSpawns.length = 0;
     updateLivesUI();
+    newBestEl.classList.remove('visible');
 
     overlay.classList.remove('visible'); overlay.classList.add('hidden');
     gameoverEl.classList.remove('visible'); gameoverEl.classList.add('hidden');
@@ -511,13 +601,22 @@
     state.over = true;
     state.running = false;
     state.gameoverAtMs = performance.now();
+    const prevBest = state.best;
     if (state.score > state.best) {
       state.best = state.score;
       writeBest(state.best);
+      state.newBestThisRun = state.score > 0 && prevBest > 0;
     }
     Sfx.gameover();
     finalScoreEl.textContent = state.score;
     bestScoreEl.textContent = state.best;
+    statPeakEl.textContent = state.peakCombo;
+    statPerfectEl.textContent = state.perfectCount;
+    statHitsEl.textContent = state.hitCount;
+    if (state.newBestThisRun) {
+      newBestEl.classList.add('visible');
+      Sfx.levelup();
+    }
     retriggerClass(app, 'shake');
     app.classList.add('flash');
     setTimeout(() => app.classList.remove('flash'), 180);

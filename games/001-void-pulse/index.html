@@ -4,6 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>void-pulse — GameCompany</title>
+  <meta name="description" content="Tap the ring when the void pulses through it — a minimalist tap-timing casual game." />
+  <meta name="theme-color" content="#0a0e1f" />
+  <meta property="og:title" content="void-pulse" />
+  <meta property="og:description" content="Tap the ring when the void pulses through it." />
+  <meta property="og:type" content="website" />
+  <link rel="icon" href='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="%230a0e1f"/><circle cx="32" cy="32" r="20" fill="none" stroke="%2300d4ff" stroke-width="4"/><circle cx="32" cy="32" r="10" fill="none" stroke="%23ff3d6b" stroke-width="3" opacity=".85"/><circle cx="32" cy="32" r="3" fill="%2300d4ff"/></svg>' />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -16,16 +22,30 @@
       <div id="lives"><span class="life">◯</span><span class="life">◯</span><span class="life">◯</span></div>
     </div>
 
+    <button id="mute" class="icon-btn" type="button" aria-label="Toggle sound" title="Toggle sound">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+        <path id="muteIconOn"  d="M4 9v6h4l5 4V5L8 9H4zm11.5 3a3.5 3.5 0 0 0-2-3.16v6.32A3.5 3.5 0 0 0 15.5 12zM14 3.23v2.06a6.98 6.98 0 0 1 0 13.42v2.06A9 9 0 0 0 14 3.23z" fill="currentColor"/>
+        <path id="muteIconOff" d="M4 9v6h4l5 4V5L8 9H4zm12.59 3 2.7-2.7-1.42-1.42-2.7 2.7-2.7-2.7-1.41 1.42 2.7 2.7-2.7 2.7 1.41 1.42 2.7-2.7 2.7 2.7 1.42-1.42-2.7-2.7z" fill="currentColor" style="display:none"/>
+      </svg>
+    </button>
+
     <div id="overlay" class="overlay visible">
       <h1 class="title">void-pulse</h1>
       <p class="hook">Tap the ring when the void pulses through it.</p>
       <button id="start" class="btn">Tap to start</button>
+      <p class="kbhint">or press <kbd>Space</kbd></p>
     </div>
 
     <div id="gameover" class="overlay hidden">
+      <div id="newBest" class="new-best">NEW BEST</div>
       <h2 class="title">void silenced</h2>
       <p class="final-score">Score: <span id="finalScore">0</span></p>
       <p class="best-score">Best: <span id="bestScore">0</span></p>
+      <div id="stats" class="stats">
+        <div><span>Peak combo</span><span id="statPeak">0</span></div>
+        <div><span>Perfects</span><span id="statPerfect">0</span></div>
+        <div><span>Hits</span><span id="statHits">0</span></div>
+      </div>
       <p class="retry-hint">Tap to retry</p>
     </div>
   </main>

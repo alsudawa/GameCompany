@@ -21,10 +21,16 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`graphics/particle-fx.md`](graphics/particle-fx.md) — canvas particle pool
 
 ### Audio
-- [`audio/web-audio-sfx.md`](audio/web-audio-sfx.md) — oscillator + envelope SFX recipes
+- [`audio/web-audio-sfx.md`](audio/web-audio-sfx.md) — oscillator + envelope SFX recipes; spawn-tick anchor
+
+### Mobile
+- [`mobile/dpr-canvas.md`](mobile/dpr-canvas.md) — DPR-aware canvas for crisp rendering on retina
+
+### UX
+- [`ux/retention.md`](ux/retention.md) — run-end stats, NEW BEST gating, mute persistence
 
 ### QA
-- [`qa/casual-checklist.md`](qa/casual-checklist.md) — pre-ship checklist for casual games
+- [`qa/casual-checklist.md`](qa/casual-checklist.md) — pre-ship checklist + multi-perspective sweep (player / mobile / onboarding / retention / distribution)
 
 ## Conventions
 
