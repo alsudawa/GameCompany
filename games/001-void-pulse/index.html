@@ -50,8 +50,8 @@
         <span class="streak-count"><span id="streakStartNum">0</span>-day streak</span>
         <span class="streak-best" id="streakStartBest" hidden>best <span id="streakStartBestNum">0</span></span>
       </div>
-      <p class="hook">Tap the ring when the void pulses through it.</p>
-      <p id="firstVisitHint" class="first-visit-hint" hidden>New here? Tap at the moment the pulse meets the ring.</p>
+      <p class="hook">Tap on the beat. Dodge the <span style="color:var(--danger);font-weight:600">red</span>. 60-second chart, chase 100%.</p>
+      <p id="firstVisitHint" class="first-visit-hint" hidden>New here? Tap white rings · skip red ones · chase the % score.</p>
       <div class="demo" aria-hidden="true">
         <div class="demo-target"></div>
         <div class="demo-pulse"></div>
@@ -127,13 +127,14 @@
       <div class="help-card">
         <h2 id="helpTitle" class="help-title">how to play</h2>
         <ul class="help-list">
-          <li><span class="help-key">tap / Space</span><span>when the pulse aligns with the ring</span></li>
-          <li><span class="help-key">center hit</span><span>= <em>perfect</em>: full score, +1 combo</span></li>
-          <li><span class="help-key">near hit</span><span>= <em>good</em>: half score</span></li>
-          <li><span class="help-key">red dashed pulse</span><span>= heartbeat: ×1.5 score</span></li>
+          <li><span class="help-key">tap / Space</span><span>when the pulse crosses the ring — on beat (120 BPM)</span></li>
+          <li><span class="help-key">center hit</span><span>= <em>perfect</em>: full score, combo grows, chromatic flash</span></li>
+          <li><span class="help-key">near hit</span><span>= <em>good</em>: half score, combo grows</span></li>
+          <li><span class="help-key" style="color:var(--danger)">red dashed pulse</span><span>= <em>HAZARD</em>: do NOT tap. Let it pass for +50 bonus. Tapping it = miss + life</span></li>
           <li><span class="help-key">combo bar</span><span>fills toward the next ×multiplier (cap ×4)</span></li>
+          <li><span class="help-key">chart length</span><span>~60s fixed chart. Chase the % — try for 100% perfect run</span></li>
           <li><span class="help-key">3 lives</span><span>miss / mistap to lose one. Die fast 3x in a row → next run grants +1 gold life</span></li>
-          <li><span class="help-key">daily mode</span><span><code>?daily=1</code> — same pulse sequence for everyone today</span></li>
+          <li><span class="help-key">daily mode</span><span><code>?daily=1</code> — same chart for everyone today</span></li>
           <li><span class="help-key">theme picker</span><span>void / sunset / forest — press <kbd>T</kbd> to cycle</span></li>
         </ul>
         <p class="help-keys">

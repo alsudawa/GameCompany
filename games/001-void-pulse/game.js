@@ -46,6 +46,85 @@
   const COMBO_STEP = 5;
   const COMBO_MULT_MAX = 4;
 
+  // ---------- Rhythm chart (Sprint 29 pivot) ----------
+  // Replaces the old linear speedAt/gapAt ramp with a pre-composed, seeded
+  // 60-second chart laid out on an 8th-note grid at 120 BPM. Each bar is
+  // 8 slots (4 beats × 2 eighths). The generator escalates difficulty in
+  // 5 bands so the opening starts at moderate intensity (no ramp-in) and
+  // climaxes before the fade-out bars. Pulses are described by `arriveT`
+  // (when the ring should judge the tap) — the spawner back-calculates the
+  // actual spawn time from pulse speed so ring-cross lands exactly on beat.
+  const BPM = 120;
+  const BEAT_MS = 60000 / BPM;          // 500ms per quarter at 120 BPM
+  const EIGHTH_MS = BEAT_MS / 2;         // 250ms slot
+  const BARS = 30;
+  const SLOTS_PER_BAR = 8;
+  // Lead-in before the first pulse arrives. 2 beats = 1.0s at 120 BPM — long
+  // enough that the opening pulse has a clean travel animation from r=0 (not
+  // a frame-one pop), short enough that the player isn't staring at an empty
+  // ring for a "get ready" phase. The chart still starts at t=0 — we just
+  // offset every arriveT by this much during generation.
+  const CHART_LEAD_IN_S = 1.0;
+  const CHART_LENGTH_S = (BARS * SLOTS_PER_BAR * EIGHTH_MS) / 1000 + CHART_LEAD_IN_S;  // 61s
+  const HAZARD_PASS_BONUS = 50;
+  const HAZARD_TAP_PENALTY = 100;        // score debit when tapping a hazard (on top of life loss)
+  // Pre-composed bar templates. 'N' = normal pulse, 'H' = hazard (do NOT tap),
+  // '_' = rest. Eight 8th-note slots per bar. Hand-tuned to feel musical:
+  // downbeats always have a note (no empty bar starts), rests fall on weak
+  // subdivisions, hazards are placed where a "reflex" tap is tempting.
+  const BAR_TEMPLATES = {
+    warm:  [  // bars 1-2: establishes rhythm, no hazards, wide gaps
+      ['N','_','_','_','N','_','_','_'],
+      ['N','_','_','_','N','_','N','_'],
+    ],
+    easy:  [  // bars 3-6: quarter-note pulse, one hazard on offbeat per bar
+      ['N','_','N','_','N','_','N','_'],
+      ['N','_','N','_','N','H','N','_'],
+      ['N','_','N','_','N','_','N','H'],
+    ],
+    mid:   [  // bars 7-14: 8th-note density, hazards paired with offbeats
+      ['N','_','N','H','N','_','N','_'],
+      ['N','N','_','_','N','_','N','H'],
+      ['N','_','N','_','N','H','N','N'],
+      ['N','H','_','_','N','_','N','H'],
+    ],
+    hard:  [  // bars 15-22: dense, hazards clustered, syncopation
+      ['N','N','H','_','N','_','N','H'],
+      ['N','_','H','N','N','H','N','_'],
+      ['N','H','N','_','N','N','H','N'],
+      ['N','N','_','H','N','_','H','N'],
+    ],
+    climax:[  // bars 23-28: maximum density + hazard-normal alternation
+      ['N','H','N','H','N','N','H','N'],
+      ['N','N','H','N','N','H','N','H'],
+      ['H','N','N','H','N','H','N','N'],
+      ['N','N','N','H','N','H','H','N'],
+    ],
+    out:   [  // bars 29-30: fade — sparse normal notes, no hazards (finish line)
+      ['N','_','_','_','N','_','_','_'],
+      ['N','_','_','_','_','_','N','_'],
+    ],
+  };
+  // Speed per difficulty band — controls ring travel time, which affects
+  // react-window size. Faster speeds on harder bars compress decision time
+  // without changing the beat grid (pulses still arrive ON the beat).
+  const BAND_SPEED = { warm: 300, easy: 340, mid: 400, hard: 470, climax: 540, out: 400 };
+  // Bar-by-bar difficulty band assignment. Length must equal BARS.
+  const BAND_SCHEDULE = [
+    'warm','warm',
+    'easy','easy','easy','easy',
+    'mid','mid','mid','mid','mid','mid','mid','mid',
+    'hard','hard','hard','hard','hard','hard','hard','hard',
+    'climax','climax','climax','climax','climax','climax',
+    'out','out',
+  ];
+
+  // Schema version — bump when scoring model changes so old bests (which
+  // are unreachable under the new rules) are cleared rather than looking
+  // permanently unbeatable. Lifetime totals (runs, time) survive.
+  const SCHEMA_VERSION = 2;
+  const SCHEMA_KEY = 'void-pulse-schema';
+
   // Render-cache constants — pre-allocated objects reused every frame to keep
   // GC pressure off the hot path. Vignette opacity has 6 distinct values
   // bucketed by combo heat; reusing one CanvasGradient per bucket avoids
@@ -129,6 +208,48 @@
   // missing key so forward-adds don't need migrations.
   const LIFETIME_KEY = 'void-pulse-lifetime';
 
+  // Schema version migration. Sprint 29 flipped the scoring model from
+  // endless-ramp to fixed-chart; old scores are trivially unbeatable under
+  // the new rules, so wipe them once on upgrade to give players a fair
+  // "new best" moment. Lifetime aggregates (runs, totalSeconds) stay —
+  // they measure activity, not skill peak.
+  (function migrateSchema() {
+    try {
+      const stored = localStorage.getItem(SCHEMA_KEY);
+      const v = stored ? parseInt(stored, 10) : 0;
+      if (v < SCHEMA_VERSION) {
+        // Wipe anything that keys "best score" — per-seed leaderboards too.
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (!k) continue;
+          if (k === 'void-pulse-best' ||
+              k.indexOf('void-pulse-best-seed-') === 0 ||
+              k === 'void-pulse-history' ||
+              k.indexOf('void-pulse-history-seed-') === 0 ||
+              k.indexOf('void-pulse-board-seed-') === 0 ||
+              k.indexOf('void-pulse-ghost-seed-') === 0) {
+            localStorage.removeItem(k);
+          }
+        }
+        // Reset lifetime bestScoreEver / bestPerTheme to zero but keep run
+        // counts; we read-modify-write the one JSON blob.
+        try {
+          const rawLife = localStorage.getItem(LIFETIME_KEY);
+          if (rawLife) {
+            const life = JSON.parse(rawLife);
+            if (life && typeof life === 'object') {
+              life.bestScoreEver = 0;
+              life.peakComboEver = 0;
+              life.bestPerTheme = { void: 0, sunset: 0, forest: 0 };
+              localStorage.setItem(LIFETIME_KEY, JSON.stringify(life));
+            }
+          }
+        } catch {}
+        localStorage.setItem(SCHEMA_KEY, String(SCHEMA_VERSION));
+      }
+    } catch {}
+  })();
+
   // ---------- 2. State ----------
   const state = {
     running: false,
@@ -140,6 +261,11 @@
     lives: STARTING_LIVES,
     pulsesSpawned: 0,
     nextSpawnAt: 0,
+    chart: null,            // array of {arriveT, kind, speed, accent} for this run
+    chartIdx: 0,             // next unspawned chart event
+    maxPossibleScore: 0,     // theoretical max for this chart (for gameover %)
+    hazardPassed: 0,          // count of hazards successfully dodged this run
+    chartDone: false,         // true once last chart event has been spawned
     lastTapMs: 0,
     gameoverAtMs: 0,
     muted: readMuted(),
@@ -165,11 +291,20 @@
     comboMilestoneText: '',
     comboMilestoneFade: 0,
     tensionFlash: false,
+    // Juice — Sprint 29. `perfectFlashT` drives the chromatic-aberration
+    // ring redraw on the target (cyan/magenta/yellow triple-offset for ~8
+    // frames). `comboBloomT` drives the fullscreen radial flash at ×5 combo
+    // milestones. `hazardHitT` / `hazardClearT` drive short-lived color
+    // accents on the target ring when the player (mis)handles a hazard.
+    perfectFlashT: 0,
+    comboBloomT: 0,
+    hazardHitT: 0,
+    hazardClearT: 0,
   };
 
   const pulses = [];
   for (let i = 0; i < PULSE_POOL_SIZE; i++) {
-    pulses.push({ active: false, r: 0, prevR: 0, speed: 0, heartbeat: false, bornT: 0 });
+    pulses.push({ active: false, r: 0, prevR: 0, speed: 0, heartbeat: false, bornT: 0, kind: 'n' });
   }
 
   // Pre-generated starfield backdrop for subtle texture — zero-allocation render.
@@ -882,6 +1017,28 @@
     spawnTick(isHeartbeat) {
       this._env('sine', isHeartbeat ? 740 : 520, 0.035, 0.055);
     },
+    // Hazard spawn — low buzzy growl so the player HEARS the warning as
+    // soon as the red ring appears. Shorter + saw-shape so it reads as a
+    // threat cue distinct from the clean spawn-tick sine.
+    hazardSpawn() {
+      this._env('sawtooth', 140, 0.08, 0.14, 90);
+    },
+    // Hazard passed safely — reward pip: a soft bell-like sine that says
+    // "good restraint". Quieter than a score hit so the rhythm stays
+    // primary; a sibling pip 30ms later gives it body without drowning
+    // the next tap.
+    hazardPass() {
+      this._env('sine', 1760, 0.18, 0.10);
+      setTimeout(() => { try { this._env('sine', 2637, 0.14, 0.06); } catch {} }, 30);
+    },
+    // Hazard TAPPED by mistake — harsh, distinct from a normal miss so
+    // the player's muscle memory learns "this one is different". Low
+    // saw + quick high-saw stab layered so it feels like a buzz-cut.
+    hazardHit() {
+      this._env('sawtooth', 95, 0.28, 0.30, 48);
+      setTimeout(() => { try { this._env('square', 320, 0.16, 0.18); } catch {} }, 45);
+      this._themeAccent('miss');
+    },
     // Tiny per-dot tick scheduled on the audio clock for the ghost reveal
     // (Sprint 21's staggered animation). Called once per perfect in the
     // player's own current run, each offset by the matching animation delay.
@@ -1507,6 +1664,30 @@
     const pwMs = perfectWindowMs();
     const heartbeatMul = p.heartbeat ? HEARTBEAT_BONUS : 1;
 
+    // Hazard tap — the whole point of hazards is to NOT tap them. Only
+    // register if the tap is within the judge window (otherwise it's a
+    // tap-into-empty-space, which we ignore leniently). A tapped hazard:
+    // breaks combo, costs a life, debits score, triggers a red-wash pulse.
+    if (p.kind === 'h') {
+      if (dMs <= GOOD_WINDOW_MS) {
+        p.active = false;
+        recordRunEvent('m');
+        state.score = Math.max(0, state.score - HAZARD_TAP_PENALTY);
+        state.hazardHitT = 0.28;
+        spawnBurst(CENTER_X, CENTER_Y, getVar('--danger'), 18, 320);
+        if (!state.deathCam) {
+          loseLife();
+          state.shakeT = 0.24;
+          retriggerClass(app, 'shake');
+          haptic(30);
+          if (typeof Sfx.hazardHit === 'function') Sfx.hazardHit();
+          else Sfx.miss();
+        }
+      }
+      // Early-tap on a hazard is swallowed — same forgiveness as normal.
+      return;
+    }
+
     if (dMs <= pwMs) {
       const mult = comboMult();
       state.score += Math.round(100 * mult * heartbeatMul);
@@ -1514,14 +1695,20 @@
       state.perfectCount += 1;
       state.hitCount += 1;
       recordRunEvent('p');
-      spawnBurst(CENTER_X, CENTER_Y, p.heartbeat ? getVar('--danger') : getVar('--accent'), 12, 280);
-      state.targetPopT = 0.18;
+      // Juice — Sprint 29: doubled particle count on perfect + chromatic
+      // aberration ring flash + stronger target-pop. The aim is "rewarding
+      // thud" on every perfect so the mechanic feels explosive, not just
+      // counted. Good hits stay restrained so perfect still reads as better.
+      spawnBurst(CENTER_X, CENTER_Y, p.heartbeat ? getVar('--danger') : getVar('--accent'), 24, 380);
+      state.targetPopT = 0.24;
+      state.perfectFlashT = 0.14;
       Sfx.score(state.combo);
       if (p.heartbeat) Sfx.heartbeat();
       if (state.combo > 0 && state.combo % COMBO_STEP === 0) {
         const m = comboMult();
         state.comboMilestoneText = '×' + (m % 1 === 0 ? m : m.toFixed(1));
         state.comboMilestoneFade = 0.9;
+        state.comboBloomT = 0.35;    // fullscreen radial flash
         Sfx.levelup();
         // Peak-tier sweetener: ≥3x multiplier (combo ≥ 20) earns a theme
         // overtone layered on top of levelup. Sparse by design — gated on
@@ -1539,7 +1726,7 @@
       state.combo += 1;
       state.hitCount += 1;
       recordRunEvent('g');
-      spawnBurst(CENTER_X, CENTER_Y, getVar('--accent'), 6, 210);
+      spawnBurst(CENTER_X, CENTER_Y, getVar('--accent'), 10, 240);
       Sfx.good(Math.max(0, state.combo - 2));
       p.active = false;
     } else {
@@ -1629,49 +1816,75 @@
     }
   }
 
-  // ---------- Spawning ----------
-  // Onboarding: first ONBOARDING_T (5s) starts slower + wider gaps so a new
-  // player can read the mechanic before the main curve kicks in.
-  function speedAt(t) {
-    if (t < ONBOARDING_T) return 200 + (t / ONBOARDING_T) * 60;       // 200 → 260
-    if (t < 15) return 260 + ((t - ONBOARDING_T) / (15 - ONBOARDING_T)) * 80;
-    if (t < 45) return 340 + ((t - 15) / 30) * 120;
-    if (t < 90) return 460 + ((t - 45) / 45) * 140;
-    return Math.min(720, 600 + (t - 90) * 1.2);
+  // ---------- Spawning (chart-driven, Sprint 29) ----------
+  // Build the full 60-second chart at start-of-run from the seeded RNG.
+  // The chart is a flat array of `{arriveT, kind, speed, accent}` entries
+  // sorted by arrival time. Every entry's `arriveT` lands on an 8th-note
+  // beat so taps feel musical; the spawner back-calculates `spawnT` from
+  // pulse speed so the pulse reaches TARGET_R exactly on the beat.
+  function pickTemplate(band) {
+    const pool = BAR_TEMPLATES[band];
+    const idx = Math.floor(rng() * pool.length) % pool.length;
+    return pool[idx];
   }
-  function gapAt(t) {
-    if (t < ONBOARDING_T) return 1100 - (t / ONBOARDING_T) * 200;      // 1100 → 900
-    if (t < 15) return 900 - ((t - ONBOARDING_T) / (15 - ONBOARDING_T)) * 200;
-    if (t < 45) return 700 - ((t - 15) / 30) * 200;
-    return Math.max(300, 500 - (t - 45) * 4.5);
+  function generateChart() {
+    const events = [];
+    let normals = 0;
+    for (let bar = 0; bar < BARS; bar++) {
+      const band = BAND_SCHEDULE[bar];
+      const tmpl = pickTemplate(band);
+      const barStartMs = bar * SLOTS_PER_BAR * EIGHTH_MS;
+      const speed = BAND_SPEED[band];
+      for (let slot = 0; slot < SLOTS_PER_BAR; slot++) {
+        const c = tmpl[slot];
+        if (c === '_') continue;
+        const arriveT = (barStartMs + slot * EIGHTH_MS) / 1000 + CHART_LEAD_IN_S;
+        const accent = (slot === 0);   // downbeat emphasis (the old "heartbeat")
+        events.push({ arriveT, kind: c === 'H' ? 'h' : 'n', speed, accent });
+        if (c === 'N') normals += 1;
+      }
+    }
+    // Exact achievable max: simulate the chart as "every normal = perfect,
+    // every hazard = dodged" with the real combo-ramp multiplier. That way
+    // a literal perfect run scores exactly 100% — not 94% of some inflated
+    // ceiling. Ramps the multiplier 1 → 4 over the first 30 combos (COMBO_STEP
+    // × (COMBO_MULT_MAX − 1) ÷ 0.5 = 30) the same as live scoring.
+    let maxScore = 0;
+    let comboSim = 0;
+    for (const ev of events) {
+      if (ev.kind === 'n') {
+        const mult = Math.min(COMBO_MULT_MAX, 1 + Math.floor(comboSim / COMBO_STEP) * 0.5);
+        maxScore += 100 * mult;
+        comboSim += 1;
+      } else {
+        maxScore += HAZARD_PASS_BONUS;
+      }
+    }
+    return { events, maxScore: Math.round(maxScore) };
   }
 
-  function spawnPulse(heartbeat) {
+  // Spawn one pulse from a chart event. Called by the update loop when
+  // `state.t + leadTime >= ev.arriveT`. Pulse travels from r=0 to TARGET_R
+  // at constant speed so the arrival lands on the beat.
+  function spawnChartPulse(ev) {
     for (const p of pulses) {
       if (p.active) continue;
       p.active = true;
       p.r = 0;
       p.prevR = 0;
-      p.speed = speedAt(state.t);
-      p.heartbeat = heartbeat;
+      p.speed = ev.speed;
+      p.heartbeat = ev.accent;           // downbeat = heartbeat accent (cosmetic)
+      p.kind = ev.kind;                    // 'n' normal, 'h' hazard
       p.bornT = state.t;
-      Sfx.spawnTick(heartbeat);
+      // Spawn tick uses accent flag for a downbeat pitch bump. Hazards get
+      // a lower, buzzier cue via Sfx.hazardSpawn() if available (falls back
+      // to spawnTick on compat).
+      if (p.kind === 'h' && typeof Sfx.hazardSpawn === 'function') Sfx.hazardSpawn();
+      else Sfx.spawnTick(p.heartbeat);
+      state.pulsesSpawned += 1;
       return p;
     }
     return null;
-  }
-
-  function scheduleNext() {
-    state.pulsesSpawned += 1;
-    state.nextSpawnAt = state.t + gapAt(state.t) / 1000;
-    // Use seeded RNG in daily mode so spawn sequences are reproducible across
-    // devices. In free play, falls through to Math.random for variety.
-    const roll = rng();
-    if (state.t >= 90 && roll < 0.15) {
-      extraSpawns.push(state.t + 0.4, state.t + 0.8);
-    } else if (state.t >= 45 && roll < 0.30) {
-      extraSpawns.push(state.t + 0.5);
-    }
   }
 
   // ---------- Particles ----------
@@ -1787,23 +2000,31 @@
 
     state.t += simDt;
 
-    if (!state.deathCam && state.t >= state.nextSpawnAt) {
-      const heartbeat = ((state.pulsesSpawned + 1) % HEARTBEAT_INTERVAL) === 0;
-      spawnPulse(heartbeat);
-      scheduleNext();
-    }
-    if (!state.deathCam) {
-      for (let i = extraSpawns.length - 1; i >= 0; i--) {
-        if (state.t >= extraSpawns[i]) {
-          spawnPulse(false);
-          extraSpawns.splice(i, 1);
+    // Chart-driven spawning. Each event's `arriveT` is its ON-BEAT tap time;
+    // spawn happens (TARGET_R / speed) seconds earlier so the ring reaches
+    // the target exactly on the beat. Events are sorted so we only need to
+    // check the head pointer each frame.
+    if (!state.deathCam && state.chart) {
+      while (state.chartIdx < state.chart.length) {
+        const ev = state.chart[state.chartIdx];
+        const leadS = TARGET_R / ev.speed;
+        if (state.t >= ev.arriveT - leadS) {
+          spawnChartPulse(ev);
+          state.chartIdx += 1;
+        } else {
+          break;
         }
+      }
+      if (!state.chartDone && state.chartIdx >= state.chart.length) {
+        state.chartDone = true;
       }
     }
 
     state.tensionFlash = false;
+    let anyActive = false;
     for (const p of pulses) {
       if (!p.active) continue;
+      anyActive = true;
       p.r += p.speed * simDt;
       // Time-to-arrive (negative = already past)
       const toArriveMs = (TARGET_R - p.r) / p.speed * 1000;
@@ -1812,9 +2033,17 @@
       }
       if (toArriveMs < -GOOD_WINDOW_MS) {
         p.active = false;
-        // During death-cam, expiring pulses don't re-trigger life loss —
-        // the run is already ending; further losses would double-shake.
-        if (!state.deathCam) {
+        if (p.kind === 'h') {
+          // Correctly ignored a hazard — reward with bonus, keep combo alive.
+          if (!state.deathCam) {
+            state.score += HAZARD_PASS_BONUS;
+            state.hazardPassed += 1;
+            state.hazardClearT = 0.22;
+            spawnBurst(CENTER_X, CENTER_Y, getVar('--subtle'), 6, 140);
+            if (typeof Sfx.hazardPass === 'function') Sfx.hazardPass();
+          }
+        } else if (!state.deathCam) {
+          // Missed a normal pulse — cost a life.
           loseLife();
           state.shakeT = 0.15;
           retriggerClass(app, 'shake');
@@ -1822,9 +2051,20 @@
       }
     }
 
+    // Chart complete AND no more active pulses → victory gameover. Lets
+    // the final pulses play out instead of slamming the overlay mid-scene.
+    if (state.chartDone && !anyActive && !state.over && !state.deathCam) {
+      gameover();
+      return;
+    }
+
     if (state.targetPopT > 0) state.targetPopT = Math.max(0, state.targetPopT - simDt);
     if (state.comboMilestoneFade > 0) state.comboMilestoneFade = Math.max(0, state.comboMilestoneFade - simDt);
     if (state.shakeT > 0) state.shakeT = Math.max(0, state.shakeT - dt);
+    if (state.perfectFlashT > 0) state.perfectFlashT = Math.max(0, state.perfectFlashT - dt);
+    if (state.comboBloomT > 0) state.comboBloomT = Math.max(0, state.comboBloomT - dt);
+    if (state.hazardHitT > 0) state.hazardHitT = Math.max(0, state.hazardHitT - dt);
+    if (state.hazardClearT > 0) state.hazardClearT = Math.max(0, state.hazardClearT - dt);
 
     updateParticles(simDt);
     updateAmbient(simDt);
@@ -2122,24 +2362,75 @@
     // pulses — highlight the one the tap would judge (nearest to ring).
     // Radius is interpolated between previous and current fixed-step values
     // so 120Hz displays get smooth motion without running physics at refresh.
-    // Heartbeats use BOTH color (danger red) AND dashed stroke AND thicker
-    // line — redundancy so colorblind players (protanopia/deuteranopia) still
-    // read the heartbeat as a distinct kind of pulse.
+    // Hazards (p.kind === 'h') use BOTH danger color AND a thick dashed
+    // stroke AND a slow opacity throb so a colorblind player still reads
+    // "do not tap" even without the red. Downbeat accents (p.heartbeat)
+    // get a subtle ring-width bump for musical emphasis without fighting
+    // the hazard signal.
     const judgePulse = findJudgePulse();
     for (const p of pulses) {
       if (!p.active) continue;
       const rDraw = p.prevR + (p.r - p.prevR) * alpha;
-      const isHb = p.heartbeat;
-      ctx.strokeStyle = isHb ? getVar('--danger') : getVar('--fg');
-      ctx.lineWidth = (p === judgePulse ? 4.5 : 3) + (isHb ? 1.5 : 0);
-      if (isHb) ctx.setLineDash(HEARTBEAT_DASH);
-      ctx.globalAlpha = Math.min(1, 0.5 + rDraw / 260);
+      const isHazard = p.kind === 'h';
+      const isAccent = p.heartbeat;
+      ctx.strokeStyle = isHazard ? getVar('--danger') : getVar('--fg');
+      ctx.lineWidth = (p === judgePulse ? 4.5 : 3) + (isHazard ? 2.5 : 0) + (isAccent && !isHazard ? 1 : 0);
+      if (isHazard) ctx.setLineDash(HEARTBEAT_DASH);
+      // Hazards throb opacity faster so they read as "warning, warning" —
+      // a fear cue separate from the steady fade-in of normal pulses.
+      const throb = isHazard ? (0.8 + Math.sin(state.t * 14) * 0.2) : 1;
+      ctx.globalAlpha = Math.min(1, 0.5 + rDraw / 260) * throb;
       ctx.beginPath();
       ctx.arc(CENTER_X, CENTER_Y, rDraw, 0, Math.PI * 2);
       ctx.stroke();
-      if (isHb) ctx.setLineDash(NO_DASH);
+      if (isHazard) ctx.setLineDash(NO_DASH);
     }
     ctx.globalAlpha = 1;
+
+    // Chromatic aberration burst on Perfect — three thin rings in cyan /
+    // magenta / yellow drawn at the target with sub-pixel offsets, scaled
+    // by perfectFlashT (0-0.14s). Cheap (3 strokes × ~0.12s = negligible)
+    // but visually screams "PERFECT". Skipped under reduced-motion to
+    // avoid seizure-risk for sensitive users.
+    if (state.perfectFlashT > 0 && !reducedMotion) {
+      const k = state.perfectFlashT / 0.14;
+      const spread = (1 - k) * 18 + 3;    // ring grows outward as it fades
+      const off = 3;
+      ctx.globalAlpha = k * 0.9;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#00e5ff';
+      ctx.beginPath(); ctx.arc(CENTER_X + off, CENTER_Y, TARGET_R + spread, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = '#ff2bd6';
+      ctx.beginPath(); ctx.arc(CENTER_X - off, CENTER_Y + off * 0.6, TARGET_R + spread, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = '#ffee00';
+      ctx.beginPath(); ctx.arc(CENTER_X, CENTER_Y - off, TARGET_R + spread, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    // Combo-milestone bloom — a fullscreen radial flash from center out.
+    // Gated by comboBloomT (0.35s) so it's rare and celebratory. Uses a
+    // radial gradient filled over the whole canvas with low alpha; it
+    // reads as "the room brightened" rather than overlaying any element.
+    if (state.comboBloomT > 0 && !reducedMotion) {
+      const k = state.comboBloomT / 0.35;
+      const grad = ctx.createRadialGradient(CENTER_X, CENTER_Y, TARGET_R * 0.4, CENTER_X, CENTER_Y, Math.max(W, H) * 0.75);
+      grad.addColorStop(0, 'rgba(255,255,255,' + (0.38 * k).toFixed(3) + ')');
+      grad.addColorStop(0.45, 'rgba(255,255,255,' + (0.10 * k).toFixed(3) + ')');
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    // Hazard hit wash — a brief red-wash radial when the player taps a
+    // hazard, layered over the ring so the mistake feels concrete.
+    if (state.hazardHitT > 0 && !reducedMotion) {
+      const k = state.hazardHitT / 0.28;
+      const grad = ctx.createRadialGradient(CENTER_X, CENTER_Y, TARGET_R * 0.2, CENTER_X, CENTER_Y, Math.max(W, H) * 0.7);
+      grad.addColorStop(0, 'rgba(255, 72, 96, ' + (0.42 * k).toFixed(3) + ')');
+      grad.addColorStop(1, 'rgba(255, 72, 96, 0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+    }
 
     // particles
     renderParticles();
@@ -2335,10 +2626,24 @@
     state.comboMilestoneText = '';
     state.comboMilestoneFade = 0;
     state.tensionFlash = false;
+    state.perfectFlashT = 0;
+    state.comboBloomT = 0;
+    state.hazardHitT = 0;
+    state.hazardClearT = 0;
+    state.hazardPassed = 0;
     state.deathCam = false;
     state.deathCamT = 0;
+    // Generate this run's chart AFTER resetRng() above (so seeded runs are
+    // identical across retries). maxPossibleScore is used by the gameover
+    // overlay to show the "x% of theoretical max" score — the core retention
+    // hook for a fixed-pattern rhythm game.
+    const built = generateChart();
+    state.chart = built.events;
+    state.chartIdx = 0;
+    state.chartDone = false;
+    state.maxPossibleScore = built.maxScore;
     resetSrTierCache();
-    announce('Run started. ' + state.lives + ' lives.');
+    announce('Chart started. ' + state.lives + ' lives.');
     app.classList.remove('deathcam');
     for (const p of pulses) p.active = false;
     for (const p of particles) p.active = false;
@@ -2490,8 +2795,22 @@
     } else {
       shareBtn.hidden = true;
     }
-    Sfx.gameover();
-    finalScoreEl.textContent = state.score;
+    // Victory vs death — completing the chart with lives left gets the
+    // levelup cascade (uplifting) instead of the gameover thud (loss cue).
+    // The visual overlay is the same; the audio tells you which outcome.
+    if (state.chartDone && state.lives > 0) {
+      Sfx.levelup();
+      setTimeout(() => { try { Sfx.themeSweeten(); } catch {} }, 180);
+    } else {
+      Sfx.gameover();
+    }
+    // Fixed-chart scoring — show the raw score PLUS the % of theoretical
+    // max. The % is the real retention lever: "I got 63%, I can do better"
+    // beats "my endless score was 4728" for replayability.
+    const pct = state.maxPossibleScore > 0
+      ? Math.round((state.score / state.maxPossibleScore) * 100)
+      : 0;
+    finalScoreEl.textContent = state.score + ' · ' + pct + '%';
     bestScoreEl.textContent = state.best;
     statPeakEl.textContent = state.peakCombo;
     statPerfectEl.textContent = state.perfectCount;
@@ -2503,12 +2822,14 @@
     }
     // Compose a single gameover announcement so the screen reader speaks one
     // summary line, not 6 fragmented reads. Order: NEW BEST first (highest
-    // salience), then streak bump, then final score + peak combo.
+    // salience), then streak bump, then final score + peak combo + %.
     const parts = [];
     if (state.newBestThisRun) parts.push('New best!');
+    else if (state.chartDone && state.lives > 0) parts.push('Chart complete!');
     else parts.push('Game over.');
     if (streakBumped) parts.push('Day ' + streakAfter.streak + ' streak.');
     parts.push('Score ' + state.score + '.');
+    parts.push(pct + ' percent of max.');
     parts.push('Peak combo ' + state.peakCombo + '.');
     announce(parts.join(' '));
     // Daily mode: nudge returning-ness with a "come back tomorrow" countdown.
