@@ -2436,6 +2436,118 @@ Manual keyboard-only test plan (didn't automate — no headless browser in this 
 
 ---
 
+## Sprint 45 — Peak-tier ambient background (tier-reinforcement trio completion)
+
+**Lens:** the combo tier is communicated through HUD text tint (Sprint 41) and audio pitch shift (Sprint 43). Two channels of signal. But the full *screen* is still visually neutral — eyes peripheral-to-the-combo (tracking the next incoming pulse) don't get any hint that the player is at peak. The fix: a subtle ambient background effect that fires only at peak, giving peripheral confirmation without competing with the primary HUD signal.
+
+This closes the "tier trio": combo-text + audio + ambient-background, each tuned to its own signal noise floor.
+
+### The principle — not every tier should propagate everywhere
+
+The temptation with a three-tier system (low/mid/peak) is to propagate the tier state to *every* visual surface: HUD text, border, ambient, particles, etc. That's what Sprint 41's skill doc called "state propagation discipline" — more isn't better. Each surface has a different noise-to-signal ratio.
+
+For void-pulse's combo tier:
+- **HUD text tint** (Sprint 41): N-way (low/mid/peak). It's a small element; subtle tint changes are a low-cost continuous signal. High resolution.
+- **Audio pitch** (Sprint 43): N-way (unison/9-8/5-4). The ear can distinguish 3 discrete shifts easily; audio is a low-persistence channel (each cue fires, decays, gone) so it can afford more steps.
+- **Ambient background** (Sprint 45): binary (off/on at peak). The background is the biggest visual surface. If it tinted at every tier, players would see the whole screen shifting color constantly, which reads as "UI is misbehaving," not "progression."
+
+So: binary-gate the largest surface, multi-tier the smaller surfaces. **Signal density per square pixel** is the design lens.
+
+### Design
+
+1. **Attribute propagation.** Extend the existing tier-change block (game.js line ~2981) — where `hudCombo.dataset.tier` is set per-tier — to *also* set `app.dataset.tier = 'peak'` when tier === 'peak', or remove it otherwise.
+
+   ```js
+   if (tier === 'peak') app.dataset.tier = 'peak';
+   else app.removeAttribute('data-tier');
+   ```
+
+   This is a binary gate on the same change-detection. Zero extra runtime cost.
+
+2. **Edge-vignette via `::after`.** Already-in-use `#app::before` belongs to deathcam. New `::after` with a radial-gradient from transparent center to soft `--highlight` at edges. Uses `color-mix(in srgb, var(--highlight) 22%, transparent)` — theme-aware, low alpha.
+
+3. **Opacity transition for smooth in/out.** `opacity: 0` by default, `opacity: 1` at peak, 500ms ease transition. No `display: none` — can't animate that.
+
+4. **Breathing animation at peak.** `@keyframes peakAmbientPulse` — gentle `.85 → 1 → .85` over 3.6s. Intentionally slow: below the beat frequency (2Hz at 120 BPM, this is ~0.28Hz), so it's ambient, not rhythmic. A faster pulse would compete with the gameplay timing.
+
+5. **Reduced-motion fallback.** The color-state is *information*; keep it visible. But drop the breathing pulse — static vignette at opacity 1.
+
+### Why peak-only (binary), not three-tier
+
+Prototyped mentally what a three-tier version would look like:
+- Low: no overlay (safe baseline)
+- Mid: ~40% opacity vignette
+- Peak: ~100% opacity vignette
+
+Problem: the mid-tier overlay would be on-screen for most of a good run (the combo sits in ×2 territory for many seconds between peaks). That puts a persistent color wash over the gameplay for "you're doing okay" — which is noise, not signal. The binary gate means the ambient only appears when something *special* is happening (peak), so when it shows up it carries meaning.
+
+### Why `z-index: 4`
+
+The existing z-index ladder:
+- Canvas/stage: 1-2
+- `#app.deathcam::before`: z-index 5 (overlays tint on death)
+- HUD elements: 10+
+- Overlays (start/gameover/help): 20
+
+Peak ambient at z-index 4 sits above the stage canvas (so it tints the gameplay) but *below* deathcam's red overlay (so dying overrides peak-ambient correctly) and well below HUD (so HUD text stays crisp over it). Importantly: combo tier resets to null on any miss (which breaks the combo), which removes `data-tier="peak"` from `#app` before the deathcam even triggers, so the two effects rarely co-occur anyway. Belt-and-braces via z-index ordering.
+
+### Pseudo-element choice (`::after` over `::before`)
+
+`#app::before` is already the deathcam overlay. Two overlays on the same element: use `::after` for the second. Both can coexist (deathcam ends mid-animation the moment a miss occurs; peak-tier would have already been cleared). Future additional overlays on `#app` would need a different element (e.g. a dedicated `<div class="ambient-layer">`) since there are only two pseudo-element slots per element.
+
+### Cost
+
+- game.js: +3 lines (tier mirror + reset) + 1 comment
+- style.css: +~30 lines (overlay rule + keyframe + reduced-motion override)
+- Zero runtime impact in low/mid tiers (attribute absent → selector doesn't match → overlay stays opacity 0)
+- At peak: one more compositor layer, subtle animation at 0.28Hz — negligible
+
+### Patterns extracted
+
+Added a new section to [`graphics/state-tint.md`](../skills/graphics/state-tint.md) — **"Binary-gated application (peak-only ambient)"**:
+
+- When to use binary gating vs N-way propagation (signal density per surface).
+- Pattern: `if (tier === 'peak') el.dataset.tier = 'peak'; else el.removeAttribute(...)`.
+- Why `::after` with opacity transition, not `display: none`.
+- Reduced-motion: keep the state, drop the animation (distinguish color-state from motion).
+- Three-discipline pairing example (HUD text + audio + ambient) with calibrated intensities per surface.
+
+This is the third sprint extending `graphics/state-tint.md` (after Sprint 39 and 41). The skill has now covered: multi-tier keyframe tinting (39), direct property override when indirection isn't needed (41), binary-gated propagation (45). A near-complete cookbook for state-reactive visuals.
+
+### What this sprint didn't do
+
+- **Sound layering at peak**. Sprint 43's `themeSweeten` already does this. No additional audio needed — trio is complete at 3 channels.
+- **Haptic pulse at peak**. Considered, but haptic-on-sustained-state would be intrusive (vibration should be event-based, not state-based). The existing per-hit haptic already scales with combo.
+- **Particle tint at peak**. Would be a fourth channel. Not needed — the eye has enough signal from HUD text + ambient. Additional particle tinting would push toward "visually busy." Saved for a future sprint if playtesting shows the current trio underplays peak.
+- **Multi-tier ambient (low/mid/peak)**. Explicitly rejected — see "Why peak-only" above.
+
+### Verification
+
+- Cold start: no `data-tier` on `#app`, no ambient. ✓
+- Combo builds to ×2: `#combo[data-tier="mid"]` set; `#app` attribute absent → no ambient. ✓
+- Combo reaches ×3: both `#combo[data-tier="peak"]` and `#app[data-tier="peak"]` set; ambient fades in over 500ms; breathing animation starts. ✓
+- Miss breaks combo: `#combo` and `#app` attributes both cleared; ambient fades out over 500ms. ✓
+- Theme swap at peak: `--highlight` re-resolves; ambient color updates on next frame (radial-gradient re-composes) without restart. ✓
+- Reduced-motion: ambient stays on at peak but breathing animation disabled. ✓
+- Deathcam trigger during peak: extremely rare (combo breaks first), but z-index layering means deathcam red overlay composites above peak-ambient gold — correct visual hierarchy. ✓
+
+### Wrap-up
+
+- Combo tier now propagates to three channels: HUD text (41), audio (43), background ambient (45).
+- Each channel tuned to its own signal noise floor: continuous for small surfaces, binary for the large surface.
+- Peak-tier ambient: `::after` edge-vignette in theme highlight color, subtle breathing pulse, respects reduced-motion.
+- Skill doc extended with the binary-gated-propagation pattern and the "not every tier propagates everywhere" principle.
+
+### Next candidates
+
+- **Pause modal a11y** (dialog semantics + focus handling) — still open.
+- **Keyboard-only full-flow manual test** (still open, 5 sprints).
+- **Emoji ladder in share** (deferred from 42).
+- **First-visit onboarding audit** — now that the trio reinforces peak, is the first-time player getting the "this is what to chase" signal quickly enough? Check the first-visit hint, demo animation, and initial gameplay ramp.
+- **Localization scaffolding** / **service worker** / **gamepad input** (still open, long).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

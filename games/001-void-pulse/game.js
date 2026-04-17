@@ -2981,6 +2981,15 @@
     if (tier !== lastComboTier) {
       if (tier === null) hudCombo.removeAttribute('data-tier');
       else hudCombo.dataset.tier = tier;
+      // Ambient background response — mirror PEAK only to #app so the
+      // background echoes the "you're in the zone" moment. Completes the
+      // tier-reinforcement trio: combo-text tint (sprint 41) + audio
+      // pitch shift (sprint 43) + ambient (this). Gating on peak-only
+      // (not every tier) keeps the effect punchy — if every tier lit
+      // the background, the signal would dilute to noise. Reduced-
+      // motion is handled purely in CSS so JS stays attribute-only.
+      if (tier === 'peak') app.dataset.tier = 'peak';
+      else app.removeAttribute('data-tier');
       lastComboTier = tier;
     }
 
@@ -3174,6 +3183,7 @@
     lastComboActive = false;
     lastComboTier = null;
     if (hudCombo) hudCombo.removeAttribute('data-tier');
+    app.removeAttribute('data-tier');   // clear ambient peak-tier overlay
     comboMeter.classList.remove('active');
     comboMeterFill.style.width = '0%';
     // clear any lingering pause state from a previous run

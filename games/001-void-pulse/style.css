@@ -355,6 +355,36 @@ html, body {
   100% { opacity: .78; }
 }
 
+/* Peak-tier ambient — completes the tier-reinforcement trio with combo-
+   text tint (sprint 41) and audio pitch shift (sprint 43). Subtle edge-
+   vignette in the theme highlight color fades in when the combo hits
+   ×3+, giving players a peripheral cue that they're in the peak zone.
+   Deliberately low-alpha (0.10–0.14) so it registers as ambience, not
+   UI noise — the combo text and audio already carry the main signal;
+   this is atmosphere on top. Uses ::after to avoid colliding with
+   ::before (reserved by #app.deathcam). Transition on opacity so the
+   appearance/disappearance is smooth, not a sudden flip. */
+#app::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 55%,
+              color-mix(in srgb, var(--highlight) 22%, transparent) 100%);
+  opacity: 0;
+  transition: opacity .5s ease;
+  z-index: 4;                           /* under HUD (≥10), above stage */
+  border-radius: var(--radius);
+}
+#app[data-tier="peak"]::after {
+  opacity: 1;
+  animation: peakAmbientPulse 3.6s ease-in-out infinite;
+}
+@keyframes peakAmbientPulse {
+  0%, 100% { opacity: .85; }
+  50%      { opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .shake, .pop, .flash, .new-best, #score.beaten-best, .pause-countdown { animation: none !important; }
   #app.deathcam::before { animation: none !important; opacity: .5; }
@@ -363,6 +393,11 @@ html, body {
      "a run is in progress" without the flash. */
   #beat.pulse .beat-dot,
   #beat.pulse-accent .beat-dot { animation: none !important; }
+  /* Peak-tier ambient stays on (the tier *should* be visible), but
+     drop the breathing animation. Static vignette still reinforces
+     "you're at peak" without the gentle motion that can trigger
+     vestibular discomfort. */
+  #app[data-tier="peak"]::after { animation: none !important; opacity: 1; }
 }
 
 /* Mute toggle (top-right) */

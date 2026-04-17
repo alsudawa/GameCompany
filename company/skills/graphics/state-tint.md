@@ -135,6 +135,81 @@ The custom-property indirection is only needed when the tint has to pass into a 
 - **Health band** — `data-health="full" | "low" | "critical"` on the player sprite / HUD; tint the damage-flash keyframe.
 - **Power-up tier** — `data-power="none" | "active" | "extended"` on the ring; tint a ring glow.
 - **Day/night cycle** — `data-tod="dawn" | "day" | "dusk" | "night"` on the backdrop wrapper; tint ambient particle color.
+- **Peak-tier ambient on the page wrapper** — `data-tier="peak"` on `#app`; tint a `::after` edge-vignette in the theme highlight color. Completes a tier-reinforcement trio with a HUD text tint and an audio pitch shift. See "Binary-gated application" below.
+
+## Binary-gated application (peak-only ambient)
+
+<!-- added: 2026-04-17 (001-void-pulse sprint 45) -->
+
+The canonical pattern is N-way (low/mid/peak, warm/easy/hard/climax). But sometimes you want a tier to only *register* at one end — e.g. an ambient background effect that fires *only* at peak, not at every intermediate tier. The reason: atmosphere scales nonlinearly. An ambient glow at every tier dilutes the signal; an ambient glow *only at peak* creates a distinct "you crossed the threshold" moment that reinforces the HUD text tint without competing with it.
+
+For binary gating, write the mirror in JS like this:
+
+```js
+if (tier === 'peak') appEl.dataset.tier = 'peak';
+else appEl.removeAttribute('data-tier');
+```
+
+Instead of:
+
+```js
+// DON'T — propagates all tiers to the ambient wrapper
+if (tier === null) appEl.removeAttribute('data-tier');
+else appEl.dataset.tier = tier;
+```
+
+The attribute is absent for low/mid, present only at peak. CSS selector:
+
+```css
+#app::after {
+  /* Ambient vignette — fades in only when data-tier="peak" applied */
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 55%,
+              color-mix(in srgb, var(--highlight) 22%, transparent) 100%);
+  opacity: 0;
+  transition: opacity .5s ease;
+  z-index: 4;                    /* above stage, below HUD */
+}
+#app[data-tier="peak"]::after {
+  opacity: 1;
+  animation: peakAmbientPulse 3.6s ease-in-out infinite;
+}
+@keyframes peakAmbientPulse {
+  0%, 100% { opacity: .85; }
+  50%      { opacity: 1; }
+}
+```
+
+### Why `::after` with `opacity: 0` transition, not `display: none`
+
+The element is always in the DOM-rendered tree; its opacity animates from 0 to 1 when the attribute appears. That gives us a smooth fade-in when the player hits peak, and a smooth fade-out when they lose the combo. `display: none` → `display: block` would flip instantly (can't animate `display` reliably), jarring against the soft visual.
+
+### Reduced-motion: keep the effect, drop the animation
+
+The peak-state *should* be visible even with reduced-motion — color-state is information, not motion. What we remove is the breathing animation:
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  #app[data-tier="peak"]::after { animation: none !important; opacity: 1; }
+}
+```
+
+Still-image vignette conveys "you're at peak" without the gentle pulse that might trigger vestibular discomfort.
+
+### Pairing with multi-tier tints on the same axis
+
+You can run N-way tint on one element and binary-gate on another, sharing the same state axis. void-pulse does this:
+
+- `#combo[data-tier="low|mid|peak"]` — 3-way color tint on the HUD text (sprint 41)
+- `#app[data-tier="peak"]` — binary peak-only ambient (sprint 45)
+- `Sfx.levelup(tier)` — 3-way pitch shift on audio (sprint 43)
+
+Three disciplines, same state axis, calibrated intensities: the HUD text changes every tier (high-frequency signal, low visual cost), the audio shifts every tier (ear-channel redundancy), and the ambient fires only at the top (atmospheric reward, doesn't dilute the HUD signal). Each channel is tuned to its own noise floor.
+
+The lesson: **not every tier needs to propagate to every visual surface.** Pick the right gating per-surface based on whether the surface can carry continuous progression without becoming noisy.
 
 ## Cost
 
