@@ -25,6 +25,8 @@
       <div id="lives"><span class="life">◯</span><span class="life">◯</span><span class="life">◯</span></div>
     </div>
 
+    <div id="seedPill" class="seed-pill" hidden>DAILY · <span id="seedDate"></span></div>
+
     <button id="mute" class="icon-btn" type="button" aria-label="Toggle sound" title="Toggle sound">
       <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
         <path id="muteIconOn"  d="M4 9v6h4l5 4V5L8 9H4zm11.5 3a3.5 3.5 0 0 0-2-3.16v6.32A3.5 3.5 0 0 0 15.5 12zM14 3.23v2.06a6.98 6.98 0 0 1 0 13.42v2.06A9 9 0 0 0 14 3.23z" fill="currentColor"/>
@@ -34,9 +36,12 @@
 
     <div id="overlay" class="overlay visible">
       <h1 class="title">void-pulse</h1>
+      <p id="startSubtitle" class="seed-subtitle" hidden>Daily · <span id="seedDateStart"></span></p>
       <p class="hook">Tap the ring when the void pulses through it.</p>
       <button id="start" class="btn">Tap to start</button>
       <p class="kbhint">or press <kbd>Space</kbd></p>
+      <a id="dailyLink" class="daily-link" href="?daily=1" hidden>Try today's daily →</a>
+      <a id="freeLink"  class="daily-link" href="./" hidden>← Back to free play</a>
     </div>
 
     <div id="gameover" class="overlay hidden">

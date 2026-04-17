@@ -196,10 +196,43 @@ Each sprint has targeted improvements invisible to the one before — confirming
 
 ### Next candidates
 
-- **Daily seeded challenge** (`?seed=YYYYMMDD`) — biggest remaining retention + social-proof lever
 - **Death-cam slow-mo on fatal miss** — teaches timing + softens the sting
 - **Per-seed local leaderboard** — tie shared URL to a ranked comparison
 - **Sprint 7+ lens candidate: performance** — profile canvas draw costs on low-end Android
+
+---
+
+## Sprint 7 — Daily seeded challenge (2026-04-17)
+
+**Lens used:** recurrence / ritual. What feature makes someone bookmark the game? Not better timing, not better polish — a **reason to come back tomorrow**.
+
+### Problems diagnosed
+
+1. **No ritual hook.** Free-play endless runs are exhausting by their own logic: you play until you beat your best, and then you close the tab. There's nothing waiting for you tomorrow.
+2. **Zero social proof.** "I scored 540" is noise — the recipient has no context. "I scored 540 on today's daily" is a challenge. Same score, different framing, vastly different virality.
+3. **Best-score semantics ambiguous in shared mode.** If we added dailies naively, a hot daily run would overwrite the player's free-play best. Need separate namespaces.
+
+### Ships
+
+- **Seeded RNG (mulberry32).** Replaces the polyrhythm roll in `scheduleNext()` when in seeded mode. Reset at every retry so each run in a seeded session is identical.
+- **URL parsing.** `?seed=20260417` = explicit seed; `?daily=1` or `?seed=daily` = today (device-local YYYYMMDD).
+- **Per-seed best.** `void-pulse-best-seed-{seed}` key. Daily scores don't touch free-play best.
+- **UI markers.** Gold `DAILY · 2026-04-17` pill top-center of the canvas + matching subtitle in the start overlay. Cross-link: in seed mode, "Back to free play"; in free play, "Try today's daily →".
+- **Canonical share URL.** When sharing a seeded score, rewrite `?daily=1` → `?seed=YYYYMMDD` so recipients get *that* exact seed, not their own today's.
+
+### What the extraction surfaced (skills)
+
+- New `skills/gameplay/seeded-daily.md` — full daily-challenge pattern: seeded PRNG, URL parsing with the daily shortcut, per-seed best key, share-URL canonicalization, UI cues. Treats "replace all Math.random with seeded" as an anti-pattern — only gameplay-critical rolls need determinism.
+
+### Why this is a force multiplier for the company
+
+The daily pattern is game-agnostic. Any future GameCompany title with run-based scoring can copy the skill doc and have a daily-challenge mode in an afternoon. The cumulative effect — every title is instantly a recurring-visit product — is exactly why the skill library exists.
+
+### Next candidates
+
+- **Per-seed local leaderboard** — with the seed infrastructure in place, add a top-5 list per seed
+- **Tomorrow's preview** — on gameover, "Come back tomorrow for a fresh daily"
+- **Death-cam** — 0.5s freeze on fatal miss (still unaddressed)
 
 ---
 

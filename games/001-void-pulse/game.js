@@ -44,6 +44,52 @@
   const COMBO_STEP = 5;
   const COMBO_MULT_MAX = 4;
 
+  // ---------- Seeded RNG (for daily challenge) ----------
+  // mulberry32 — small, fast, good distribution for casual-game RNG.
+  // Deterministic per seed so `?seed=20260417` always produces the same
+  // spawn sequence → players can compare scores on the same run.
+  function makeRng(seed) {
+    let a = seed >>> 0;
+    return function() {
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function todayYyyymmdd() {
+    const d = new Date();
+    return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+  }
+  function formatSeedLabel(seed) {
+    const s = String(seed);
+    if (/^\d{8}$/.test(s)) return s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8);
+    return s;
+  }
+  // Parse seed from URL. `?seed=20260417` = explicit; `?daily=1` or
+  // `?seed=daily` = today's YYYYMMDD. Invalid/missing = null → free play.
+  function parseSeedFromUrl() {
+    try {
+      const params = new URLSearchParams(location.search);
+      const raw = params.get('seed');
+      const dailyFlag = params.get('daily');
+      if (raw === 'daily' || dailyFlag === '1') return todayYyyymmdd();
+      if (raw && /^\d+$/.test(raw)) return parseInt(raw, 10) | 0;
+    } catch {}
+    return null;
+  }
+  const SEED = parseSeedFromUrl();
+  // In seeded mode, `rng` is reset at the start of every run so each retry
+  // produces the exact same spawn sequence. In free play, `rng` is Math.random
+  // and no reset is needed.
+  let rng = SEED !== null ? makeRng(SEED) : Math.random;
+  function resetRng() {
+    if (SEED !== null) rng = makeRng(SEED);
+  }
+  // Best is namespaced per-seed: daily challenges have their own leaderboard
+  // independent of free-play best. Free-play uses the original key.
+  const BEST_KEY = SEED !== null ? 'void-pulse-best-seed-' + SEED : 'void-pulse-best';
+
   // ---------- 2. State ----------
   const state = {
     running: false,
@@ -134,7 +180,28 @@
   const historyEl = document.getElementById('history');
   const historySvg = document.getElementById('historySvg');
   const shareBtn = document.getElementById('share');
+  const seedPill = document.getElementById('seedPill');
+  const seedDateEl = document.getElementById('seedDate');
+  const startSubtitle = document.getElementById('startSubtitle');
+  const seedDateStartEl = document.getElementById('seedDateStart');
+  const dailyLink = document.getElementById('dailyLink');
+  const freeLink  = document.getElementById('freeLink');
   bestScoreEl.textContent = state.best;
+
+  // Seed-mode UI: show DAILY pill + start-overlay subtitle when in seeded play.
+  // Otherwise expose the "Try today's daily" link on the free-play start overlay.
+  if (SEED !== null) {
+    const label = formatSeedLabel(SEED);
+    seedDateEl.textContent = label;
+    seedDateStartEl.textContent = label;
+    seedPill.hidden = false;
+    startSubtitle.hidden = false;
+    freeLink.hidden = false;
+    // Highlight daily run's title color in the HUD
+    document.documentElement.style.setProperty('--accent-alt', '#ffd24a');
+  } else {
+    dailyLink.hidden = false;
+  }
 
   // DPR-aware canvas sizing — render at device pixels for crispness, keep
   // logical coords at 720×960 via ctx transform. Cap DPR at 2 to avoid
@@ -151,10 +218,10 @@
   window.addEventListener('resize', setupCanvas);
 
   function readBest() {
-    try { return +(localStorage.getItem('void-pulse-best') || 0); } catch { return 0; }
+    try { return +(localStorage.getItem(BEST_KEY) || 0); } catch { return 0; }
   }
   function writeBest(v) {
-    try { localStorage.setItem('void-pulse-best', String(v)); } catch {}
+    try { localStorage.setItem(BEST_KEY, String(v)); } catch {}
   }
   function readMuted() {
     try { return localStorage.getItem('void-pulse-muted') === '1'; } catch { return false; }
@@ -312,10 +379,24 @@
   // Button only shows when the browser can do SOMETHING with it.
   const canShare = typeof navigator.share === 'function';
   const canCopy  = !!(navigator.clipboard && navigator.clipboard.writeText);
+  function shareUrl() {
+    // For seeded runs, build an explicit ?seed=YYYYMMDD URL so the recipient
+    // gets the exact sequence — not `?daily=1`, which would re-resolve to
+    // *their* today's seed when they open it (different run!).
+    if (SEED === null) return location.href;
+    const url = new URL(location.href);
+    url.searchParams.delete('daily');
+    url.searchParams.set('seed', String(SEED));
+    return url.toString();
+  }
   function shareScore() {
-    const base = 'I scored ' + state.score + ' in void-pulse' +
-      (state.newBestThisRun ? ' — new best!' : '') +
-      ' ' + location.href;
+    const prefix = SEED !== null
+      ? 'void-pulse · Daily ' + formatSeedLabel(SEED) + ': '
+      : 'I scored ';
+    const base = prefix + state.score +
+      (SEED !== null ? ' — can you beat it?' : ' in void-pulse') +
+      (state.newBestThisRun ? ' (new best!)' : '') +
+      ' ' + shareUrl();
     if (canShare) {
       navigator.share({ title: 'void-pulse', text: base }).catch(() => {});
       return;
@@ -511,7 +592,9 @@
   function scheduleNext() {
     state.pulsesSpawned += 1;
     state.nextSpawnAt = state.t + gapAt(state.t) / 1000;
-    const roll = Math.random();
+    // Use seeded RNG in daily mode so spawn sequences are reproducible across
+    // devices. In free play, falls through to Math.random for variety.
+    const roll = rng();
     if (state.t >= 90 && roll < 0.15) {
       extraSpawns.push(state.t + 0.4, state.t + 0.8);
     } else if (state.t >= 45 && roll < 0.30) {
@@ -822,6 +905,7 @@
 
   // ---------- 8. Flow ----------
   function start() {
+    resetRng();           // reseed so every retry in seeded mode is identical
     state.running = true;
     state.over = false;
     state.t = 0;

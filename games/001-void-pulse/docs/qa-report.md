@@ -256,3 +256,35 @@
 - [x] `prefers-reduced-motion`: milestone text still fires (info), no scale animation (motion).
 - [x] Node syntax check: pass.
 
+---
+
+# Sprint 7 — Daily seeded challenge (2026-04-17)
+
+## Feature
+
+- **Seeded RNG** via `?seed=20260417` or `?daily=1` (→ today's YYYYMMDD)
+- **Deterministic spawn sequence** per seed; reset on every retry
+- **Per-seed best** — daily doesn't clobber free-play best
+- **UI cues** — gold DAILY pill + start-overlay subtitle; cross-link between modes
+- **Canonical share URL** — seeded share always uses explicit `?seed=`, never `?daily=1`
+
+## Edge cases covered
+
+- **Retry determinism.** `resetRng()` in `start()` reinitializes the mulberry32 closure so retry #2 produces the same `rng()` outputs as retry #1.
+- **TDZ ordering.** `BEST_KEY` declared before `readBest()`, which is called by the state literal on IIFE startup.
+- **Invalid seed param.** `?seed=abc` → regex fails → null → free play.
+- **Empty seed param.** `?seed=` → null → free play.
+- **Shared URL from daily player.** Sender has `?daily=1`; shareUrl() rewrites to `?seed=20260417` so recipient gets the exact same seed even on a different day.
+- **Particle determinism not enforced.** Only `scheduleNext()`'s polyrhythm roll uses `rng`. Particle spray angles still `Math.random` for visual variety — two daily players don't need identical sparks.
+- **localStorage failure.** Per-seed best key read/write wrapped in try/catch.
+
+## Retest
+
+- [x] Open `?daily=1` → DAILY pill shows with today's date.
+- [x] Two retries in a row on the same seed produce identical polyrhythm triggers (verified by logging `rng()` outputs).
+- [x] Best score in daily mode doesn't touch the free-play best key.
+- [x] "Try today's daily →" link visible in free play; "← Back to free play" visible in daily.
+- [x] Share from daily → URL contains `?seed=20260417` (not `?daily=1`).
+- [x] Invalid seed (`?seed=abc`) falls back to free play gracefully.
+- [x] Node syntax check: pass.
+

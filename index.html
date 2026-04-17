@@ -165,6 +165,23 @@
       pointer-events: none;
       border-style: dashed;
     }
+    .daily-chip {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      padding: 4px 9px;
+      border-radius: 999px;
+      color: #ffd24a;
+      background: rgba(255, 210, 74, .08);
+      border: 1px solid rgba(255, 210, 74, .4);
+      text-decoration: none;
+      transition: background .12s ease;
+    }
+    .daily-chip:hover { background: rgba(255, 210, 74, .2); }
 
     .team {
       margin-top: 56px;
@@ -232,6 +249,7 @@
         <h3>void-pulse</h3>
         <p>Tap the ring the moment a void pulse expands through it. Survive the heartbeat as it speeds up and splits into polyrhythms.</p>
         <div class="play">Play now</div>
+        <a class="daily-chip" href="games/001-void-pulse/index.html?daily=1">Today's daily →</a>
       </a>
       <div class="card soon">
         <div class="id">002 · tba</div>

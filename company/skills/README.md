@@ -16,6 +16,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`gameplay/difficulty-curve.md`](gameplay/difficulty-curve.md) — tuning ramps for the 60–90s session
 - [`gameplay/pause-visibility.md`](gameplay/pause-visibility.md) — tab-hide pause + 3-2-1 countdown resume
 - [`gameplay/anti-frustration.md`](gameplay/anti-frustration.md) — pity life on rage-retry, forgiveness levers
+- [`gameplay/seeded-daily.md`](gameplay/seeded-daily.md) — deterministic daily challenge via `?seed=` + per-seed best
 
 ### Graphics
 - [`graphics/svg-sprites.md`](graphics/svg-sprites.md) — inline SVG sprite patterns, no image files
