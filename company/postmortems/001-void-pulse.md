@@ -2128,6 +2128,116 @@ Didn't create a new skill doc — this is an extension of existing pattern, not 
 
 ---
 
+## Sprint 43 — Per-tier audio cue for combo milestones (visual × audio pairing)
+
+**Lens:** pair Sprint 41's visual combo-tier tint with an audio counterpart. The combo text went white → gold-blended → gold as the multiplier climbed through ×1 / ×2 / ×3, but the `Sfx.levelup` cascade fired the same C-E-G-C arpeggio at every tier. Players with eyes on the shrinking pulse, not the HUD, missed the progression entirely. One channel of signal where there should be two.
+
+### The problem
+
+Sprint 41 shipped `data-tier="low"/"mid"/"peak"` on the combo HUD with CSS transitions between tints. It landed clean — the gold shift on ×3 reads as "you hit the top." But watching a test run back with eyes closed (ears only), every milestone sounded identical. The audio cue didn't carry the tier. If the visual carries X and audio carries 0, the combined signal is still X — the audio is dead weight, not reinforcement.
+
+The fix isn't to make the audio "different at peak" — that would make ×3 stand out but leave ×2 indistinguishable from ×1. Tiers need **progression**, not a binary hit. The cheapest way to get progression across 3 tiers from one arpeggio: pitch-shift by musical intervals.
+
+### Design — musical ratios, not arbitrary multipliers
+
+Three tiers → two shift choices (base + 2 up). Options I considered:
+
+| Shift | Name | Ratio | Feel |
+|---|---|---|---|
+| 1.0 | unison (base) | 1/1 | C-E-G-C (default arpeggio) |
+| 1.059 | minor 2nd | 16/15 | adjacent semitone — dissonant, "detuned" |
+| 1.125 | whole step | 9/8 | D-F#-A-D — clean upward modulation |
+| 1.189 | minor 3rd | 6/5 | moody, slightly somber |
+| 1.25 | major 3rd | 5/4 | E-G#-B-E — bright, resolved ascent |
+| 1.5 | perfect 5th | 3/2 | big jump, would suit difficulty rank-up |
+| 2.0 | octave | 2/1 | huge jump, overkill for 3-step combo |
+
+Picked 9/8 for mid and 5/4 for peak:
+- Mid (×2): `1.125` → up a whole step. Doesn't feel like the same notes played slightly higher; feels like a *modulation* to a related key. The ear hears "something changed, we're climbing."
+- Peak (×3): `1.25` → up a major third from the base. Triad-adjacent relationship with the base pattern, so the ear registers it as "resolved higher ground," not "pitched up again."
+
+Why these ratios beat arbitrary decimal multipliers:
+- **1.1, 1.2, 1.3** land on microtonal non-intervals. Sound like a pitch-bend knob, not a melody. Reads as "programmer audio."
+- **Ratios of small integers (9/8, 5/4, 3/2)** align with how the ear fuses frequencies. Feel stable, not drifty.
+
+### The code
+
+Add a `tier` param defaulting to 1. Branch the shift ternary-style (cheap, readable, no lookup table for 3 states):
+
+```js
+levelup(tier = 1) {
+  const shift = tier >= 3 ? 1.25 : (tier >= 2 ? 1.125 : 1.0);
+  [523, 659, 784, 1047].forEach((f, i) => {
+    setTimeout(() => this._env('triangle', f * shift, 0.09, 0.17), i * 65);
+  });
+},
+```
+
+Call-site update — the combo-milestone block passes the multiplier `m`:
+
+```js
+Sfx.levelup(m);   // was: Sfx.levelup()
+```
+
+The two other `Sfx.levelup()` call sites (gameover victory, +1-life unlock) stay arg-less. They default to tier=1, keeping the celebrations tonally anchored to the base pitch. If they picked up whatever combo tier the player happened to end at, the finale would feel random — "why did this end on a bright third just because I had ×3?" Default-param discipline saves the bookending moments.
+
+### Interaction with the existing `themeSweeten` overlay
+
+Sprint 10-ish shipped a **theme-colored overtone** that plays on top of levelup when `mult >= 3` — a sparkle layered on the peak arpeggio. Sprint 43's pitch shift is *independent* of that overlay:
+
+- Base arpeggio: pitch-shifted by tier (this sprint)
+- Theme overtone: additive, gated on `mult >= 3` (already shipping)
+
+Peak (×3) now fires: **E-G#-B-E cascade (shifted)** + **theme sparkle overtone (additive)**. Two effects, two channels of signal:
+- The pitch shift carries the *continuous* progression (each tier bumps up).
+- The overtone celebrates the *threshold crossing* to peak.
+
+Stacking them works because they occupy different spectral regions (triangle arpeggio ~500-1000Hz, theme sparkle depends on theme but generally higher) and serve different narrative roles. This is the "two patterns, layered" scenario from the skill doc's decision matrix.
+
+### What it cost
+
+- game.js: +2 lines net (param + shift constant) + ~8 lines of comments explaining the musical-interval choice
+- company/skills/audio/web-audio-sfx.md: +~55 lines new **Tier-parameterized SFX via musical ratios** section
+- Listening test: did a 5-run sweep testing each tier transition. Mid (×2) landed cleanly. Peak (×3) combined with themeSweeten is noticeably brighter but not shrill on laptop speakers. No mix issues.
+
+### Patterns extracted
+
+Added a new section to [`audio/web-audio-sfx.md`](../skills/audio/web-audio-sfx.md) — **Tier-parameterized SFX via musical ratios**:
+
+- When this applies vs when to use an additive overlay (qualitative vs continuous tier shifts).
+- The musical-ratio table (9/8, 5/4, 3/2, 2/1) with "feel" descriptions so the next game picking tiers can reach for the right interval.
+- Default-param discipline: non-tier callers shouldn't have to pass `1`, and changing the default would break anchored celebrations.
+- Anti-patterns: random detune, dissonant decimal shifts (1.1/1.2/1.3), branching to N separate SFX functions.
+
+This pairs naturally with Sprint 41's `state-tint.md` — visual tier-tint + audio tier-shift is a **two-channel tier-reinforcement combo** that generalizes beyond void-pulse (power-up tiers, difficulty tiers, damage tiers in other genres).
+
+### Why this wasn't just "add a new SFX for peak"
+
+The temptation on "make the peak tier more exciting" is to write `Sfx.peakLevelup()` — a dedicated cue. That has two problems:
+
+1. **×2 still sounds like ×1.** The new cue only distinguishes peak from the rest. You've solved the top tier, not the progression.
+2. **N SFX per tier = N things to maintain.** Change the envelope → update 3 functions. Change the waveform → update 3 functions. Parameterization keeps one function, N outputs.
+
+The pitch-shift approach scales: if we later add a ×4 tier (mult cap bump), add another ternary branch (`tier >= 4 ? 1.5 : ...`) and the 4-tier ladder is audible without a new SFX.
+
+### Wrap-up
+
+- `Sfx.levelup` accepts a tier param; pitch shifts by musical intervals.
+- Combo-milestone calls pass the multiplier; non-combo calls default to base pitch.
+- Existing themeSweeten overlay still fires additively on peak — two channels.
+- Skill doc updated with the musical-ratio table and tier-parameterization pattern.
+- No visual or gameplay changes — pure audio reinforcement of Sprint 41's visual tier.
+
+### Next candidates
+
+- **Emoji ladder in share (still deferred from 42)** — if engagement data shows opportunity.
+- **Keyboard-only full-flow verification** (still open, 4 sprints).
+- **Gameover screen focus handling** — focus-trap (Sprint 40) didn't touch the gameover modal; retry-button should receive focus on open.
+- **Peak-tier subtle screen effect** — Sprint 41 tints combo text, Sprint 43 pitches audio; the logical trio-completion is a subtle background shift at peak (not intrusive, just "you're in the zone").
+- **Localization scaffolding** / **service worker** / **gamepad input** (still open, long).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

@@ -147,3 +147,57 @@ function spawnPulse(isHeartbeat) {
   Sfx.spawnTick(isHeartbeat);
 }
 ```
+
+## Pattern — Tier-parameterized SFX via musical ratios
+
+<!-- added: 2026-04-17 (001-void-pulse sprint 43) -->
+
+**When to use:** you've already got an SFX that fires on a discrete event (combo milestone, power-up tier, level-up), and the event has **runtime-state tiers** (combo multiplier ×1 / ×2 / ×3; power-up bronze/silver/gold; difficulty easy/hard/peak). Players should *hear* the tier, not just see it — especially when eyes are off the HUD (busy targeting).
+
+The cheap approach is to branch inside the SFX: "if tier high, play a different cue." The better approach: accept a `tier` param and **pitch-shift by a musical ratio**. One function, one arpeggio pattern, N tonal anchors that feel like modulations upward rather than random detune.
+
+```js
+levelup(tier = 1) {
+  // Musical intervals: 9/8 (whole step), 5/4 (major third)
+  // Low (default): C-E-G-C
+  // Mid (tier ≥ 2):  D-F#-A-D (up a whole step)
+  // Peak (tier ≥ 3): E-G#-B-E (up a major third)
+  const shift = tier >= 3 ? 1.25 : (tier >= 2 ? 1.125 : 1.0);
+  [523, 659, 784, 1047].forEach((f, i) => {
+    setTimeout(() => this._env('triangle', f * shift, 0.09, 0.17), i * 65);
+  });
+},
+```
+
+### Why musical ratios, not arbitrary multipliers
+
+- **1.125 (9/8)** — whole step up. D feels like "a step higher than C," not "detuned C." Perceptually clean.
+- **1.25 (5/4)** — major third up. Resolves to a chord-like relationship with the base pattern.
+- **1.5 (3/2), 2.0 (2/1)** — fifth and octave; use for bigger "rank up" jumps (e.g. difficulty tiers, not per-combo).
+- Avoid 1.1, 1.2, 1.3 style "round decimal" shifts — they land on dissonant microtonal intervals. Cheap, grating, telegraphs "programmer audio."
+
+### Default the tier so non-tier callers stay anchored
+
+```js
+Sfx.levelup();     // gameover victory: defaults to tier=1, base pitch
+Sfx.levelup(m);    // combo milestone: pitches up as m hits ×2, ×3
+Sfx.levelup();     // +1-life unlock: base pitch, not affected by combo state
+```
+
+The gameover/unlock celebrations should feel **tonally anchored** — they're bookending events. If they pitched up based on whatever combo tier the player happened to end at, the finale would feel random. Param default = 1 keeps the non-tier callers safe.
+
+### When to use this pattern vs an additive overlay
+
+Two ways to tier-reinforce an SFX:
+
+1. **Pitch-shift the existing cue (this pattern).** Good when the tiers are a *continuous progression* (×1 → ×2 → ×3) and you want the same "shape" of SFX, just higher. The listener hears one melody, modulating upward.
+2. **Layer an additive overlay gated on high tier.** Good when peak is a *qualitative* shift, not just "more of the same" — e.g. add a theme-colored overtone, a bass hit, a reverb tail. Fires *alongside* the base cue, not instead of.
+
+These stack: void-pulse pitches up the arpeggio (this pattern) AND adds a theme-sweetener overtone at `mult >= 3` (additive overlay). The pitch shift carries the per-tier info; the overlay celebrates crossing the peak threshold. Two channels of signal, one event.
+
+### Anti-patterns
+
+- **Branching to entirely different patterns per tier** — now you maintain N SFX functions; changes to the base don't propagate.
+- **Random detune per call** — "sounds different each time!" reads as "unstable audio engine" to players. Tiers should be deterministic.
+- **Pitching an already-high cue further up** — a bright score blip pushed up a third can pass 2kHz and sound shrill. Test the peak-tier pitch on laptop speakers before shipping.
+- **Skipping the default param** — callers that don't care about tier shouldn't have to pass `1` explicitly. Let the signature encode the anchor.

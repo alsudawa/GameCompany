@@ -988,9 +988,17 @@
       // atmosphere, not just the attack.
       setTimeout(() => this._themeAccent('over'), 140);
     },
-    levelup() {
+    // `tier` shifts the cascade up to audibly mirror Sprint 41's visual
+    // combo-tier tint. Low tier (mult <2) plays the base C-E-G-C
+    // arpeggio; mid (>=2) shifts up a whole step (9/8) to D-F#-A-D;
+    // peak (>=3) shifts up a major third (5/4) to E-G#-B-E. Musical
+    // intervals so each tier feels like a modulation upward, not a
+    // random detune. Defaults to 1.0 so non-combo callers (gameover
+    // victory, +1-life unlock) keep the original tonal anchor.
+    levelup(tier = 1) {
+      const shift = tier >= 3 ? 1.25 : (tier >= 2 ? 1.125 : 1.0);
       [523, 659, 784, 1047].forEach((f, i) => {
-        setTimeout(() => this._env('triangle', f, 0.09, 0.17), i * 65);
+        setTimeout(() => this._env('triangle', f * shift, 0.09, 0.17), i * 65);
       });
     },
     // Theme-conditional overtone layered on top of levelup at high-multiplier
@@ -2059,7 +2067,10 @@
         state.comboMilestoneText = '×' + (m % 1 === 0 ? m : m.toFixed(1));
         state.comboMilestoneFade = 0.9;
         state.comboBloomT = 0.35;    // fullscreen radial flash
-        Sfx.levelup();
+        // Pass the multiplier so levelup pitches up per tier (visual tint
+        // in Sprint 41 + audio shift now = tier progression is audible
+        // even when eyes are off the combo number).
+        Sfx.levelup(m);
         // Peak-tier sweetener: ≥3x multiplier (combo ≥ 20) earns a theme
         // overtone layered on top of levelup. Sparse by design — gated on
         // the tier so it's "you arrived at the top", not "you hit another 5".
