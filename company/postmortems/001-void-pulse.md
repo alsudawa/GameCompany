@@ -1897,6 +1897,76 @@ New skill: [`graphics/state-tint.md`](../skills/graphics/state-tint.md) — gene
 
 ---
 
+## Sprint 40 — Modal focus trap + focus restore (live-replay a11y)
+
+**Lens:** Sprint 35 audited which elements have visible focus rings; Sprint 38 audited correctness of shipped features. Neither actually walked the *keyboard journey* through the modals. If I open the Help modal via `?`, then press Tab, where does focus go? Investigation says: **out of the modal, into the HUD underneath**. Same for Stats modal. When the modal closes, focus lands somewhere arbitrary — probably the last button clicked, or nowhere. This is the most common modal-a11y regression and it's been quietly broken since the modals first shipped.
+
+### What was actually wrong
+
+1. **No Tab trap.** Help modal has one focusable element (`#helpClose`), so Tab immediately leaks to the page. Stats modal has 3 focusables (`#statsExport`, `#statsReset`, `#statsPanelClose`); Tab from the last button leaks to whatever comes next in DOM order (icon buttons, theme swatches, the game itself).
+2. **No focus restore.** Open Help via `?`, press Esc to close — focus goes to body (i.e. nowhere). User has to Tab from the start to get back to anything meaningful. Dropping the keyboard user into limbo after every modal close.
+
+### Design
+
+**Focus trap:** a `trapFocus(modalEl, event)` helper, called from the global keydown handler when a modal is visible. On Tab/Shift+Tab: query focusables fresh each call (handles `[hidden]` toggling), find first + last, wrap if at either boundary or outside the modal.
+
+**Focus restore:** on modal open, capture `document.activeElement` as the opener. On close, restore focus to the opener, with fallbacks:
+- `opener === document.body` (no prior focus, e.g. `?` shortcut from a fresh page load) → fall back to modal's trigger button.
+- `!document.body.contains(opener)` (opener was removed mid-modal, e.g. gameover overlay re-rendered) → fall back to trigger button.
+- `try { focus() } catch {}` — some elements are programmatically un-focusable.
+
+### Key implementation decisions
+
+**Live-query on each Tab, don't cache.** Stats modal has two buttons that toggle `[hidden]` based on whether lifetime stats are empty. Cache-at-open would miss the "user has runs, buttons become tabbable" transition. Fresh `querySelectorAll` is sub-millisecond for small DOMs.
+
+**`offsetParent === null` filter.** Some elements are hidden via CSS rule (not the `hidden` attribute) — e.g. `.stats-empty .stats-actions { display: none }` hides the whole row. `:not([hidden])` misses those; `offsetParent === null` catches them.
+
+**Explicit focusable selector.** `button:not([disabled]):not([hidden]), [href]:not([disabled]), input…, [tabindex]:not([tabindex="-1"])…` — don't use `*`, which picks up non-interactive elements with `tabindex="-1"` (programmatically focusable but intentionally not in tab order).
+
+**Trap handler runs first.** Early-out `if (e.key === 'Tab')` check at the top of the document keydown handler, before shortcut bindings. Otherwise a future binding could accidentally preventDefault on Tab and break the trap silently.
+
+**Fall back to body-check, not truthiness.** `helpOpener && helpOpener !== document.body` is the right guard. Just `helpOpener` would succeed for body (truthy), but `body.focus()` is a no-op and the user ends up with nothing focused.
+
+### What this sprint *didn't* cover
+
+- **Nested modals** — if Help could open Stats (or vice versa), you'd need a stack of `Opener` refs. Currently the game doesn't allow this (opening one closes the other implicitly via the pause state), so YAGNI.
+- **Backdrop-click close** — inherits the restore logic because clicking the backdrop just calls `closeHelp()` / `closeStats()`. But worth explicit verification in future audits.
+- **Gameover overlay** — has `btnStart` (tap-to-retry) as a primary focus, but no other controls behind a trap. It IS a modal-like surface; if we add Share / Retry / Main-menu buttons, it'd need a trap too.
+- **First-focus intent** — currently focus goes to the Close button on open. Some a11y guidance prefers the modal title / primary action. The Close-first pattern gives the keyboard user a reliable "escape hatch" on first Tab, which feels right for discoverability. Sticking with it.
+
+### Patterns extracted
+
+New skill: [`ux/modal-focus-trap.md`](../skills/ux/modal-focus-trap.md) — generalized focus-trap + focus-restore for modals. Covers the query-at-call-time rationale, the `offsetParent` filter for CSS-hidden elements, the body/detached fallback logic, the exact focusable selector (copy-paste ready), and 10 edge-case verifications for future audits.
+
+This is a "live-replay" complement to Sprint 35's `focus-visible-audit.md`:
+- Sprint 35: "every button has a visible ring when focused."
+- Sprint 40: "focus moves correctly through the UI in the first place."
+
+Together they cover both the visual and the mechanical sides of keyboard a11y.
+
+### Wrap-up
+
+- Keyboard users can open Help or Stats, navigate inside with Tab/Shift+Tab, and return to their prior context on close. Full keyboard round-trip works.
+- ARIA attributes (`role="dialog"`, `aria-modal="true"`, `aria-labelledby`, `aria-hidden`) were already in place — the JS trap is the missing contract enforcement.
+- Pattern is reusable: adding a 3rd modal (e.g. settings panel, confirmation dialog) costs 2 lines in the keydown handler + 5 lines in the open/close functions.
+- Exports still work; Esc still closes; backdrop-click still closes; all focus-restore on all paths.
+
+### Cost
+
+- game.js: +~50 lines (FOCUSABLE_SEL + getModalFocusables + trapFocus + keydown trap block + 2× opener var + 2× restore block)
+- style.css: 0 lines
+- 1 new skill doc (`ux/modal-focus-trap.md`, ~160 lines)
+- README index: 1 new entry
+
+### Next candidates
+
+- **Keyboard-only full-flow verification** — actual cold-replay (start overlay → run → gameover → share → stats → theme-change → back to start) with keyboard only. With focus trap + visible rings both landed, this is now tractable and has a real chance of passing.
+- **Gameover screen focus handling** — the tap-to-retry overlay has no explicit focus management; keyboard users land there after a run with focus on... whatever last had it. Might need parity with modal patterns.
+- **Chromatic-aberration band reactivity** — reuses the Sprint 39 state-tint pattern for post-FX intensity.
+- **Localization scaffolding** / **service worker** / **gamepad input** (still open).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

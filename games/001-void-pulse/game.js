@@ -1453,11 +1453,69 @@
     start();
   });
 
+  // Focus-trap helper — cycles Tab / Shift+Tab within an open modal so
+  // keyboard users can't accidentally tab into the HUD beneath. Called
+  // from the document keydown handler when a modal is visible.
+  // Queries focusables at call time (not cached) so [hidden] toggles on
+  // buttons like #statsExport are respected.
+  const FOCUSABLE_SEL =
+    'button:not([disabled]):not([hidden]),' +
+    '[href]:not([disabled]),' +
+    'input:not([disabled]):not([hidden]),' +
+    'select:not([disabled]):not([hidden]),' +
+    'textarea:not([disabled]):not([hidden]),' +
+    '[tabindex]:not([tabindex="-1"]):not([disabled]):not([hidden])';
+  function getModalFocusables(modalEl) {
+    const list = modalEl.querySelectorAll(FOCUSABLE_SEL);
+    const out = [];
+    for (const el of list) {
+      // Skip elements made visually-hidden by ancestor display:none.
+      // offsetParent is null when the element (or any ancestor) is
+      // display:none; for visibility:hidden / opacity:0 we still treat
+      // it as tabbable since the browser does.
+      if (el.offsetParent === null && el.tagName !== 'BODY') continue;
+      out.push(el);
+    }
+    return out;
+  }
+  function trapFocus(modalEl, e) {
+    if (e.key !== 'Tab') return false;
+    const focusables = getModalFocusables(modalEl);
+    if (focusables.length === 0) { e.preventDefault(); return true; }
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || !modalEl.contains(active))) {
+      e.preventDefault();
+      last.focus();
+      return true;
+    }
+    if (!e.shiftKey && (active === last || !modalEl.contains(active))) {
+      e.preventDefault();
+      first.focus();
+      return true;
+    }
+    return false;
+  }
+
   // Keyboard input — Space / Enter mirrors tap; gameplay accessible without pointer.
   // When a BUTTON is focused, let the browser activate it (Space/Enter = click).
   document.addEventListener('keydown', (e) => {
     const t = e.target;
     const inField = t && (t.tagName === 'BUTTON' || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA');
+
+    // Focus trap inside open modals — runs before other keyboard bindings so
+    // Tab is captured cleanly. Help/Stats are the two overlays with inner
+    // focusable controls; pause/gameover are tap-to-retry surfaces.
+    if (e.key === 'Tab') {
+      if (helpEl && !helpEl.classList.contains('hidden')) {
+        if (trapFocus(helpEl, e)) return;
+      }
+      const statsElT = document.getElementById('statsPanel');
+      if (statsElT && !statsElT.classList.contains('hidden')) {
+        if (trapFocus(statsElT, e)) return;
+      }
+    }
 
     // ? — toggle help (Shift+/ on US, slash with Shift mark)
     if ((e.key === '?' || (e.key === '/' && e.shiftKey)) && !inField) {
@@ -2450,8 +2508,13 @@
   const helpBtn = document.getElementById('helpBtn');
   const helpClose = document.getElementById('helpClose');
   let helpOpenedDuringRun = false;
+  // Remember which element had focus before the modal opened, so we can
+  // restore focus on close — keyboard users who opened via `?` shortcut
+  // return to wherever they were, not into an arbitrary follow-up element.
+  let helpOpener = null;
   function openHelp() {
     if (!helpEl.classList.contains('hidden')) return;
+    helpOpener = document.activeElement;
     // If a run is active, auto-pause so opening help doesn't burn the player.
     helpOpenedDuringRun = state.running && !state.over && !state.paused;
     if (helpOpenedDuringRun) pauseGame();
@@ -2477,6 +2540,15 @@
       Sfx.setBus('normal');
     }
     helpOpenedDuringRun = false;
+    // Restore focus to the trigger element. Fall back to helpBtn if the
+    // opener has been detached (e.g. a gameover-overlay button that
+    // re-renders between open and close) or was the body (no prior focus).
+    const validOpener = helpOpener && helpOpener !== document.body && document.body.contains(helpOpener);
+    const target = validOpener ? helpOpener : helpBtn;
+    helpOpener = null;
+    if (target && typeof target.focus === 'function') {
+      try { target.focus(); } catch { /* element may be focus-disabled */ }
+    }
   }
   helpBtn.addEventListener('click', (e) => { e.stopPropagation(); openHelp(); });
   helpClose.addEventListener('click', (e) => { e.stopPropagation(); closeHelp(); });
@@ -2568,8 +2640,10 @@
     lines.push('First played: ' + formatDate(l.firstPlayedAt) + ' · Last played: ' + formatDate(l.lastPlayedAt));
     return lines.join('\n');
   }
+  let statsOpener = null;
   function openStats() {
     if (!statsEl || !statsEl.classList.contains('hidden')) return;
+    statsOpener = document.activeElement;
     statsOpenedDuringRun = state.running && !state.over && !state.paused;
     if (statsOpenedDuringRun) pauseGame();
     renderStats();
@@ -2594,6 +2668,13 @@
       Sfx.setBus('normal');
     }
     statsOpenedDuringRun = false;
+    // Restore focus to the trigger (falls back to statsBtn if detached or body).
+    const validOpener = statsOpener && statsOpener !== document.body && document.body.contains(statsOpener);
+    const target = validOpener ? statsOpener : statsBtn;
+    statsOpener = null;
+    if (target && typeof target.focus === 'function') {
+      try { target.focus(); } catch { /* element may be focus-disabled */ }
+    }
   }
   if (statsBtn)   statsBtn.addEventListener('click', (e) => { e.stopPropagation(); openStats(); });
   if (statsClose) statsClose.addEventListener('click', (e) => { e.stopPropagation(); closeStats(); });
