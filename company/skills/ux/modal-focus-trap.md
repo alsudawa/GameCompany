@@ -181,3 +181,97 @@ Elements that are `display: none` via CSS rule (not the `hidden` attribute) won'
 - **Nested modals** — if you can open a modal from within a modal, you need a stack of `Opener` refs. Usually YAGNI for casual games; most only have one modal open at a time.
 - **Non-button focusables with custom ARIA** — the selector above handles HTML-native focusables. Custom `role="button"` on a `<div>` with `tabindex="0"` works too (caught by `[tabindex]:not([tabindex="-1"])`).
 - **Shadow DOM / Web Components** — `querySelectorAll` doesn't pierce shadow roots. If your modal uses web components with their own focusables, you'd need `delegatesFocus: true` on their shadow roots or a recursive walk.
+
+## Pattern — Tap-anywhere modals (buttonless dialogs)
+
+<!-- added: 2026-04-17 (001-void-pulse sprint 44) -->
+
+**Scenario:** your modal doesn't have a conventional close/action button — the entire overlay is the tap target. Gameover screens in casual games (`tap to retry`), splash screens, "any key to continue" prompts, end-of-round celebrations. Pointer/touch users tap anywhere; keyboard users have no obvious focus target.
+
+The naive approach — no focusables inside, `trapFocus` preventing all tab escape, focus stuck on body — is an a11y dead-end. Screen-reader users hear "dialog" but don't know how to dismiss it. Keyboard users see no focus ring anywhere.
+
+### The fix: promote the hint text to a focusable pseudo-button
+
+The "tap to retry" hint is already conveying the action verbally. Make it tabbable and keyboard-activatable:
+
+```html
+<!-- Before: static paragraph -->
+<p class="retry-hint">Tap to retry</p>
+
+<!-- After: focusable pseudo-button -->
+<p class="retry-hint"
+   id="retryHint"
+   tabindex="0"
+   role="button"
+   aria-label="Tap or press Space to retry">Tap to retry</p>
+```
+
+Key choices:
+- **`tabindex="0"`** puts it in the tab order. Your `trapFocus` selector already includes `[tabindex]:not([tabindex="-1"])`, so the trap picks it up automatically.
+- **`role="button"`** tells AT "this is actionable." Without it, screen readers would read "paragraph" — you want "button: Tap or press Space to retry."
+- **Explicit aria-label** replaces the visible text for AT, so "Tap to retry" (which sounds pointer-specific) becomes "Tap or press Space to retry" — inclusive of keyboard.
+- **No visible style change** — it still looks like a hint, not a chunky button, preserving the minimal gameover aesthetic.
+
+### Keyboard activation routes through existing global handler
+
+The global keydown handler's `inField` guard checks `tagName`, not `role`:
+
+```js
+const inField = t && (t.tagName === 'BUTTON' || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA');
+```
+
+A `<p role="button">` has tagName `P`, so `inField` is false, so Space/Enter falls through to the game's tap-handler. **No extra binding needed** — the promotion is pure markup. (If you used a real `<button>`, you'd get native activation but also the "in field" early-return, which for this pattern would break the global-space-to-retry flow. Stick with `<p tabindex role="button">`.)
+
+### Focus-on-open and focus-restore for buttonless dialogs
+
+```js
+function openGameover() {
+  gameoverEl.classList.add('visible');
+  gameoverEl.setAttribute('aria-hidden', 'false');
+  // Wait a frame for the fade-in paint, then move focus. preventScroll
+  // stops the browser from jumping the page if the element is off-screen.
+  requestAnimationFrame(() => {
+    if (retryHint && !gameoverEl.classList.contains('hidden')) {
+      try { retryHint.focus({ preventScroll: true }); } catch {}
+    }
+  });
+}
+
+function closeGameover() {
+  gameoverEl.classList.add('hidden');
+  gameoverEl.setAttribute('aria-hidden', 'true');
+  // If focus is still inside the now-hidden modal, blur it so the next
+  // Tab starts from body (safe default) rather than cycling through an
+  // opacity:0 element.
+  if (gameoverEl.contains(document.activeElement)) {
+    try { document.activeElement.blur(); } catch {}
+  }
+}
+```
+
+**Why no opener-restore?** Gameover is a *transition* modal — the player isn't "returning" to a prior context, they're starting a new run. Focus should land on body (so the next Tab starts fresh, and global Space-to-tap works). Help/stats are *overlay* modals — you were doing something, you opened a temporary view, you return to where you were. Different semantics → different focus-restore target.
+
+### When the modal has an optional secondary button
+
+Gameover's Share button is hidden on 0-score runs, visible otherwise. The tab order becomes:
+- **No share** (0-score): just `retryHint` → trap cycles to itself.
+- **Share visible**: `retryHint` → `share` → wrap back to `retryHint`.
+
+Primary action (retry) gets initial focus. Secondary action (share) is reachable via one Tab. Wrap-around keeps the keyboard user inside the dialog until they retry or share.
+
+### The `opacity:0 + pointer-events:none` focus trap
+
+Hiding a modal via `opacity:0 + pointer-events:none` (common CSS pattern) doesn't remove it from the tab order. A focused element inside a visually-hidden modal can receive further Tab presses, leaking focus to adjacent hidden focusables. Three ways to handle:
+
+1. **Blur on close** (shown above): simplest, widely compatible. Focus goes to body; next Tab starts over.
+2. **`inert` attribute** on the hidden modal: removes the entire subtree from tab order + AT tree in one attribute. Browser support is good (2023+) but pair with a fallback blur for older browsers.
+3. **`display: none`** on the hidden state: nuclear option. Removes from layout, interferes with opacity transitions. Usually not worth it.
+
+Going with #1 (blur) costs one `if/try` and doesn't fight the existing CSS.
+
+### Anti-patterns specific to tap-anywhere modals
+
+- **No focusable inside the dialog.** Keyboard users have no visible focus target — `role="dialog"` promises an interactive region, you've delivered an empty one. Promote the hint.
+- **Making the whole overlay `tabindex="0"`.** Tab lands on the overlay backdrop itself. Visually this means the focus ring wraps the whole screen — disorienting, doesn't tell the user *what* is actionable.
+- **A hidden off-screen `<button>` absorbing focus.** Some implementations place an invisible button for AT. Fine for screen readers, but sighted keyboard users see no focus ring, violating `focus-visible-audit.md`.
+- **Duplicating the activation path.** Don't add a `click` handler on `retryHint` if the parent overlay already handles `pointerdown` globally — you'll fire the retry twice per tap on the hint.

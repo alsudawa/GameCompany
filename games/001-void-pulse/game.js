@@ -414,6 +414,7 @@
   const ghostSvgBest = document.getElementById('ghostSvgBest');
   const ghostBestMeta = document.getElementById('ghostBestMeta');
   const shareBtn = document.getElementById('share');
+  const retryHint = document.getElementById('retryHint');
   const seedPill = document.getElementById('seedPill');
   const seedDateEl = document.getElementById('seedDate');
   const startSubtitle = document.getElementById('startSubtitle');
@@ -1513,8 +1514,9 @@
     const inField = t && (t.tagName === 'BUTTON' || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA');
 
     // Focus trap inside open modals — runs before other keyboard bindings so
-    // Tab is captured cleanly. Help/Stats are the two overlays with inner
-    // focusable controls; pause/gameover are tap-to-retry surfaces.
+    // Tab is captured cleanly. Help/Stats have inner close-buttons; gameover
+    // has the retry-hint (tabindex=0) plus optional share button. Pause is
+    // auto-resume-on-focus so no trap needed there.
     if (e.key === 'Tab') {
       if (helpEl && !helpEl.classList.contains('hidden')) {
         if (trapFocus(helpEl, e)) return;
@@ -1522,6 +1524,9 @@
       const statsElT = document.getElementById('statsPanel');
       if (statsElT && !statsElT.classList.contains('hidden')) {
         if (trapFocus(statsElT, e)) return;
+      }
+      if (gameoverEl && !gameoverEl.classList.contains('hidden')) {
+        if (trapFocus(gameoverEl, e)) return;
       }
     }
 
@@ -3184,6 +3189,14 @@
       writeSeen();
     }
     gameoverEl.classList.remove('visible'); gameoverEl.classList.add('hidden');
+    gameoverEl.setAttribute('aria-hidden', 'true');
+    // Focus restore on retry: if focus was inside the now-hidden gameover
+    // (e.g. on retryHint where openGameover put it), move it to body so
+    // the next Tab doesn't cycle back through an opacity:0 modal. During
+    // gameplay the global keydown handler picks up Space/Enter from body.
+    if (gameoverEl.contains(document.activeElement)) {
+      try { document.activeElement.blur(); } catch {}
+    }
     Sfx.setBus('normal');   // un-duck after a previous gameover
     if (state.bonusLifeGranted) {
       state.comboMilestoneText = '+1 LIFE';
@@ -3362,7 +3375,19 @@
     setTimeout(() => {
       gameoverEl.classList.remove('hidden');
       gameoverEl.classList.add('visible');
+      gameoverEl.setAttribute('aria-hidden', 'false');
       Sfx.setBus('duck');   // tuck residual sfx under the gameover UI
+      // A11y: move focus to the primary action target so keyboard users land
+      // inside the dialog. Retry is the primary action on gameover (every
+      // run ends in retry), not share — so the retry-hint is the anchor.
+      // Share is a secondary tab-stop. Delay the focus a frame so the
+      // browser paints the overlay before we move focus (prevents the
+      // scroll-into-view from jumping partway through the fade-in).
+      requestAnimationFrame(() => {
+        if (retryHint && !gameoverEl.classList.contains('hidden')) {
+          try { retryHint.focus({ preventScroll: true }); } catch {}
+        }
+      });
     }, 250);
   }
 

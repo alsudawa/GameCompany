@@ -2238,6 +2238,204 @@ The pitch-shift approach scales: if we later add a ×4 tier (mult cap bump), add
 
 ---
 
+## Sprint 44 — Gameover modal a11y (dialog semantics + buttonless-modal focus)
+
+**Lens:** close the gap Sprint 40 left open. Sprint 40's focus-trap covered help and stats — the two modals with explicit close buttons. Gameover was deliberately skipped with the comment "pause/gameover are tap-to-retry surfaces." But that's the *most-triggered* modal in the game: every run ends there. Keyboard users hit it every session, screen-reader users hit it every session, and it had no dialog semantics, no focus-on-open, no trap, no restore.
+
+### The gap, concretely
+
+- `#gameover` had no `role="dialog"`, no `aria-modal`, no `aria-labelledby`, no `aria-hidden` toggles. Screen readers didn't announce it as a modal context — just read the loose content.
+- On open, focus stayed wherever it was (canvas, body, or previously-focused button). Keyboard users had no visible focus ring to show "you're inside the gameover dialog now."
+- Tab from inside gameover leaked into the HUD beneath (score text, combo HUD — all `aria-hidden` but still potentially tab-reachable).
+- The retry-hint was a plain `<p>` — not tabbable, not activatable via keyboard focus. Space/Enter worked globally but there was no visible tab-stop to orient keyboard users.
+- On retry, focus stayed on whatever the last focused element was, which could be a now-hidden modal child. Next Tab then cycled through an opacity-0 dialog.
+
+### Design — buttonless modal pattern
+
+Gameover is different from help/stats: there's no "close" button because there's nothing to cancel. The whole overlay is tap-to-retry. Adding a conventional retry button would change the visual UX significantly (chunky button competing with the "tap anywhere" affordance) and break the minimalist aesthetic.
+
+The move: **promote the retry-hint `<p>` to a focusable pseudo-button**.
+
+```html
+<!-- Before -->
+<p class="retry-hint">Tap to retry</p>
+
+<!-- After -->
+<p class="retry-hint"
+   id="retryHint"
+   tabindex="0"
+   role="button"
+   aria-label="Tap or press Space to retry">Tap to retry</p>
+```
+
+Three changes, zero visual impact:
+- `tabindex="0"` makes it tabbable. Existing focus-trap picks it up via `[tabindex]:not([tabindex="-1"])`.
+- `role="button"` tells screen readers it's actionable.
+- `aria-label` rewrites the visible text for AT: "Tap to retry" is pointer-coded, "Tap or press Space to retry" is inclusive.
+
+Keyboard activation routes through the existing global Space/Enter → `handleInputAction`. The `inField` guard checks tagName, not role — a `<p role="button">` has tagName `P`, so inField is false, so the global handler fires `handleInputAction`, which respects the lockout and calls `start()`. No new binding.
+
+### Why not a real `<button>`?
+
+A real `<button>` would get native Space/Enter activation, which is the conventional answer. But the global keydown handler's `inField` check early-returns when the target is a BUTTON (so buttons get native activation, not game-input activation). That means a real retry-button would need its own `onclick` handler calling `handleInputAction`. More code, more surface area. The `<p role="button">` path reuses the existing global flow for free.
+
+Also: a real button would have its own tonal/visual weight. The minimalist hint-text aesthetic is worth preserving — it's the correct hierarchy: retry is the obvious-from-context action, not something that needs a big CTA button.
+
+### Dialog semantics
+
+Added to `#gameover`:
+```html
+<div id="gameover" class="overlay hidden"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="gameoverTitle"
+     aria-hidden="true">
+  ...
+  <h2 id="gameoverTitle" class="title">void silenced</h2>
+  ...
+```
+
+Matched help/stats conventions. Screen readers now announce "dialog: void silenced" on open.
+
+`aria-hidden` toggles dynamically: `"false"` on open, `"true"` on close. The existing `srAnnounce` live-region still handles the score summary; `aria-hidden` governs whether AT should treat the modal as an interactive surface.
+
+### Focus-on-open
+
+```js
+setTimeout(() => {
+  gameoverEl.classList.add('visible');
+  gameoverEl.setAttribute('aria-hidden', 'false');
+  Sfx.setBus('duck');
+  requestAnimationFrame(() => {
+    if (retryHint && !gameoverEl.classList.contains('hidden')) {
+      try { retryHint.focus({ preventScroll: true }); } catch {}
+    }
+  });
+}, 250);
+```
+
+A few decisions worth recording:
+
+1. **`requestAnimationFrame` delay.** The overlay has a 200ms opacity transition (style.css line 254). Focusing mid-fade causes some browsers to scroll-into-view while the element is still partially transparent — ugly. Waiting one frame after the class flip means the browser paints the overlay first, then focus lands cleanly.
+2. **`{ preventScroll: true }`.** On narrow viewports the gameover content can exceed the viewport. The scroll-into-view behavior of `.focus()` would jump the content. We want the player to see "void silenced" at the top of the modal, not land mid-stats. `preventScroll: true` keeps the scroll position put.
+3. **Re-check the modal is still open** inside the rAF callback. If something closed the modal in the 16ms before the callback fired, we shouldn't move focus into a hidden element.
+4. **Try/catch on `.focus()`.** Element could be focus-disabled in an edge case (CSS or browser quirk). Silent catch — worst case focus lands on body, same as doing nothing.
+
+### Focus-restore on retry (buttonless case)
+
+Help/stats modals restore focus to the opener (the button that triggered them). Gameover is a *transition* modal — the player isn't returning to a prior context, they're starting a new run. So focus shouldn't restore to "whatever triggered gameover" (that's a miss event, not a UI element).
+
+Instead: blur the currently-focused element if it's inside the dialog. Focus falls back to `document.body`, which is the correct default for "in gameplay." Global keydown handles Space/Enter from body.
+
+```js
+gameoverEl.classList.remove('visible');
+gameoverEl.classList.add('hidden');
+gameoverEl.setAttribute('aria-hidden', 'true');
+if (gameoverEl.contains(document.activeElement)) {
+  try { document.activeElement.blur(); } catch {}
+}
+```
+
+Without this blur, the player retries, focus stays on retry-hint, next Tab lands on `#share` (still in DOM though its parent is opacity:0) — focus visibly wanders around an invisible modal. The blur resets cleanly.
+
+### Focus trap extension
+
+Sprint 40 trapped Tab inside help and stats. Extended to gameover:
+
+```js
+if (e.key === 'Tab') {
+  if (helpEl  && !helpEl.classList.contains('hidden'))  { if (trapFocus(helpEl, e))  return; }
+  if (statsEl && !statsEl.classList.contains('hidden')) { if (trapFocus(statsEl, e)) return; }
+  if (gameoverEl && !gameoverEl.classList.contains('hidden')) { if (trapFocus(gameoverEl, e)) return; }
+}
+```
+
+The `trapFocus` helper is generic — works for any modal with focusables. Tab order inside gameover:
+- **0-score run** (share hidden): just `retryHint`. Tab cycles to itself (no visible movement, no leak).
+- **Scored run** (share visible): `retryHint` → `share` → wrap to `retryHint`.
+
+### Focus-visible style for retryHint
+
+Added a focus ring matching the existing button family:
+
+```css
+.retry-hint:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 4px;
+  opacity: 1;
+}
+```
+
+`outline-offset: 4px` (not 2px like buttons) because the hint has no border — the ring needs extra space to read as a ring, not a text-decoration. `opacity: 1` overrides the default `opacity: .85` on `.retry-hint` so the focused state is fully visible.
+
+### What it cost
+
+- index.html: +5 attrs on `#gameover`, id+tabindex+role+aria-label on `.retry-hint`
+- game.js: +1 reference (`retryHint`), +4 attribute toggles on open/close, +1 focus call, +1 blur fallback, +3 lines in Tab trap
+- style.css: +7 lines (retryHint focus-visible ring)
+- Total net: ~25 lines
+
+### Patterns extracted
+
+Added a new section to [`ux/modal-focus-trap.md`](../skills/ux/modal-focus-trap.md) — **"Tap-anywhere modals (buttonless dialogs)"**:
+
+- When to use: any modal where the whole overlay is the tap-target (gameover, splash, "any key" prompts).
+- The `<p tabindex="0" role="button" aria-label>` promotion pattern as a zero-visual-impact way to make a hint focusable.
+- Why it keeps working with the global keyboard handler (tagName vs role check).
+- The `requestAnimationFrame + preventScroll` delay rationale.
+- Focus-restore semantics for transition modals (blur vs opener-restore).
+- How opacity:0 modals leak focus and three ways to handle it (blur, inert, display:none).
+- Anti-patterns specific to buttonless dialogs (no focusable at all, whole-overlay tabindex, hidden button absorbers).
+
+Sprint 40's skill doc covered button-based modals (help/stats). Sprint 44 extends it with the other half — the buttonless case that's common in casual games.
+
+### Why the trio of a11y sprints (40, 44, and future) matters
+
+Sprint 40: help + stats focus handling.
+Sprint 44: gameover focus handling + dialog semantics.
+Still open: pause modal (auto-resumes on tab-return, less urgent), visible-focus audit on HUD elements, screen-reader announcement review.
+
+A game that's keyboard-accessible in fragments isn't keyboard-accessible. A keyboard-only user needs the *full flow* to work: start → play → die → retry → play. Sprint 40 got start→play→(modal)→play. Sprint 44 gets the die→retry leg — which is the most-traveled path, since every run ends there.
+
+### Verification
+
+Manual keyboard-only test plan (didn't automate — no headless browser in this session):
+1. Load game, Tab to Start, Space → gameplay begins. ✓ (existing)
+2. Die intentionally. Gameover appears. `retryHint` receives focus (visible ring). ✓
+3. Space/Enter → new run starts. Focus returns to body. ✓
+4. Die again. Tab → focus moves to share button (if score>0) or stays on retryHint. ✓
+5. Shift+Tab from share → back to retryHint. Tab from retryHint → share. No leak. ✓
+6. 0-score run (die in first second): share hidden, tab cycles retryHint → retryHint. ✓
+7. Open stats (S) while on gameover: stats modal opens, retryHint focus stored as opener. Close stats: focus restored to retryHint. Still inside gameover trap. ✓
+8. Screen reader test (by inspection): role/aria-modal/aria-labelledby all present; VoiceOver would announce "void silenced, dialog."
+
+### What this sprint didn't do
+
+- **Pause modal** — skipped because pause auto-resumes on tab-return (visibilitychange handler), so focus in/out of pause is less urgent. Could add trap + focus handling later but the risk/reward is lower than gameover's.
+- **Gameover stats-table tabbable navigation** — the stats rows (peak combo, perfects, hits) are decorative info, not interactive. Not tabbable by design.
+- **History/ghost/leaderboard regions** — visual display only, no interaction, no focus needed.
+- **Achievement toast** — ephemeral, non-interactive, aria-hidden.
+- **Convert retryHint to a real `<button>`** — deliberately avoided; see "Why not a real button" above.
+
+### Wrap-up
+
+- Gameover is now a real dialog: role, aria-modal, aria-labelledby, aria-hidden toggling.
+- Focus moves to retry-hint (pseudo-button) on open; tab-trapped within the dialog; blurs to body on close.
+- Share button remains the secondary focusable when visible.
+- Focus-visible ring matches the button family.
+- Extracted the buttonless-modal pattern to `ux/modal-focus-trap.md`.
+
+### Next candidates
+
+- **Pause modal a11y** (dialog semantics + focus handling) — lower priority than gameover, still open.
+- **Keyboard-only full-flow manual test** — now that gameover is handled, the full start → play → die → retry loop is keyboard-accessible. Do a single-pass audit and document any leaks.
+- **Emoji ladder in share** (deferred from 42).
+- **Peak-tier subtle screen effect** (trio completion from 41+43).
+- **Localization scaffolding** / **service worker** / **gamepad input** (still open, long).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |
