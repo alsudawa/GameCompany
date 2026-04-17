@@ -391,6 +391,43 @@ html, body {
   stroke: rgba(232, 233, 255, .18);
   stroke-width: 1;
 }
+
+/* Ghost-run comparison — two short strips showing per-event outcomes over
+   time. Only appears on seeded runs (daily / ?seed=) once a best ghost has
+   been recorded. */
+.ghost-strip {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  max-width: 240px;
+  opacity: .9;
+}
+.ghost-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ghost-row-label {
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  opacity: .5;
+}
+.ghost-row-label #ghostBestMeta {
+  opacity: .7;
+  margin-left: 4px;
+  font-weight: 500;
+}
+#ghostSvgNow .gdot, #ghostSvgBest .gdot {
+  /* fill set inline per outcome — keeps JS simple and overrides theme-safe
+     because these are gameplay-semantic (perfect/good/miss) not theme-colored */
+}
+#ghostSvgNow .gtrack, #ghostSvgBest .gtrack {
+  stroke: rgba(232, 233, 255, .14);
+  stroke-width: 1;
+}
 .tomorrow {
   margin-top: 10px;
   font-size: 11px;

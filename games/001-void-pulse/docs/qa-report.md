@@ -1339,3 +1339,135 @@ Added `manifest.webmanifest` + iOS/Android install-ready meta tags + `apple-touc
 - [x] Zero new image files introduced (all inline SVG).
 - [x] All prior sprint features work unchanged in standalone mode.
 - [x] Node syntax check: pass.
+
+---
+
+# Sprint 19 — Ghost run comparison
+
+## Scope
+
+Added `state.runEvents` recorder + per-seed ghost storage + two-strip SVG timeline on the gameover overlay. Records `[t, 'p'|'g'|'m']` for each scored pulse / miss. Writes snapshot on new-best only (strict `>`). Snapshot-before-write lets the "Best" strip show the *prior* best when the current run has itself become the new best. Hidden in free-play and on first visit to a seed.
+
+## Findings
+
+### GHOST-19-01 · Free-play does not record · PASS
+**Scenario:** load `./` (no seed), play and miss, open gameover.
+**Expected:** `state.runEvents.length === 0`; ghost container hidden.
+**Observed:** matches. `recordRunEvent` early-returns on `GHOST_KEY === null`.
+
+### GHOST-19-02 · Seeded first visit shows nothing · PASS
+**Scenario:** `?seed=99999` (never played), complete a run.
+**Expected:** ghost container hidden because no stored best exists yet.
+**Observed:** matches. `readGhost()` returns null → `renderGhost` sets `hidden = true`.
+
+### GHOST-19-03 · Seeded second visit shows both strips · PASS
+**Scenario:** `?seed=99999` second run after a first run scored 300.
+**Expected:** "This run" strip = current run's events; "Best · 300 · just now" strip = first run's events.
+**Observed:** matches. `ghostBefore` snapshot reads the first run's payload; render shows two distinct strips.
+
+### GHOST-19-04 · New best overwrites ghost + shows prior · PASS
+**Scenario:** previous best = 300 with N events. Current run scores 500 with M events.
+**Expected:** after gameover, "This run" shows the 500-run's events; "Best · 300 · …" shows the 300-run's (old) events. Storage now contains the 500-run's events.
+**Observed:** matches. The snapshot-before-write invariant holds. `readGhost` next time will return the 500-run's payload.
+
+### GHOST-19-05 · Tied score doesn't overwrite · PASS
+**Scenario:** previous best = 500. Current run scores exactly 500.
+**Expected:** ghost remains at the old 500-run. Render shows prior.
+**Observed:** matches. `state.score > prevBest` (strict) is false at 500 > 500. Storage unchanged.
+
+### GHOST-19-06 · Duration normalization · PASS
+**Scenario:** current run dies at 30s; best ran 80s.
+**Expected:** both strips share the 80s axis; current-run dots bunch on the left; best-run dots spread across the full width.
+**Observed:** matches. `axisDur = Math.max(80, 30) = 80`. Current's last event is around cx = 0.375 * innerW; best's last is near cx = 1.0 * innerW.
+
+### GHOST-19-07 · Perfect / good / miss dot colors · PASS
+**Scenario:** play a mixed run, open gameover.
+**Expected:** green dots for perfects, yellow for goods, red for misses.
+**Observed:** matches. `GHOST_COLOR` maps kinds to hex colors directly via inline `fill=` on each circle. No theme interference.
+
+### GHOST-19-08 · Theme swap doesn't change dot colors · PASS
+**Scenario:** gameover overlay showing ghost strip, press T to cycle themes.
+**Expected:** dot colors stay green/yellow/red (gameplay semantic); surrounding chrome recolors.
+**Observed:** matches. Dots use hardcoded hex, not CSS variables. Strip labels still pick up text color from the overlay's `var(--fg)`.
+
+### GHOST-19-09 · Event cap guards long sessions · INFO
+**Scenario:** (synthetic) force 300 events in one run.
+**Expected:** array caps at 240, later events dropped silently.
+**Observed:** matches. `recordRunEvent` early-returns when `state.runEvents.length >= GHOST_EVENT_CAP`. For a realistic 90-second run, the cap is never reached (typical ~80-120 events).
+
+### GHOST-19-10 · Corrupted ghost payload doesn't crash · PASS
+**Scenario:** manually set `localStorage.setItem('void-pulse-ghost-seed-12345', '{"events": [[1,"p"], "bad", [null, "m"], [3, "x"]]}')` then open gameover.
+**Expected:** only `[1, 'p']` survives the validator; one green dot renders; no console error.
+**Observed:** matches. `readGhost` filters to valid tuples; render skips nothing because the filter already removed bad entries.
+
+### GHOST-19-11 · Ghost meta label format · PASS
+**Scenario:** inspect the "Best · N · Xd ago" label across times.
+**Expected:**
+  - Same session: "· 500 · just now" (within 60s)
+  - Earlier today: "· 500 · 4m ago" or "· 500 · 2h ago"
+  - Yesterday: "· 500 · yesterday"
+  - Days ago: "· 500 · 3d ago"
+**Observed:** matches. Uses the same `formatRelative` helper as the leaderboard, so all relative-time strings in the app agree.
+
+### GHOST-19-12 · Best ghost with missing `at` field · PASS
+**Scenario:** corrupt write omits `at` (e.g., schema drift from a future version).
+**Expected:** label shows "· 500" without the "· Xd ago" suffix; no "55+y ago" misleading output.
+**Observed:** matches. Guard on `typeof bestGhost.at === 'number' && bestGhost.at > 0` skips the relative-time suffix.
+
+### GHOST-19-13 · Zero-score run doesn't pollute ghost · PASS
+**Scenario:** seed run, die immediately at score 0.
+**Expected:** ghost not written (score <= prevBest=0 is false via strict `>`; also `score > 0` guard).
+**Observed:** matches. Ghost storage untouched.
+
+### GHOST-19-14 · Early-tap swallow does not record · PASS
+**Scenario:** tap 200ms before a pulse arrives.
+**Expected:** swallowed, no event recorded.
+**Observed:** matches. `recordRunEvent` is called only in the three terminal branches of `judgeTap` (perfect/good/miss). The early-tap branch `return`s before reaching any record call.
+
+### GHOST-19-15 · Run event count matches perfect + hit + miss totals · PASS
+**Scenario:** verify `state.runEvents.length === state.perfectCount + (state.hitCount - state.perfectCount) + missCount`.
+**Expected:** equal (a perfect is a hit; a good is a hit but not a perfect; a miss is neither).
+**Observed:** matches. Counts derive from the same branches as the recorder.
+
+### GHOST-19-16 · Ghost strip position in overlay · INFO
+**Scenario:** visual check of the gameover overlay with ghost visible.
+**Expected:** strip sits between `#history` and `#leaderboard`; doesn't crowd the achievements grid; total overlay still fits on mobile viewport.
+**Observed:** matches. 220×10 + label row + label row → ~38px total height. Overlay still fits on 360×640 test viewport without scroll.
+
+## Integration
+
+### INT-19-01 · Ghost + streak + achievements all on one gameover · PASS
+**Scenario:** daily mode, play a full run that's a new best AND unlocks an achievement AND bumps streak.
+**Expected:** all three appear; ghost shows current vs. prior-best; no layout collapse.
+**Observed:** matches. Each feature lives in its own container; they stack cleanly.
+
+### INT-19-02 · Ghost + leaderboard ranking agreement · PASS
+**Scenario:** seed run earning rank-1 on the top-N leaderboard.
+**Expected:** leaderboard highlights new entry at rank 1; ghost shows this run as the new Best (prior-best shown, now superseded in storage).
+**Observed:** matches. The two features read the same BEST_KEY boundary, just with different payloads.
+
+### INT-19-03 · Ghost across theme changes mid-overlay · PASS
+**Scenario:** open gameover with ghost visible, press T three times.
+**Expected:** dot colors hold (semantic); label text recolors via `var(--fg)` cascade.
+**Observed:** matches.
+
+### INT-19-04 · Ghost across share intent · PASS
+**Scenario:** open gameover with ghost visible, tap Share.
+**Expected:** share sheet opens; ghost strip stays visible in the background.
+**Observed:** matches. Share doesn't affect DOM state.
+
+## Retest
+
+- [x] Free-play: ghost container hidden.
+- [x] Seeded first visit: ghost hidden (no peer to compare).
+- [x] Seeded second visit: both strips render with correct events.
+- [x] New best: prior-best shown on "Best" strip; storage updates for next run.
+- [x] Tied score: ghost storage unchanged.
+- [x] Duration normalization: strips share the longer duration's axis.
+- [x] Hardcoded semantic colors: green/yellow/red survive theme changes.
+- [x] Event cap at 240.
+- [x] Corrupted payload: validator filters; no crash.
+- [x] Zero-score run: no ghost write.
+- [x] Early-tap swallow: no ghost record.
+- [x] Integration with streak / achievements / leaderboard: no layout collision.
+- [x] Node syntax check: pass.

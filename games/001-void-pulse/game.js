@@ -119,6 +119,10 @@
   const HISTORY_KEY = SEED !== null ? 'void-pulse-history-seed-' + SEED : 'void-pulse-history';
   const LEADERBOARD_KEY = SEED !== null ? 'void-pulse-board-seed-' + SEED : 'void-pulse-board';
   const LEADERBOARD_MAX = 5;
+  // Ghost (best-run timeline) is only meaningful when a seed fixes the
+  // spawn sequence — otherwise "your pacing vs. best" is apples-to-oranges.
+  const GHOST_KEY = SEED !== null ? 'void-pulse-ghost-seed-' + SEED : null;
+  const GHOST_EVENT_CAP = 240;
 
   // ---------- 2. State ----------
   const state = {
@@ -139,6 +143,9 @@
     perfectCount: 0,
     hitCount: 0,
     newBestThisRun: false,
+    // Ghost-run recorder: compact `[t, kind]` tuples (kind ∈ 'p' | 'g' | 'm').
+    // Cleared at start(), capped at GHOST_EVENT_CAP to guard a runaway session.
+    runEvents: [],
     bonusLifeGranted: false,
     // death-cam (slow-mo on fatal miss before the gameover overlay shows)
     deathCam: false,
@@ -231,6 +238,10 @@
   const pauseCountdownEl = document.getElementById('pauseCountdown');
   const historyEl = document.getElementById('history');
   const historySvg = document.getElementById('historySvg');
+  const ghostEl = document.getElementById('ghost');
+  const ghostSvgNow = document.getElementById('ghostSvgNow');
+  const ghostSvgBest = document.getElementById('ghostSvgBest');
+  const ghostBestMeta = document.getElementById('ghostBestMeta');
   const shareBtn = document.getElementById('share');
   const seedPill = document.getElementById('seedPill');
   const seedDateEl = document.getElementById('seedDate');
@@ -324,6 +335,29 @@
   }
   function writeHistory(arr) {
     try { localStorage.setItem(HISTORY_KEY, JSON.stringify(arr.slice(-RUN_HISTORY_CAP))); } catch {}
+  }
+  // Ghost: compact best-run event timeline, per seed. Stored as
+  //   { events: [[t, kind], ...], score, duration, at }
+  // Overwritten only when a run produces a new per-seed best. That means the
+  // ghost always pairs with the stored BEST_KEY value for the same seed.
+  function readGhost() {
+    if (GHOST_KEY === null) return null;
+    try {
+      const raw = localStorage.getItem(GHOST_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !Array.isArray(parsed.events)) return null;
+      // Validate event tuples defensively — older schemas or tampered data
+      // shouldn't crash the render.
+      parsed.events = parsed.events.filter(e =>
+        Array.isArray(e) && typeof e[0] === 'number' && (e[1] === 'p' || e[1] === 'g' || e[1] === 'm')
+      );
+      return parsed;
+    } catch { return null; }
+  }
+  function writeGhost(payload) {
+    if (GHOST_KEY === null) return;
+    try { localStorage.setItem(GHOST_KEY, JSON.stringify(payload)); } catch {}
   }
   // Top-N per-seed leaderboard. Each entry: { score: number, atMs: number }.
   // Stored sorted descending by score, capped at LEADERBOARD_MAX.
@@ -934,6 +968,58 @@
   // Prime gameover history on first paint so returning players see their trend.
   renderHistory(readHistory());
 
+  // Ghost timeline: two strips (current run + stored best for this seed).
+  // Renders nothing (and hides the container) if:
+  //   - seed is not set (free-play → no ghost concept)
+  //   - no stored ghost exists yet (first visit to this seed)
+  // The "This run" strip always draws from state.runEvents; the "Best" strip
+  // draws from the ghost read off storage.
+  const GHOST_W = 220, GHOST_H = 10, GHOST_R = 2.3;
+  const GHOST_COLOR = { p: '#5de4b4', g: '#ffd24a', m: '#ff3d6b' };
+  function renderGhostOne(svg, events, duration) {
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    // baseline track — thin line through the middle gives the dots a spine
+    const line = document.createElementNS(SPARK_NS, 'line');
+    line.setAttribute('class', 'gtrack');
+    line.setAttribute('x1', '1'); line.setAttribute('x2', String(GHOST_W - 1));
+    line.setAttribute('y1', String(GHOST_H / 2)); line.setAttribute('y2', String(GHOST_H / 2));
+    svg.appendChild(line);
+    if (!events || events.length === 0 || !duration || duration <= 0) return;
+    const innerW = GHOST_W - GHOST_R * 2;
+    for (const e of events) {
+      const t = e[0], kind = e[1];
+      if (t < 0 || t > duration) continue;
+      const cx = GHOST_R + (t / duration) * innerW;
+      const dot = document.createElementNS(SPARK_NS, 'circle');
+      dot.setAttribute('class', 'gdot');
+      dot.setAttribute('cx', cx.toFixed(2));
+      dot.setAttribute('cy', String(GHOST_H / 2));
+      dot.setAttribute('r', String(GHOST_R));
+      dot.setAttribute('fill', GHOST_COLOR[kind] || '#888');
+      svg.appendChild(dot);
+    }
+  }
+  function renderGhost(currentRun, bestGhost) {
+    if (GHOST_KEY === null || !bestGhost) {
+      ghostEl.hidden = true;
+      return;
+    }
+    ghostEl.hidden = false;
+    // Normalize "this run" duration to the best's for apples-to-apples pacing.
+    // If the current run ended early (died fast), its events bunch to the left —
+    // that's meaningful signal, not a bug. Use the longer of the two as the axis.
+    const axisDur = Math.max(bestGhost.duration || 0, currentRun.duration || 0) || 1;
+    renderGhostOne(ghostSvgNow, currentRun.events, axisDur);
+    renderGhostOne(ghostSvgBest, bestGhost.events, axisDur);
+    // "Best · 1234 · 3d ago". Omit relative time if `at` is missing (old
+    // schema or corruption) rather than rendering a misleading "55+y ago".
+    const score = (typeof bestGhost.score === 'number') ? bestGhost.score : '—';
+    const rel = (typeof bestGhost.at === 'number' && bestGhost.at > 0)
+      ? ' · ' + formatRelative(bestGhost.at, Date.now())
+      : '';
+    if (ghostBestMeta) ghostBestMeta.textContent = '· ' + score + rel;
+  }
+
   // Format an "atMs" timestamp as a coarse relative string. Buckets:
   //   < 60s     → "just now"
   //   < 60min   → "Nm ago"
@@ -1099,6 +1185,7 @@
       state.combo += 1;
       state.perfectCount += 1;
       state.hitCount += 1;
+      recordRunEvent('p');
       spawnBurst(CENTER_X, CENTER_Y, p.heartbeat ? getVar('--danger') : getVar('--accent'), 12, 280);
       state.targetPopT = 0.18;
       Sfx.score(state.combo);
@@ -1115,6 +1202,7 @@
       state.score += Math.round(50 * mult * heartbeatMul);
       state.combo += 1;
       state.hitCount += 1;
+      recordRunEvent('g');
       spawnBurst(CENTER_X, CENTER_Y, getVar('--accent'), 6, 210);
       Sfx.good(Math.max(0, state.combo - 2));
       p.active = false;
@@ -1127,6 +1215,7 @@
         return; // swallowed
       }
       p.active = false;
+      recordRunEvent('m');
       loseLife();
       Sfx.miss();
       state.shakeT = 0.2;
@@ -1134,6 +1223,14 @@
       haptic(20);
     }
     if (state.combo > state.peakCombo) state.peakCombo = state.combo;
+  }
+  // Append one outcome tuple unless we've already capped the run (very long
+  // sessions past 90 seconds can easily exceed GHOST_EVENT_CAP). Storing only
+  // `[t, kind]` keeps a full run under ~2KB even uncompressed.
+  function recordRunEvent(kind) {
+    if (GHOST_KEY === null) return;               // free-play = no ghost
+    if (state.runEvents.length >= GHOST_EVENT_CAP) return;
+    state.runEvents.push([+state.t.toFixed(2), kind]);
   }
 
   function loseLife() {
@@ -1741,6 +1838,7 @@
     state.perfectCount = 0;
     state.hitCount = 0;
     state.newBestThisRun = false;
+    state.runEvents.length = 0;
     state.targetPopT = 0;
     state.shakeT = 0;
     state.comboMilestoneText = '';
@@ -1798,6 +1896,24 @@
       writeBest(state.best);
       state.newBestThisRun = state.score > 0 && prevBest > 0;
     }
+    // Ghost: snapshot the PREVIOUS best-run timeline BEFORE any write, then
+    // persist this run if it's a new best. Rendering uses the "before" snapshot
+    // so when the current run is itself the new best, the "Best" strip still
+    // shows the prior comparison — otherwise both strips would be identical.
+    // Free-play (GHOST_KEY === null) skips both store and display.
+    const ghostBefore = readGhost();
+    if (GHOST_KEY !== null && state.score > 0 && state.score > prevBest) {
+      writeGhost({
+        events: state.runEvents.slice(),   // snapshot
+        score: state.score,
+        duration: +state.t.toFixed(2),
+        at: Date.now(),
+      });
+    }
+    renderGhost(
+      { events: state.runEvents, duration: state.t },
+      ghostBefore,
+    );
     // Persist run to local history, then redraw sparkline (latest on the right).
     const history = readHistory();
     history.push(state.score);

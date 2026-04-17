@@ -48,6 +48,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`ux/streak-and-achievements.md`](ux/streak-and-achievements.md) — global daily-streak counter + first-run achievement unlocks (scoping matrix + active-vs-dormant rule)
 - [`ux/theme-picker.md`](ux/theme-picker.md) — `data-theme` palette swap + canvas-cache invalidation + RGB-triplet vars for rgba() composition
 - [`ux/system-preferred-defaults.md`](ux/system-preferred-defaults.md) — first-visit auto-theme from `prefers-color-scheme`/`prefers-contrast` + live listeners + localStorage as auto-vs-explicit bit
+- [`ux/ghost-run-comparison.md`](ux/ghost-run-comparison.md) — per-seed best-run event timeline stored as `[t,kind]` tuples, shared-axis SVG strip, snapshot-before-write rule
 
 ### QA
 - [`qa/casual-checklist.md`](qa/casual-checklist.md) — pre-ship checklist + multi-perspective sweep (player / mobile / onboarding / retention / distribution)

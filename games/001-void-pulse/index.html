@@ -88,6 +88,16 @@
         <span id="historyLabel" class="history-label">Last runs</span>
         <svg id="historySvg" viewBox="0 0 120 28" width="120" height="28" aria-hidden="true"></svg>
       </div>
+      <div id="ghost" class="ghost-strip" hidden aria-label="Ghost run comparison">
+        <div class="ghost-row ghost-row-now">
+          <span class="ghost-row-label">This run</span>
+          <svg id="ghostSvgNow" viewBox="0 0 220 10" width="220" height="10" aria-hidden="true"></svg>
+        </div>
+        <div class="ghost-row ghost-row-best">
+          <span class="ghost-row-label">Best <span id="ghostBestMeta"></span></span>
+          <svg id="ghostSvgBest" viewBox="0 0 220 10" width="220" height="10" aria-hidden="true"></svg>
+        </div>
+      </div>
       <div id="leaderboard" class="leaderboard" hidden aria-label="Top runs">
         <div class="leaderboard-head">
           <span id="leaderboardLabel" class="leaderboard-label">Top runs</span>

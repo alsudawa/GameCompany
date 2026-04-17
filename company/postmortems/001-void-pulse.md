@@ -785,6 +785,58 @@ The actual engineering meat is not choosing swatches — it's the **cache invali
 
 ---
 
+## Sprint 19 — Ghost run comparison on gameover (2026-04-17)
+
+### Lens
+
+**Score tells you how much better you got. The ghost tells you where.** The leaderboard from Sprint 12 and the run-history sparkline from Sprint 8 both live on the score axis; neither shows *pacing*. On a seeded run with a fixed pulse sequence, the same player can score 800 by hitting the early game cleanly and flaming out fast, or 800 by missing early then grinding to the late game — identical number, very different experiences. This sprint adds a two-strip timeline to the gameover overlay so the player sees both runs' outcomes spread across shared time, color-coded by hit/good/miss. Only appears on seeded modes; free-play has no peer to compare against.
+
+### Changes
+
+- **New `state.runEvents` array + `recordRunEvent(kind)`** — pushes `[t, 'p'|'g'|'m']` tuples from `judgeTap` for every scored pulse or miss (not swallowed early-taps). Early-returns in free-play (`GHOST_KEY === null`). Capped at 240 events to guard pathological long sessions.
+- **New `GHOST_KEY` + `readGhost()` + `writeGhost()` helpers** — per-seed storage keyed parallel to `BEST_KEY` / `HISTORY_KEY` / `LEADERBOARD_KEY`. Defensive validator filters corrupted event tuples without dropping the whole run.
+- **Ghost persist at gameover** — only when `state.score > prevBest` (strict). Snapshot of `state.runEvents` written alongside score, duration, and `Date.now()` for the "Xd ago" label.
+- **Snapshot-before-write rule** — `readGhost()` is called BEFORE any potential `writeGhost()`, then rendered against. Without this, a new-best run would show two identical strips (current vs. itself).
+- **`renderGhost(current, best)` into two SVG strips** with shared axis (max of the two durations). Dots at `cx = t / axisDur * innerW`, colored green/yellow/red by outcome semantic — hardcoded, not themed, because "perfect" means the same in every palette.
+- **Hidden when:** free-play mode, or no stored ghost yet (first visit to a seed). The strip appears starting on the second seeded run.
+- **New `<div id="ghost">` on the gameover overlay** — placed between `#history` (score sparkline) and `#leaderboard` (top-N), sliding into an existing rhythm.
+- **New CSS** — `.ghost-strip`, `.ghost-row`, `.ghost-row-label`. Uses the same muted-label treatment as the existing history sparkline for visual coherence.
+
+### Patterns extracted → `company/skills/ux/ghost-run-comparison.md`
+
+- **`[t, kind]` tuples beat `{t, kind}` objects** — half the JSON bytes, still readable, parse-cheaper.
+- **`null` GHOST_KEY as the free-play sentinel** — no separate "enabled" flag. Every guard becomes `if (GHOST_KEY === null) return;`.
+- **Snapshot-before-write** — critical for any "show prior best alongside current" UI where the current run can itself become the prior best.
+- **Shared x-axis from `Math.max(bestDur, currentDur)`** — keeps time alignment honest when one run ended early.
+- **Semantic-colored dots, not themed** — gameplay outcomes are theme-independent by definition.
+- **Defensive readGhost validator** — localStorage is a hostile input; whitelist kinds, filter corrupt tuples, reject malformed shapes.
+- **Strict `>` for ghost write** — matches `writeBest` discipline; avoids tie-churn.
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 19 | Qualitative run comparison | Per-seed event timeline strips at gameover, hidden outside seeded modes, new ux skill doc |
+
+### Cost
+
+- game.js: +95 lines (const + state slot + recordRunEvent + readGhost/writeGhost + renderGhost + gameover hookup + start reset)
+- index.html: +10 lines (ghost container with two SVG rows + labels)
+- style.css: +34 lines (strip + row + label + track styles)
+- One new skill doc (`ux/ghost-run-comparison.md`)
+
+### Next candidates
+
+- **Animated ghost dots** — fade in left-to-right when the gameover overlay appears, replaying the run's pacing. Uses `prefers-reduced-motion` to skip.
+- **Tap-to-zoom strip** — tap on the strip to expand; shows timestamps, enables precise comparison of segments.
+- **Per-segment comparison labels** — "early (0-30s): 2 misses vs. best 0" bite-sized deltas under the strip.
+- **Service worker for offline play** — still the cleanest next distribution step.
+- **Rarer / harder achievements** — "no-miss 30s", "5-day streak", "3 perfects in one heartbeat".
+- **First-run onboarding softness** — a tutorial pulse for new visitors.
+- **Per-theme score-sweetener** — high-combo audio overtone.
+
+---
+
 ## Credits
 
 | Role | Agent | Model |
