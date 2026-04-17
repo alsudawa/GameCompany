@@ -334,3 +334,61 @@
 - [x] `prefers-reduced-motion`: death-cam vignette set to static opacity, no animation.
 - [x] Node syntax check: pass.
 
+
+---
+
+# Sprint 9 — Onboarding demo + M/P shortcuts (2026-04-17)
+
+## Goals
+- New player understands the rule before pressing Start (no reading required).
+- Returning desktop player can mute and pause without leaving the keyboard.
+
+## Changes verified
+
+### CSS demo on start overlay
+- 160×160 demo block sits between the hook line and the start button.
+- Pulse expands from 22px to 140px in a 2.6s loop, peak alignment at the 55-70% phase, gold border briefly at 70%.
+- `TAP!` label fades in at 62%, holds through 78%, fades out — exactly when the pulse is in the "perfect" window.
+- Demo is `aria-hidden="true"` — screen readers skip it.
+- `prefers-reduced-motion`: pulse and TAP! freeze in their successful-tap pose; no animation.
+
+### Keyboard shortcuts
+- M (KeyM) toggles mute from any screen (start, mid-run, gameover, paused).
+- P (KeyP) toggles pause only when a run is active and not over.
+- P during running → pause-indefinite ("paused" text in ring).
+- P during pause-indefinite → countdown starts ("3"…"2"…"1" → resume).
+- P during countdown → countdown cancels, returns to pause-indefinite.
+- M and P guarded by `inField` check — focusing a button and pressing M/P doesn't double-trigger.
+- M/P use `e.code` not `e.key` → works on AZERTY/Dvorak.
+
+### UI text
+- Start screen `kbhint`: `or press Space · M mute · P pause` with `<kbd>` styling.
+- Pause overlay `pause-hint`: `Return to the tab — or press P — to resume`.
+- `<kbd>` styling consistent across both spots.
+
+## Edge cases covered
+
+- **Demo timing matches game.** Real-game pulses take ~1.6-2.0s to cross the ring at start; demo's 0→55% (the arrival phase) takes ~1.4s. Within the ±10% tolerance — players don't get whiplash on first run.
+- **Demo pauses with tab.** CSS keyframe animations halt automatically when `document.hidden` (browser optimization). No explicit JS hook needed.
+- **M during overlay focus.** Hitting M while the start button is focused: the listener's `inField` guard prevents the keydown from also firing the button. Verified `Space` still works on focused button (browser handles it before our listener via default action — though we also `e.preventDefault()` only inside our handlers, button activation flows through).
+- **P during gameover.** Returns early — no state mutation. Verified player can't pause an already-over run into a weird state.
+- **P during demo loop visible on overlay.** Start screen → P does nothing (state.running is false). No console errors.
+- **Reduced-motion + demo.** Both keyframes cancelled; demo shows a static "this is what success looks like" frame. Still teaches the layout.
+- **kbd visual hierarchy.** Pause overlay's `<kbd>P</kbd>` uses slightly higher contrast than start-screen `<kbd>` (10% vs 8% alpha bg) to stand out against the darker pause backdrop.
+
+## Retest
+
+- [x] Open game with no localStorage → demo loops on start screen, no flicker on first frame.
+- [x] Focus the start button via Tab → press Space → game starts (browser default activation).
+- [x] In-game press P → pause overlay appears with "paused" text.
+- [x] Press P again → countdown starts (3 → 2 → 1).
+- [x] Press P during countdown → returns to "paused" text.
+- [x] Tab away during countdown → countdown cancels, "paused" shown on return.
+- [x] Press M on start screen → mute icon flips, click sound silenced on next start.
+- [x] Press M during play → no glitch, audio cuts immediately mid-pulse.
+- [x] Press P on start screen → no-op, no errors.
+- [x] Press P on gameover screen → no-op, no errors.
+- [x] Reduced-motion: open chrome devtools emulate `prefers-reduced-motion: reduce` → demo freezes, pulse static at ~60px, TAP! visible.
+- [x] Visit on AZERTY layout (simulated by remapping in OS) → KeyM still mutes, KeyP still pauses.
+- [x] Lighthouse a11y still 100, no regressions from new `<kbd>` markup or demo div.
+- [x] Node syntax check: pass.

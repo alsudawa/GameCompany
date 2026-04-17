@@ -276,8 +276,51 @@ Each feature individually is small; together they've quadrupled the game's depth
 ### Next candidates
 
 - **Per-seed local leaderboard** — top-5 on today's daily, unlocks after 3+ attempts
-- **First-run hand-tutorial** — a non-interactive demo pulse on the start overlay so new players see the mechanic before committing
 - **Audio dynamics** — master bus rises ~2dB when in "beaten-best" state; subtle but felt
+- **Help modal** — `?` shortcut surfaces a one-screen "what does this combo bar mean" reference
+
+---
+
+## Sprint 9 — Onboarding + power-user keys (2026-04-17)
+
+### Lens
+- **First-30-seconds clarity**: the start screen describes the game in one sentence ("Tap the ring when the void pulses through it") but reading is slower than seeing. New players hit Start without a mental model, miss the first 2-3 pulses, and bounce.
+- **Power-user friction**: returning players who play with headphones at work want a one-key mute. Players who get a phone call want a one-key pause. Forcing a tab-switch to pause is hostile to keyboard users.
+
+### Changes shipped
+
+1. **CSS-animated demo on start overlay** — a 160×160 demo embedded above the start button: a static target ring, a danger-pink pulse expanding in a 2.6s loop, and a "TAP!" prompt that fades in at the 62%-78% phase (the moment the pulse aligns with the ring). The pulse border briefly turns gold at the 70% mark, mirroring the in-game perfect-color cue. Pure CSS — zero JS, zero canvas, auto-pauses when the tab hides. Reduced-motion freezes the animation in its "successful tap" pose.
+2. **Keyboard shortcuts: M (mute) and P (pause)** — added next to the existing Space shortcut. M works any time; P only mid-run. P cycles: play → pause-indefinite → countdown → (press again) cancel-back-to-pause-indefinite → countdown → resume. Uses `e.code` (`KeyM`/`KeyP`) for layout independence and an `inField` guard so focused buttons don't double-fire.
+3. **Pause overlay copy update** — "Return to the tab to resume" → "Return to the tab — or press P — to resume". Discoverable hint at the moment of need.
+4. **Start-screen `kbhint` line expanded** — `Space · M mute · P pause` in a single tight line with `<kbd>` semantics. Matches casual-game conventions players already know from itch.io / browser games.
+
+### Patterns extracted
+
+- **Wordless onboarding with timing-matched demo** — the demo's animation duration must match real-game pulse timing within ~10%, otherwise players build the wrong reflex. The "TAP!" prompt fires *during* the success window (post-arrival), not before.
+- **Layout-independent shortcuts via `e.code`** — never use `e.key` for game shortcuts; AZERTY users get a different letter. `KeyM`/`KeyP` are physical-position keys.
+- **Three-state pause cycle** — not paused / paused-indefinitely / paused-with-countdown is a useful tri-state. The middle state lets the player perceive "paused" as a stable thing they can trust before initiating resume; the third state gives them a brace-yourself moment.
+
+### Sprint 2-9 wrap-up table
+
+| Sprint | Lens | Representative addition |
+|---|---|---|
+| 2 | Perceived timing | Time-domain judge windows |
+| 3 | Multi-perspective sweep | DPR, mute, keyboard, onboarding |
+| 4 | Smoothness + juice | 120Hz interpolation, haptics, starfield |
+| 5 | Robustness + trend | Tab-pause, combo meter, run-history |
+| 6 | Accessibility + virality | Colorblind dashing, Share API, pity life |
+| 7 | Ritual | Daily seeded challenge |
+| 8 | Moment-of-death + progression | Death-cam, per-seed history, tomorrow teaser |
+| 9 | Onboarding + power-user | CSS demo loop, M/P shortcuts |
+
+### Cost
+
+- index.html: +6 lines (demo div + expanded kbhint + pause-hint kbd)
+- style.css: +60 lines (demo + keyframes + reduced-motion + kbd styling)
+- game.js: +25 lines (extended keydown listener)
+- One new skill doc (`ux/onboarding.md`)
+
+Net effect: a 360px-wide phone now sees the rule of the game without reading, and a desktop player can mute/pause without touching the mouse. Both are zero-friction wins layered on an already-shipped game.
 
 ---
 

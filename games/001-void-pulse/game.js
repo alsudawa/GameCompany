@@ -374,9 +374,38 @@
   // Keyboard input — Space / Enter mirrors tap; gameplay accessible without pointer.
   // When a BUTTON is focused, let the browser activate it (Space/Enter = click).
   document.addEventListener('keydown', (e) => {
-    if (e.code !== 'Space' && e.code !== 'Enter') return;
     const t = e.target;
-    if (t && (t.tagName === 'BUTTON' || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+    const inField = t && (t.tagName === 'BUTTON' || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA');
+
+    // M — mute toggle (works any time, even on overlays)
+    if (e.code === 'KeyM' && !inField) {
+      e.preventDefault();
+      state.muted = !state.muted;
+      writeMuted(state.muted);
+      Sfx.applyMute();
+      applyMuteUI();
+      return;
+    }
+    // P — pause toggle (only while a run is active)
+    if (e.code === 'KeyP' && !inField) {
+      if (!state.running || state.over) return;
+      e.preventDefault();
+      if (!state.paused) {
+        pauseGame();
+      } else if (state.resumeAt) {
+        // mid-countdown → abort it back to indefinite pause
+        state.resumeAt = 0;
+        pauseCountdownEl.textContent = 'paused';
+        pauseCountdownEl.classList.remove('number');
+      } else {
+        // currently paused indefinitely → start the resume countdown
+        beginResumeCountdown();
+      }
+      return;
+    }
+
+    if (e.code !== 'Space' && e.code !== 'Enter') return;
+    if (inField) return;
     e.preventDefault();
     if (!state.running && !state.over) {
       Sfx.init(); Sfx.click();

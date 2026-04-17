@@ -37,6 +37,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`ux/progress-feedback.md`](ux/progress-feedback.md) — in-play tier meter + run-history sparkline
 - [`ux/accessibility.md`](ux/accessibility.md) — redundant color coding, keyboard parity, reduced-motion gating
 - [`ux/share.md`](ux/share.md) — Web Share API + clipboard fallback for frictionless virality
+- [`ux/onboarding.md`](ux/onboarding.md) — looping CSS-animated demo + keyboard-shortcut hints on the start overlay
 
 ### QA
 - [`qa/casual-checklist.md`](qa/casual-checklist.md) — pre-ship checklist + multi-perspective sweep (player / mobile / onboarding / retention / distribution)

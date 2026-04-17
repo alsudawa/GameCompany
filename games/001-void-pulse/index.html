@@ -38,8 +38,13 @@
       <h1 class="title">void-pulse</h1>
       <p id="startSubtitle" class="seed-subtitle" hidden>Daily · <span id="seedDateStart"></span></p>
       <p class="hook">Tap the ring when the void pulses through it.</p>
+      <div class="demo" aria-hidden="true">
+        <div class="demo-target"></div>
+        <div class="demo-pulse"></div>
+        <div class="demo-tap">TAP!</div>
+      </div>
       <button id="start" class="btn">Tap to start</button>
-      <p class="kbhint">or press <kbd>Space</kbd></p>
+      <p class="kbhint">or press <kbd>Space</kbd> · <kbd>M</kbd> mute · <kbd>P</kbd> pause</p>
       <a id="dailyLink" class="daily-link" href="?daily=1" hidden>Try today's daily →</a>
       <a id="freeLink"  class="daily-link" href="./" hidden>← Back to free play</a>
     </div>
@@ -70,7 +75,7 @@
       <div class="pause-ring">
         <div id="pauseCountdown" class="pause-countdown">paused</div>
       </div>
-      <p class="pause-hint">Return to the tab to resume</p>
+      <p class="pause-hint">Return to the tab — or press <kbd>P</kbd> — to resume</p>
     </div>
   </main>
 
