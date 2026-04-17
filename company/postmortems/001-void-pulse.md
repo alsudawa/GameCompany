@@ -375,8 +375,52 @@ Net effect: a 360px-wide phone now sees the rule of the game without reading, an
 ### Next candidates
 
 - **Local leaderboard top-5 per seed** — small, satisfying retention loop on top of the daily mode
-- **Audio dynamics** — subtle master-bus rise (+2dB) when in beaten-best state; ducking on overlay open
-- **Help modal** (`?` shortcut) — one-screen explainer for combo/pity/daily/death-cam, since we've layered a lot of hidden mechanics
+- **Theme picker** — let players choose between 3 palettes (the void / sunset / forest)
+- **Achievements** — first 100 perfects, 5-day daily streak, etc.
+
+---
+
+## Sprint 11 — Audio dynamics + help discoverability (2026-04-17)
+
+### Lens
+- **Audio mix as game state**: the run sounds the same whether the player is at 12 points or 1200. SFX are flat, the moment of crossing best is unmarked, and overlays leave residual SFX-tail competing with HUD focus. The mix should *respond* to game state.
+- **Discoverability of stacked mechanics**: nine sprints have layered combo multipliers, pity life, daily mode, death-cam, polyrhythm spawns, redundant heartbeat coloring. New players don't know any of this; returning players forgot. A `?` shortcut closes the gap for ~50 lines of code.
+
+### Changes shipped
+
+1. **Three-state master bus** — `normal` / `beaten` / `duck`. `beaten` lifts gain by +1.4dB the moment the player surpasses their best (felt as "rising stakes," not louder). `duck` drops by -9dB whenever an overlay opens (pause / gameover / help) so any leftover SFX-tail tucks under the UI. Transitions ramp `linearRampToValueAtTime` over 400ms — same time scale as overlay opacity transitions, so audio tracks visual.
+2. **`?` key help modal** — opens a centered card explaining tap rules, perfect/good/heartbeat scoring, combo bar, pity life, daily mode. Auto-pauses the run on open; on close, resumes with the standard 3-2-1 countdown. Backdrop click closes; `Esc` closes; visible `?` icon-button next to the mute button surfaces it for non-keyboard users.
+3. **Help button placement** — top-right corner, 60px in from the edge so it sits one button-width left of mute. Same visual weight; new players notice it within ~3 seconds without any callout.
+4. **Shortcut hint refresh** — start-overlay `kbhint` now reads `Space · M mute · P pause · ? help`. P shortcut gated to no-op while help modal is open (prevents weird state where countdown runs behind a help screen).
+
+### Patterns extracted
+
+- **Bus dynamics without a real mixer** — `setBus(name)` over a single `GainNode` covers 90% of "music dynamics" wins for a casual game without pulling in an audio engine. The trick is `cancelScheduledValues` + `setValueAtTime(currentValue, t0)` before the ramp, so successive calls don't stack.
+- **Help modal as auto-pause + auto-resume** — opening help mid-run shouldn't burn the player. Track `helpOpenedDuringRun` so we only auto-resume if the help itself induced the pause.
+- **`?` key cross-layout** — `e.key === '?' || (e.key === '/' && e.shiftKey)` covers ~99% of layouts. The visible button is the failsafe.
+- **Mute-aware bus state** — `setBus` short-circuits when muted, but the bus state is still tracked. When the player unmutes, gain lands at the right level for the current bus state.
+
+### Sprint 2-11 wrap-up table
+
+| Sprint | Lens | Representative addition |
+|---|---|---|
+| 2 | Perceived timing | Time-domain judge windows |
+| 3 | Multi-perspective sweep | DPR, mute, keyboard, onboarding |
+| 4 | Smoothness + juice | 120Hz interpolation, haptics, starfield |
+| 5 | Robustness + trend | Tab-pause, combo meter, run-history |
+| 6 | Accessibility + virality | Colorblind dashing, Share API, pity life |
+| 7 | Ritual | Daily seeded challenge |
+| 8 | Moment-of-death + progression | Death-cam, per-seed history, tomorrow teaser |
+| 9 | Onboarding + power-user | CSS demo loop, M/P shortcuts |
+| 10 | Perf + HUD scannability + bug | Gradient cache, adaptive quality, dynamic lives glyphs |
+| 11 | Audio dynamics + discoverability | Three-state bus, `?` help modal, auto-pause/resume |
+
+### Cost
+
+- game.js: +75 lines (bus `setBus` + 4 trigger sites + help open/close + key wiring)
+- index.html: +30 lines (help modal markup + help button)
+- style.css: +90 lines (help modal + help-btn position)
+- Two new skill docs (`audio/audio-dynamics.md`, `ux/help-modal.md`)
 
 ---
 

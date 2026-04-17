@@ -301,18 +301,43 @@
   }
 
   // ---------- Sfx ----------
+  // The master bus has 3 dynamic states beyond mute:
+  //   normal  — baseline (MASTER_GAIN)
+  //   beaten  — +18% (~+1.4dB) lift when player is past their best, subtly
+  //             "rising stakes" without screaming louder
+  //   duck    — -65% when an overlay is open (pause / gameover) so any
+  //             leftover SFX tail doesn't compete with HUD focus
+  // Transitions ramp over 0.4s so they're felt, not heard as a jump.
+  const BUS_LEVELS = { normal: 1.0, beaten: 1.18, duck: 0.35 };
   const Sfx = {
     ctx: null,
     master: null,
+    busState: 'normal',
     init() {
       if (this.ctx) return;
       this.ctx = new (window.AudioContext || window.webkitAudioContext)();
       this.master = this.ctx.createGain();
-      this.master.gain.value = state.muted ? 0 : MASTER_GAIN;
+      this.master.gain.value = state.muted ? 0 : MASTER_GAIN * BUS_LEVELS[this.busState];
       this.master.connect(this.ctx.destination);
     },
     applyMute() {
-      if (this.master) this.master.gain.value = state.muted ? 0 : MASTER_GAIN;
+      if (!this.master) return;
+      const target = state.muted ? 0 : MASTER_GAIN * BUS_LEVELS[this.busState];
+      this.master.gain.value = target;
+    },
+    setBus(name) {
+      if (!BUS_LEVELS[name] || this.busState === name) return;
+      this.busState = name;
+      if (!this.master || state.muted) return;
+      const t0 = this.ctx.currentTime;
+      const target = MASTER_GAIN * BUS_LEVELS[name];
+      try {
+        this.master.gain.cancelScheduledValues(t0);
+        this.master.gain.setValueAtTime(this.master.gain.value, t0);
+        this.master.gain.linearRampToValueAtTime(target, t0 + 0.4);
+      } catch {
+        this.master.gain.value = target;
+      }
     },
     _env(type, freq, dur, vol, slideTo) {
       if (!this.ctx) return;
@@ -400,6 +425,20 @@
     const t = e.target;
     const inField = t && (t.tagName === 'BUTTON' || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA');
 
+    // ? — toggle help (Shift+/ on US, slash with Shift mark)
+    if ((e.key === '?' || (e.key === '/' && e.shiftKey)) && !inField) {
+      e.preventDefault();
+      if (helpEl.classList.contains('hidden')) openHelp();
+      else closeHelp();
+      return;
+    }
+    // Esc — close help if open (no other esc binding currently)
+    if (e.key === 'Escape' && !helpEl.classList.contains('hidden')) {
+      e.preventDefault();
+      closeHelp();
+      return;
+    }
+
     // M — mute toggle (works any time, even on overlays)
     if (e.code === 'KeyM' && !inField) {
       e.preventDefault();
@@ -409,9 +448,10 @@
       applyMuteUI();
       return;
     }
-    // P — pause toggle (only while a run is active)
+    // P — pause toggle (only while a run is active and help isn't blocking)
     if (e.code === 'KeyP' && !inField) {
       if (!state.running || state.over) return;
+      if (!helpEl.classList.contains('hidden')) return;   // help is open → P is inert
       e.preventDefault();
       if (!state.paused) {
         pauseGame();
@@ -838,6 +878,7 @@
     pauseEl.classList.remove('hidden');
     pauseEl.classList.add('visible');
     pauseEl.setAttribute('aria-hidden', 'false');
+    Sfx.setBus('duck');
   }
   function beginResumeCountdown() {
     if (!state.paused) return;
@@ -848,7 +889,49 @@
     pauseEl.classList.remove('visible');
     pauseEl.classList.add('hidden');
     pauseEl.setAttribute('aria-hidden', 'true');
+    if (state.running && !state.over) {
+      Sfx.setBus(hudScoreBeaten ? 'beaten' : 'normal');
+    }
   }
+  // ---------- Help modal ----------
+  const helpEl = document.getElementById('help');
+  const helpBtn = document.getElementById('helpBtn');
+  const helpClose = document.getElementById('helpClose');
+  let helpOpenedDuringRun = false;
+  function openHelp() {
+    if (!helpEl.classList.contains('hidden')) return;
+    // If a run is active, auto-pause so opening help doesn't burn the player.
+    helpOpenedDuringRun = state.running && !state.over && !state.paused;
+    if (helpOpenedDuringRun) pauseGame();
+    helpEl.classList.remove('hidden');
+    helpEl.classList.add('visible');
+    helpEl.setAttribute('aria-hidden', 'false');
+    helpClose.focus();
+    Sfx.setBus('duck');
+  }
+  function closeHelp() {
+    if (helpEl.classList.contains('hidden')) return;
+    helpEl.classList.remove('visible');
+    helpEl.classList.add('hidden');
+    helpEl.setAttribute('aria-hidden', 'true');
+    if (helpOpenedDuringRun && state.paused && !state.resumeAt) {
+      // Resume the run with the standard 3-2-1 countdown.
+      beginResumeCountdown();
+    } else if (!state.paused && state.running && !state.over) {
+      Sfx.setBus(hudScoreBeaten ? 'beaten' : 'normal');
+    } else if (state.over) {
+      Sfx.setBus('duck');
+    } else {
+      Sfx.setBus('normal');
+    }
+    helpOpenedDuringRun = false;
+  }
+  helpBtn.addEventListener('click', (e) => { e.stopPropagation(); openHelp(); });
+  helpClose.addEventListener('click', (e) => { e.stopPropagation(); closeHelp(); });
+  helpEl.addEventListener('click', (e) => {
+    if (e.target === helpEl) closeHelp();   // click backdrop to close
+  });
+
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       if (state.paused && state.resumeAt) {
@@ -982,6 +1065,9 @@
     if (beaten !== hudScoreBeaten) {
       hudScore.classList.toggle('beaten-best', beaten);
       hudScoreBeaten = beaten;
+      // Audio dynamic: lift the master bus by ~1.4dB the moment the player
+      // surpasses their best. Subtle but felt — the run "leans in" sonically.
+      Sfx.setBus(beaten ? 'beaten' : 'normal');
     }
     const m = comboMult();
     if (state.combo > 0) {
@@ -1150,6 +1236,7 @@
 
     overlay.classList.remove('visible'); overlay.classList.add('hidden');
     gameoverEl.classList.remove('visible'); gameoverEl.classList.add('hidden');
+    Sfx.setBus('normal');   // un-duck after a previous gameover
     if (state.bonusLifeGranted) {
       state.comboMilestoneText = '+1 LIFE';
       state.comboMilestoneFade = 1.1;
@@ -1224,6 +1311,7 @@
     setTimeout(() => {
       gameoverEl.classList.remove('hidden');
       gameoverEl.classList.add('visible');
+      Sfx.setBus('duck');   // tuck residual sfx under the gameover UI
     }, 250);
   }
 

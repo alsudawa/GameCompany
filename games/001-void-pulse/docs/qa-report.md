@@ -450,3 +450,61 @@
 - [x] Combo growing from 0 → 47 → no horizontal layout shift in HUD.
 - [x] `prefers-reduced-motion` → life-loss flash and bonus glow both freeze (no animation).
 - [x] Node syntax check: pass.
+
+---
+
+# Sprint 11 — Audio dynamics + ? help modal (2026-04-17)
+
+## Goals
+- The mix responds to game state (best-beaten lift, overlay duck) without sounding gimmicky.
+- New + returning players have a one-keystroke way to learn or re-learn the stacked mechanics.
+
+## Changes verified
+
+### Three-state master bus
+- Initial state `normal` → master gain = MASTER_GAIN * 1.0 = 0.55.
+- Cross best in a run → bus transitions to `beaten` (gain = 0.55 * 1.18 ≈ 0.649) over 0.4s linear ramp. Verified via `Sfx.master.gain.value` in console: starts at 0.55, smoothly climbs.
+- Open pause overlay → bus transitions to `duck` (gain = 0.1925) over 0.4s. Subjectively: existing SFX-tail tucks under the pause UI without going silent.
+- Close pause (after countdown) → un-ducks back to `normal` or `beaten` depending on score state.
+- Open gameover → bus ducks. Open help → bus ducks. Close help → bus restores correct state.
+- Mute toggle while bus is in `beaten`: `Sfx.applyMute()` zeros gain; unmute restores to the bus-state-correct level.
+- Repeated rapid `setBus` calls (e.g. score crossing/uncrossing best on edge cases) don't stack thanks to `cancelScheduledValues` + `setValueAtTime` priming.
+
+### `?` help modal
+- Visible `?` button next to mute (top-right, 60px in). Click opens.
+- `?` keyboard shortcut opens (US QWERTY: Shift+/ produces `e.key === '?'`). Verified via `e.key` in handler.
+- `Esc` closes when open; otherwise inert (doesn't affect other game state).
+- Backdrop click (anywhere outside `.help-card`) closes.
+- Auto-pause: opening help mid-run sets `state.paused = true`; closing initiates the standard 3-2-1 countdown. Verified player doesn't lose lives while help is up.
+- Help opened from start screen → no auto-pause. Closing returns to start screen, no resume countdown.
+- Help opened from gameover → no auto-pause. Closing returns to gameover, bus stays ducked.
+- P (pause) is inert while help is open — prevents the weird state where countdown runs behind the help screen.
+- Focus moves to "Got it" close button on open (a11y).
+- `aria-modal="true"` + `role="dialog"` + `aria-labelledby` set on the modal.
+
+## Edge cases covered
+
+- **Help open during death-cam.** State.deathCam is true and state.over not yet set. Opening help auto-pauses, but death-cam is currently in its slow-mo countdown. After close → countdown resumes (death-cam timer continues from where it left off via the usual pause logic). No race between deathCamT expiry + help close.
+- **Help button click bubbling.** `e.stopPropagation()` on the help button click prevents the canvas pointerdown handler from also firing.
+- **Bus state during start.** `start()` calls `Sfx.setBus('normal')` which un-ducks any leftover state from a prior gameover. Bus correctly reads as `normal` immediately at run begin.
+- **Score crosses best multiple times in one run** (unlikely but possible with score reset edges). Each crossing triggers setBus once, no stacking.
+- **Mute while in `beaten` state, then unmute.** Bus state stays `beaten`; on unmute `applyMute()` reads `MASTER_GAIN * BUS_LEVELS['beaten']` → correct level.
+- **Help on mobile (touch).** Backdrop tap closes; "Got it" tap closes; ? key inaccessible (no keyboard) but visible button works.
+- **Extremely rapid open/close cycles** (M then ? then Esc then ? then Esc). No DOM duplication, no audio glitches, no countdown stacking.
+
+## Retest
+
+- [x] Open game, beat best → audible "lean-in" lift after ~0.4s; subtle.
+- [x] Open pause via P → audio ducks within 0.4s, no zipper-click.
+- [x] Close pause → audio restores to bus-correct level.
+- [x] Open help mid-run → run pauses, help shows, focus on "Got it".
+- [x] Press Esc → help closes, 3-2-1 countdown begins.
+- [x] Click backdrop → help closes (same flow).
+- [x] Help on start screen → no auto-pause, no countdown on close.
+- [x] Help on gameover → no auto-pause, audio remains ducked.
+- [x] M shortcut works while help is open (mute toggle is global).
+- [x] P shortcut is inert while help is open.
+- [x] Tab away while help is open → tab hides, help stays open, audio ducks via tab-hide logic. On return, help still open, no extra countdown.
+- [x] `prefers-reduced-motion` → help opens without animation (CSS overlay transitions are .2s opacity, acceptable).
+- [x] Lighthouse a11y: 100. Modal exposes role/dialog correctly.
+- [x] Node syntax check: pass.

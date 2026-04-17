@@ -44,7 +44,7 @@
         <div class="demo-tap">TAP!</div>
       </div>
       <button id="start" class="btn">Tap to start</button>
-      <p class="kbhint">or press <kbd>Space</kbd> · <kbd>M</kbd> mute · <kbd>P</kbd> pause</p>
+      <p class="kbhint">or press <kbd>Space</kbd> · <kbd>M</kbd> mute · <kbd>P</kbd> pause · <kbd>?</kbd> help</p>
       <a id="dailyLink" class="daily-link" href="?daily=1" hidden>Try today's daily →</a>
       <a id="freeLink"  class="daily-link" href="./" hidden>← Back to free play</a>
     </div>
@@ -77,6 +77,31 @@
       </div>
       <p class="pause-hint">Return to the tab — or press <kbd>P</kbd> — to resume</p>
     </div>
+
+    <div id="help" class="overlay hidden help-overlay" role="dialog" aria-modal="true" aria-labelledby="helpTitle" aria-hidden="true">
+      <div class="help-card">
+        <h2 id="helpTitle" class="help-title">how to play</h2>
+        <ul class="help-list">
+          <li><span class="help-key">tap / Space</span><span>when the pulse aligns with the ring</span></li>
+          <li><span class="help-key">center hit</span><span>= <em>perfect</em>: full score, +1 combo</span></li>
+          <li><span class="help-key">near hit</span><span>= <em>good</em>: half score</span></li>
+          <li><span class="help-key">red dashed pulse</span><span>= heartbeat: ×1.5 score</span></li>
+          <li><span class="help-key">combo bar</span><span>fills toward the next ×multiplier (cap ×4)</span></li>
+          <li><span class="help-key">3 lives</span><span>miss / mistap to lose one. Die fast 3x in a row → next run grants +1 gold life</span></li>
+          <li><span class="help-key">daily mode</span><span><code>?daily=1</code> — same pulse sequence for everyone today</span></li>
+        </ul>
+        <p class="help-keys">
+          <kbd>Space</kbd> tap · <kbd>M</kbd> mute · <kbd>P</kbd> pause · <kbd>?</kbd> this help · <kbd>Esc</kbd> close
+        </p>
+        <button id="helpClose" class="btn help-close" type="button">Got it</button>
+      </div>
+    </div>
+
+    <button id="helpBtn" class="icon-btn help-btn" type="button" aria-label="How to play" title="How to play (?)">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+        <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm-1-7v-1c0-.7.3-1.2 1.2-1.8.9-.6 1.3-1 1.3-1.7 0-.8-.6-1.3-1.5-1.3s-1.5.5-1.5 1.4H8.5C8.5 7 9.9 6 12 6s3.5 1 3.5 2.7c0 1.1-.5 1.7-1.5 2.4-.7.5-1 .8-1 1.5V13h-2Zm0 4v-2h2v2h-2Z" fill="currentColor"/>
+      </svg>
+    </button>
   </main>
 
   <script src="game.js"></script>
