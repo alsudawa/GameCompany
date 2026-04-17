@@ -51,6 +51,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`ux/accessibility.md`](ux/accessibility.md) — redundant color coding, keyboard parity, reduced-motion gating
 - [`ux/share.md`](ux/share.md) — Web Share API + clipboard fallback for frictionless virality
 - [`ux/onboarding.md`](ux/onboarding.md) — looping CSS-animated demo + keyboard-shortcut hints on the start overlay
+- [`ux/two-phase-demo.md`](ux/two-phase-demo.md) — two-state start-overlay demo ("tap this, skip that") in one 5.2s single-animation cycle (phase-gap split + color-blind-safe labels + static side-by-side reduced-motion fallback)
 - [`ux/help-modal.md`](ux/help-modal.md) — `?` key + auto-pause discoverable help modal for stacked hidden mechanics
 - [`ux/leaderboard-local.md`](ux/leaderboard-local.md) — local top-N per-seed leaderboard with relative-time labels + new-row highlight
 - [`ux/streak-and-achievements.md`](ux/streak-and-achievements.md) — global daily-streak counter + first-run achievement unlocks (scoping matrix + active-vs-dormant rule)

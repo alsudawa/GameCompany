@@ -626,44 +626,87 @@ html, body {
   box-shadow: 0 0 14px rgba(0, 212, 255, .25), inset 0 0 10px rgba(0, 212, 255, .12);
   opacity: .9;
 }
+/* Two-phase demo: first half shows a cyan pulse crossing the target with
+   a TAP label; second half shows a red hazard pulse crossing with a SKIP
+   label. Teaches both halves of the post-rhythm-pivot mechanic in one
+   5.2s loop. */
 .demo-pulse {
   position: absolute;
   left: 50%; top: 50%;
   width: 22px; height: 22px;
   margin: -11px 0 0 -11px;
   border-radius: 50%;
-  border: 2px solid var(--danger);
-  background: radial-gradient(circle, rgba(255, 61, 107, .35) 0%, rgba(255, 61, 107, 0) 70%);
-  animation: demoPulse 2.6s cubic-bezier(.4, .05, .55, .98) infinite;
+  border: 2px solid currentColor;
+  opacity: 0;
 }
-.demo-tap {
+.demo-pulse-good {
+  color: var(--fg);
+  animation: demoPulseGood 5.2s cubic-bezier(.4, .05, .55, .98) infinite;
+}
+.demo-pulse-hazard {
+  color: var(--danger);
+  background: radial-gradient(circle, rgba(255, 61, 107, .28) 0%, rgba(255, 61, 107, 0) 70%);
+  animation: demoPulseHazard 5.2s cubic-bezier(.4, .05, .55, .98) infinite;
+}
+.demo-label {
   position: absolute;
   left: 50%; top: calc(50% + 56px);
   transform: translate(-50%, 0);
   font-size: 12px;
   letter-spacing: .22em;
   font-weight: 700;
-  color: var(--accent);
   opacity: 0;
-  animation: demoTap 2.6s ease-out infinite;
+}
+.demo-label-tap {
+  color: var(--accent);
   text-shadow: 0 0 8px rgba(0, 212, 255, .55);
+  animation: demoLabelTap 5.2s ease-out infinite;
 }
-@keyframes demoPulse {
-  0%   { width: 22px;  height: 22px;  margin: -11px 0 0 -11px;  opacity: .15; border-color: rgba(255,61,107,.5); }
-  55%  { width: 60px;  height: 60px;  margin: -30px 0 0 -30px;  opacity: 1;   border-color: rgba(255,61,107,1); }
-  70%  { width: 76px;  height: 76px;  margin: -38px 0 0 -38px;  opacity: 1;   border-color: color-mix(in srgb, var(--highlight) calc(100% * 1), transparent); }
-  85%  { width: 110px; height: 110px; margin: -55px 0 0 -55px;  opacity: .35; border-color: rgba(255,61,107,.6); }
-  100% { width: 140px; height: 140px; margin: -70px 0 0 -70px;  opacity: 0;   border-color: rgba(255,61,107,.2); }
+.demo-label-skip {
+  color: var(--danger);
+  text-shadow: 0 0 8px rgba(255, 61, 107, .55);
+  animation: demoLabelSkip 5.2s ease-out infinite;
 }
-@keyframes demoTap {
-  0%, 55% { opacity: 0; transform: translate(-50%, 4px); }
-  62%     { opacity: 1; transform: translate(-50%, 0); }
-  78%     { opacity: 1; transform: translate(-50%, 0); }
-  100%    { opacity: 0; transform: translate(-50%, -4px); }
+@keyframes demoPulseGood {
+  0%   { width: 22px;  height: 22px;  margin: -11px 0 0 -11px; opacity: .15; }
+  22%  { width: 60px;  height: 60px;  margin: -30px 0 0 -30px; opacity: 1; box-shadow: 0 0 10px color-mix(in srgb, var(--fg) 55%, transparent); }
+  28%  { width: 72px;  height: 72px;  margin: -36px 0 0 -36px; opacity: 1; box-shadow: 0 0 14px var(--fg); }
+  40%  { width: 110px; height: 110px; margin: -55px 0 0 -55px; opacity: .25; }
+  48%, 100% { width: 22px; height: 22px; margin: -11px 0 0 -11px; opacity: 0; }
+}
+@keyframes demoPulseHazard {
+  0%, 52%  { width: 22px; height: 22px; margin: -11px 0 0 -11px; opacity: 0; }
+  55%      { width: 22px; height: 22px; margin: -11px 0 0 -11px; opacity: .18; }
+  74%      { width: 60px; height: 60px; margin: -30px 0 0 -30px; opacity: 1; }
+  82%      { width: 82px; height: 82px; margin: -41px 0 0 -41px; opacity: .85; }
+  94%      { width: 120px; height: 120px; margin: -60px 0 0 -60px; opacity: .2; }
+  100%     { width: 22px; height: 22px; margin: -11px 0 0 -11px; opacity: 0; }
+}
+@keyframes demoLabelTap {
+  0%, 16% { opacity: 0; transform: translate(-50%, 4px); }
+  24%     { opacity: 1; transform: translate(-50%, 0); }
+  40%     { opacity: 1; transform: translate(-50%, 0); }
+  48%, 100% { opacity: 0; transform: translate(-50%, -4px); }
+}
+@keyframes demoLabelSkip {
+  0%, 68%   { opacity: 0; transform: translate(-50%, 4px); }
+  78%       { opacity: 1; transform: translate(-50%, 0); }
+  94%       { opacity: 1; transform: translate(-50%, 0); }
+  100%      { opacity: 0; transform: translate(-50%, -4px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .demo-pulse { animation: none; width: 60px; height: 60px; margin: -30px 0 0 -30px; opacity: .85; }
-  .demo-tap { animation: none; opacity: .85; transform: translate(-50%, 0); }
+  /* Static side-by-side: good pulse + TAP on the left, hazard pulse + SKIP
+     on the right. Both pulses read at target-ish size so the player sees
+     the two states simultaneously without any motion. Target ring hidden
+     because with two pulses off-center it would look like two misaligned
+     rings rather than a single anchor. */
+  .demo-target { display: none; }
+  .demo-pulse { animation: none !important; width: 48px; height: 48px; margin: -24px 0 0 -24px; opacity: .9; }
+  .demo-pulse-good   { left: 32%; }
+  .demo-pulse-hazard { left: 68%; }
+  .demo-label { animation: none !important; opacity: .9; transform: translate(-50%, 0); font-size: 11px; top: calc(50% + 40px); }
+  .demo-label-tap  { left: 32%; }
+  .demo-label-skip { left: 68%; }
 }
 
 /* First-visit onboarding — a one-shot hint + Start-button highlight that

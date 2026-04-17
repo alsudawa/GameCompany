@@ -1556,6 +1556,52 @@ Sprint 30 shipped beat-synced BGM; Sprint 31's QA noted that during `hard` / `cl
 
 ---
 
+## Sprint 34 — Onboarding demo refresh (UX lens) (2026-04-17)
+
+### Lens
+
+The start-overlay `.demo` element predates the rhythm pivot (sprint 29). It showed a *red* expanding pulse with a "TAP!" label — which, after the hazard mechanic went live, is literally telling new players to tap the hazard. Players following the demo's visual instruction would lose a life on their first interaction with a red pulse. This is an onboarding trust violation, not a polish issue.
+
+### Changes
+
+- **Two-phase demo** in a single 5.2s animation cycle: phase A (0-48%) shows a cyan pulse growing to target size with a **TAP** label; phase B (52-100%) shows a red hazard pulse growing past the target with a **SKIP** label (and no target flash).
+- **Single-animation-origin architecture** — one keyframe per element, all sharing the same 5.2s cubic-bezier, phases separated by percentage windows rather than by separate animations. Avoids the drift that two parallel `infinite` animations accumulate when a tab is backgrounded.
+- **Labels do the semantic work** — TAP vs SKIP text is the primary cue; pulse color is secondary. Works for color-blind players.
+- **Label timing couples to the *crossing* moment** — TAP appears at 24% (just as the good pulse hits target size at 28%) and holds through 40%; SKIP appears at 78% (just as the hazard pulse reaches target at 74-82%) and holds through 94%. Teaches the *when*, not just the *what*.
+- **Reduced-motion fallback rewritten** — previously showed only a static version of the old (red) pulse. Now shows both states side-by-side (good pulse on the left, hazard pulse on the right, with their labels). Target ring hidden in the static layout to avoid visual clutter.
+
+### Patterns extracted → `company/skills/ux/two-phase-demo.md` (new, ~160 lines)
+
+- Two-state mechanics deserve two-phase demos. A single-state demo for a two-state game mis-teaches.
+- Single animation-origin > two synchronized animations for multi-phase loops (backgrounded-tab drift).
+- Semantic label (TAP / SKIP) > color alone (color-blind-safe, eye-pre-attentive).
+- Label fires *before* the interaction moment, not at it — previews the correct action while the player still has time to internalize.
+- Reduced-motion: static side-by-side > hidden or frozen-mid-cycle. Full information, zero motion.
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 34 | Onboarding / UX | Two-phase demo (TAP good / SKIP hazard) replaces the misleading single-state demo; new skill doc `ux/two-phase-demo.md` |
+
+### Cost
+
+- index.html: +2 lines (2 added elements, 1 replacement)
+- style.css: ~60 lines replaced (was ~40 lines single-phase; now ~95 lines two-phase including reduced-motion refresh)
+- game.js: 0 lines
+- 1 new skill doc (`ux/two-phase-demo.md`, ~160 lines)
+- README index: 1 new entry
+
+### Next candidates
+
+- **Per-band BGM intensity hint in HUD** — color the beat ring by current band (artist + audio crossover lens).
+- **Beat indicator as onboarding cue** — pulse the new beat-indicator element during the start overlay so the player sees the rhythm before first tap.
+- **Focus-visible outline audit** / **keyboard-only flow audit** — accessibility lenses still open.
+- **Localization pass** / **service worker** (still open).
+- **Stats-panel sparkline** / **stats export** (still open).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |
