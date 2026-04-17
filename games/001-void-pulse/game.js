@@ -3348,7 +3348,14 @@
     const pct = state.maxPossibleScore > 0
       ? Math.round((state.score / state.maxPossibleScore) * 100)
       : 0;
-    finalScoreEl.textContent = state.score + ' · ' + pct + '%';
+    // Label the % explicitly on first encounter. Raw "1240 · 63%" is
+    // cryptic to a first-time player — they don't yet know what % of
+    // what. "1240 · 63% of max" makes the scoring lens clear on the
+    // very first gameover screen, which is the #1 retention hook
+    // (fixed chart → chase completion, not just scores).
+    finalScoreEl.textContent = state.maxPossibleScore > 0
+      ? state.score + ' · ' + pct + '% of max'
+      : String(state.score);
     bestScoreEl.textContent = state.best;
     statPeakEl.textContent = state.peakCombo;
     statPerfectEl.textContent = state.perfectCount;

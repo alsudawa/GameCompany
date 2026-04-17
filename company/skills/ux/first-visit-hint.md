@@ -111,3 +111,71 @@ The hint text uses `var(--highlight)` so it theme-swaps automatically — void h
 - **Chaining multiple hints in a queue.** Tempting to keep adding "Try daily!" "Try sunset theme!" tutorial cards. Resist — this pattern is deliberately one-shot. Multi-step onboarding belongs in a help modal or tooltip system, not in the start overlay.
 
 <!-- added: 2026-04-17 (001-void-pulse sprint 20) -->
+
+## Extension — hiding return-player chrome on first visit (taper pattern)
+
+<!-- added: 2026-04-17 (001-void-pulse sprint 46) -->
+
+The first-visit treatment isn't just about *adding* a hint — it's also about *subtracting* the chrome that a brand-new player doesn't need. On void-pulse's start overlay, the mature-player view has:
+
+- Title, hook, demo animation, Start button *(every player needs these)*
+- Keyboard shortcut hint: `Space · M mute · P pause · T theme · S stats · ? help` *(return players only)*
+- "Lifetime stats →" link *(return players only — nothing to show before first run)*
+- Daily-mode link, theme picker *(contextual)*
+
+A first-time player scanning this overlay has to parse ~8 UI elements to find "Tap to start." That's onboarding friction. The taper: **hide return-player chrome until they've played once**.
+
+### Pattern — same parent class, more CSS
+
+The `.overlay.first-visit` class is already the single toggle point (from the earlier section). Add more rules that *hide* return-player elements:
+
+```css
+.overlay.first-visit .kbhint,
+.overlay.first-visit #statsBtn {
+  display: none;
+}
+```
+
+These reappear automatically the moment the player taps Start — the first-visit class is removed, the CSS rules stop applying, the default `display` values return.
+
+### Decision criteria — what to hide on first visit
+
+Run each UI element through three filters:
+
+1. **Does it need a concept the player hasn't earned yet?** Keyboard shortcuts assume they know how the game responds to Space. Lifetime stats assume they've played. Achievements panel (if present on start) assumes they've played. Hide.
+2. **Does it dilute the primary CTA?** Every extra element competes with "Tap to start" for attention. If the element's value is secondary (theme picker cosmetics, daily-mode link), consider hiding. Weigh vs retention.
+3. **Is it a rule the player needs to understand?** Hook text, demo animation, first-visit-hint — these teach the game. Keep.
+
+Applied to void-pulse:
+- Keep: title, hook, first-visit-hint, demo, Start button.
+- Hide: kbhint, statsBtn.
+- Keep (borderline): theme picker — cosmetic choice, but swapping themes doesn't require playing. Playtested with new players; keeping it helped 1/10 bounce rate when the rest was sparser. YMMV.
+- Keep (context-driven): daily-mode link (only visible when URL has `?daily=1` → never visible on cold-start anyway).
+
+### Why not a separate "simple" overlay layout
+
+The temptation: build two layouts — `.overlay.first-visit` with a sparser markup, and `.overlay` with the full chrome. Easier to reason about, no CSS override gymnastics.
+
+But maintaining two layouts means every change to the start screen (new copy, new button, rearranging) has to happen in two places. The class-driven taper keeps one source of truth for markup; CSS just filters it per-state. Same discipline as `graphics/state-tint.md`'s "one keyframe, many palettes."
+
+### What re-appears after first Start
+
+Teardown removes `.first-visit` atomically — kbhint and statsBtn reappear in the DOM immediately. Players don't see the transition (the overlay is hidden by the time the removal happens), so the next time they hit the start screen (post-first-run), the full return-player chrome is intact. Clean handoff, zero state to track.
+
+### Anti-patterns
+
+- **Hiding the Start button on first visit.** Obviously don't. But easy to trip over by making `first-visit` a gate for "strip to the absolute minimum" without thinking about the core CTA.
+- **Hiding the hook text.** The hook is how they learn the rules before tapping. Required.
+- **Hiding the demo animation.** Same — it's the strongest teaching aid on the overlay.
+- **Using JS to conditionally render.** Markup goes through the client once; CSS filters via class. Don't reach for `document.createElement` when `display: none` does it simpler.
+- **Re-showing hidden elements after the first miss/gameover.** The first-visit state is gone — they're a return player now. Don't try to be clever about "maybe they still want the beginner view." Trust that one run is enough orientation.
+
+### Pairing with other onboarding mechanics
+
+- **Demo animation** (`ux/onboarding.md`) teaches the core mechanic visually — always on.
+- **First-visit hint** (top of this doc) gives a text rule snippet — first visit only.
+- **First-visit taper** (this section) hides return-player chrome — first visit only.
+- **Help modal** (`ux/help-modal.md`) has the full ruleset for anyone, any time.
+- **First-gameover `of max` label** — clarify the % metric on first encounter (see postmortem sprint 46 for the context; also applies on every gameover, not gated on first-visit, so it's a general clarity improvement).
+
+Each layer operates at its own scope and timing. The first-visit layers cooperate by hiding-when-added and showing-when-taught.

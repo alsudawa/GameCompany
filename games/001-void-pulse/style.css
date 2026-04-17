@@ -791,6 +791,16 @@ html, body {
   animation: firstVisitPulse 1.8s ease-in-out infinite;
   box-shadow: 0 0 0 0 rgba(0, 212, 255, .0);
 }
+/* First-visit information hierarchy: strip the start overlay down to the
+   rules + demo + Start button. Keyboard shortcuts and the lifetime-stats
+   link are return-player tools — a brand-new player has no keyboard
+   muscle memory and no stats to look at yet. Showing them on first load
+   just adds noise competing with the core "tap here to start" signal.
+   They'll re-appear on the second page load when first-visit is cleared. */
+.overlay.first-visit .kbhint,
+.overlay.first-visit #statsBtn {
+  display: none;
+}
 @keyframes firstVisitPulse {
   0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) calc(100% * .45), transparent); }
   50%      { box-shadow: 0 0 0 12px color-mix(in srgb, var(--accent) calc(100% * 0), transparent); }

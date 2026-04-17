@@ -2548,6 +2548,123 @@ This is the third sprint extending `graphics/state-tint.md` (after Sprint 39 and
 
 ---
 
+## Sprint 46 — First-visit onboarding audit (subtract, don't just add)
+
+**Lens:** first-visit onboarding has been the same since Sprint 20: add a gold hint line + pulse the Start button. The treatment was additive — things *appear* when `first-visit` is active. But we never asked the inverse question: **what should *disappear* on first visit?** A new player reads the start overlay top-to-bottom looking for "what do I do" and has to parse through return-player tools (keyboard shortcuts, lifetime-stats link) before finding "Tap to start." Every extra element dilutes the CTA.
+
+### The audit — what a first-time player actually sees
+
+Walking through the start overlay as a cold-boot brand-new player:
+
+1. **"void-pulse"** — title. Opaque ("what's that?") but short; moves to next quickly.
+2. **Hook paragraph** — "Tap on the beat. Dodge the red. 60-second chart, chase 100%." — core rules. Needed.
+3. **First-visit hint** — gold-tinted, says "New here? Tap white rings · skip red ones · chase the % score." — reinforcement. Useful, but overlaps with hook.
+4. **Demo animation** — 5.2s loop, good-pulse + TAP then hazard-pulse + SKIP. Strongest teaching tool. Needed.
+5. **"Tap to start" button** — the CTA they're looking for.
+6. **Keyboard shortcut line** — "or press Space · M mute · P pause · T theme · S stats · ? help" — return-player tool. First-timer doesn't know Space means tap yet (the demo and hint teach pointer-first), and doesn't care about mute/pause/theme/stats before they've played.
+7. **"Lifetime stats →"** link — button to open stats panel. First-timer has no stats yet; opening it shows "No runs yet." A dead link from their perspective.
+8. **Daily-mode link** — hidden on cold-start (only shows when URL has `?daily=1`).
+9. **Theme picker** — three color swatches. Cosmetic choice, doesn't need play first. Keep.
+
+Items 6 and 7 are the noise. They're valuable for a return player and confusing/dead for a first-timer.
+
+### Design — taper the chrome with the same parent class
+
+The `.overlay.first-visit` class is already the single toggle point. Extending it from "show hint + pulse button" to also "hide return-player chrome" is one CSS rule:
+
+```css
+.overlay.first-visit .kbhint,
+.overlay.first-visit #statsBtn {
+  display: none;
+}
+```
+
+When the player taps Start, the class is atomically removed, the CSS rules stop applying, kbhint and statsBtn reappear for their next visit. Zero state tracking, zero JS changes. The markup stays the single source of truth.
+
+### Copy polish — "chase 100%" → "chase 100% accuracy"
+
+Raw "chase 100%" raises "of what?" The word "accuracy" answers that implicitly — 100% of what you *could* have hit. Two characters to type, significantly clearer signal to a first-timer. Applied to both the main hook and the first-visit hint for consistency.
+
+Also: "New here?" → "First time?" — warmer, more explicit. "New here" sounds like a question to a returning player ("have I been here before?"). "First time?" is unmistakably onboarding.
+
+### Gameover clarity — "of max" on the pct display
+
+Separate from the first-visit-only treatment, but part of the same audit: **when a first-time player completes their first run, they land on gameover and see "Score: 1240 · 63%"**. The raw "63%" is cryptic — 63% of *what*? The chart? Some enemy's health? The timer?
+
+One-word fix: `"1240 · 63% of max"`. Now the scoring lens is obvious on first encounter: "oh, 63% of the theoretical maximum score. So I should try for 100%."
+
+This is shown on *every* gameover, not just first-visit. That's deliberate — labeling what a number means is never *worse*, and the mature player's attention cost of reading "of max" (3 glyphs) is zero. Universal clarity wins.
+
+Guarded: when `maxPossibleScore === 0` (pre-chart runs, edge cases), fall back to the raw score without the decorator. Don't show "0% of max" or "NaN% of max" — just the score.
+
+### What this sprint didn't do
+
+- **Hide the theme picker on first visit.** Considered. Cosmetic choice is legitimately useful to pick before first play (some players have accessibility needs met by specific palettes). Left visible.
+- **Build a multi-step tutorial.** Would be overbuild for a 60-second casual game. The demo + hint + taper is the right weight class.
+- **Add a "your first run is about to start" countdown** on Start tap. The existing game has a chart lead-in anyway (CHART_LEAD_IN_S); adding an overlay-layer countdown would just double-buffer the pre-run moment.
+- **Change the gameover layout for first-completion.** Considered adding a first-run-only "That was your first run! Here's what these numbers mean..." panel. Deferred — the "of max" clarifier does the heaviest lifting of that idea already, and adding more first-run chrome to the already-dense gameover screen would crowd retries.
+- **Touch the kbhint wording** for return players. It's verbose but that's by choice — players scanning it *have played* and are looking up a specific shortcut.
+
+### Why subtract-at-first-visit beats add-at-return
+
+Naive framing: "show lifetime stats button + kbhint to EVERYONE, let the first-timer ignore what they don't need." But attention is zero-sum. Every element is a mini-decision. A first-timer's goal is *start the game as fast as possible*; every non-CTA element is attention diverted from the CTA.
+
+Better framing: **show only what the current player needs right now.** First-timer needs: rules, CTA. Return-player needs: rules, CTA, quick-access tools (stats, shortcuts). The `.overlay.first-visit` class IS the state axis for "right now"; use it to compose the right view, not just to add ornaments.
+
+This is the same discipline as Sprint 45's "not every tier should propagate to every surface" — different contexts need different information densities, and the parent-class-driven CSS filter is the cheap, correct way to express that.
+
+### Cost
+
+- index.html: 2 copy edits (~4 words changed)
+- style.css: +7 lines (taper rule + comment)
+- game.js: +~6 lines (gameover `of max` label, guarded on `maxPossibleScore > 0`)
+- first-visit-hint.md: +~80 lines new "hiding return-player chrome" section
+- Postmortem Sprint 46 section
+
+### Patterns extracted
+
+Extended [`ux/first-visit-hint.md`](../skills/ux/first-visit-hint.md) with a new section: **"Extension — hiding return-player chrome on first visit (taper pattern)"**. Covers:
+
+- The three-filter decision criteria for "hide on first visit vs keep":
+  1. Does it need a concept the player hasn't earned yet?
+  2. Does it dilute the primary CTA?
+  3. Is it a rule the player needs to understand?
+- Why single-class-driven CSS beats maintaining two markup layouts (DRY, no state drift).
+- What re-appears automatically after first Start (clean handoff, zero state to track).
+- Pairing with other onboarding mechanics (demo, hint, help-modal, first-gameover labeling).
+- Anti-patterns (hiding the CTA, hiding rules text, JS-rendering instead of CSS-filtering).
+
+This was a natural extension of the existing skill doc rather than a new file — the pattern lives in the same conceptual territory. Resisted creating `ux/first-visit-taper.md` as a separate doc; skills should consolidate when they share a core primitive (in this case: `.overlay.first-visit` as the toggle axis).
+
+### Verification
+
+Manual audit as cold-boot new-profile player:
+1. Load game (clear localStorage `void-pulse-seen`). Start overlay shows: title, hook (with "100% accuracy"), first-visit-hint ("First time? ..."), demo loop, Start button. Kbhint and statsBtn hidden. ✓
+2. Tap Start. First-visit class atomically removed; writeSeen() persists the bit. Game begins. ✓
+3. Complete first run, die. Gameover shows "Score: XXX · NN% of max". ✓
+4. Retry → returns to gameplay. Die again. Same display. ✓
+5. Reload page. Start overlay shows full chrome: title, hook, demo, Start, kbhint, statsBtn, theme picker. No first-visit hint, no pulse. ✓
+6. Clear `void-pulse-seen` in devtools, reload. Full first-visit treatment restored (adds + subtracts both). ✓
+7. Reduced-motion cold-boot: pulse disabled on Start button, static outline substitute intact; kbhint/statsBtn still hidden (reduced-motion orthogonal to first-visit). ✓
+
+### Wrap-up
+
+- First-visit onboarding now *subtracts* noise, not just *adds* hints.
+- Kbhint and statsBtn hidden until after first Start.
+- Copy polish: "chase 100%" → "chase 100% accuracy"; "New here?" → "First time?".
+- Gameover % display labeled "of max" for universal clarity.
+- Skill doc extended with taper pattern + decision criteria.
+
+### Next candidates
+
+- **Pause modal a11y** (still open).
+- **Keyboard-only full-flow manual test** (still open, 6 sprints — overdue).
+- **Emoji ladder in share** (deferred from 42).
+- **First-gameover context overlay** — one-shot "that was your first run — here's what % means / what peak combo is / ..." on FIRST gameover only. Same taper discipline (CSS-filter via a `first-gameover` class, cleared on second start()). Would complement this sprint's "of max" label for deeper onboarding.
+- **Localization scaffolding** / **service worker** / **gamepad input** (still open, long).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |
