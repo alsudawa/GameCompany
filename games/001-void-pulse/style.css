@@ -63,6 +63,22 @@ html, body {
   font-size: 28px;
   color: var(--fg);
   min-width: 3ch;
+  transition: color .18s ease, text-shadow .18s ease;
+  display: inline-block;
+  transform-origin: left center;
+}
+#score.approaching-best {
+  color: #ffd24a;
+  text-shadow: 0 0 14px rgba(255, 210, 74, .55), 0 2px 8px rgba(0, 0, 0, .5);
+}
+#score.beaten-best {
+  color: #ffd24a;
+  text-shadow: 0 0 22px rgba(255, 210, 74, .9), 0 2px 8px rgba(0, 0, 0, .5);
+  animation: scoreBeaten 1.4s ease-in-out infinite;
+}
+@keyframes scoreBeaten {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.08); }
 }
 
 #combo {
@@ -157,7 +173,7 @@ html, body {
 .flash { animation: flash .4s ease; }
 
 @media (prefers-reduced-motion: reduce) {
-  .shake, .pop, .flash, .new-best { animation: none !important; }
+  .shake, .pop, .flash, .new-best, #score.beaten-best { animation: none !important; }
 }
 
 /* Mute toggle (top-right) */

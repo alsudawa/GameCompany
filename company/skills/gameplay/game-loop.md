@@ -49,3 +49,43 @@ function start() {
 
 - `FIXED_DT = 1/60` is the default. Use `1/120` only if you need high-precision collision.
 - Cap `acc` at `FIXED_DT * 5` if you're paranoid about spiral-of-death on slow devices.
+
+<!-- added: 2026-04-17 (001-void-pulse sprint 4) -->
+
+## Pattern — Render interpolation for 120/144Hz displays
+
+Fixed-step physics at 60Hz + `requestAnimationFrame` running at 120/144Hz = visible stair-stepping. Each frame, physics hasn't advanced since the previous frame, so positions repeat. Fix: snapshot previous positions before each update step, render at the interpolated value using the leftover accumulator.
+
+```js
+function frame(now) {
+  if (!state.running) return;
+  const dt = Math.min((now - lastTime) / 1000, MAX_DT);
+  lastTime = now;
+  acc += dt;
+  while (acc >= FIXED_DT) {
+    // Snapshot every moving entity's last position before stepping.
+    for (const p of pulses) { if (p.active) p.prevR = p.r; }
+    update(FIXED_DT);
+    acc -= FIXED_DT;
+    if (state.over) break;
+  }
+  // acc ∈ [0, FIXED_DT); use it as an interpolation factor.
+  const alpha = Math.min(1, acc / FIXED_DT);
+  render(alpha);
+  if (!state.over) requestAnimationFrame(frame);
+}
+
+// In render:
+for (const p of pulses) {
+  if (!p.active) continue;
+  const rDraw = p.prevR + (p.r - p.prevR) * alpha;
+  ctx.arc(CENTER_X, CENTER_Y, rDraw, 0, Math.PI * 2);
+  ctx.stroke();
+}
+```
+
+Also initialize `prevR = 0` at spawn so a new pulse renders cleanly from frame 1 without "popping" from an old `prevR` of an inactive slot.
+
+**Physics stays deterministic** (still 60Hz fixed-step); **display runs native-refresh**. This is one of the highest-ROI visual upgrades a Canvas game can ship.
+
+**Don't interpolate everything.** Particles / timers / flash overlays are too short-lived for interpolation to matter — stick to the main entities (player, projectiles, enemies, pulses).

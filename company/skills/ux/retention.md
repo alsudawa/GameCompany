@@ -89,4 +89,72 @@ Put the mute icon **outside** the canvas (absolute-positioned in the `#app` cont
 - **Mute button inside canvas pointerdown area.** Without `stopPropagation`, a mute tap also registers as a game tap. Put it outside the play surface in z-order.
 - **No localStorage try/catch.** Safari private mode throws on `localStorage.setItem`. Guard every call.
 
+<!-- added: 2026-04-17 (001-void-pulse sprint 4) -->
+
+## Pattern — Approaching-best HUD hype
+
+Most casual games only celebrate at game-over. But the ~10 seconds before the player beats their best is pure tension — *show it*. Shift the score HUD into a "hype" state when the player is in striking distance, then again when they pass.
+
+```js
+// In render, toggle classes only when state changes (avoids style recalcs)
+const approaching = state.best > 0 && state.score >= state.best * 0.8 && state.score < state.best;
+const beaten      = state.best > 0 && state.score > state.best;
+if (approaching !== hudScoreApproaching) {
+  hudScore.classList.toggle('approaching-best', approaching);
+  hudScoreApproaching = approaching;
+}
+if (beaten !== hudScoreBeaten) {
+  hudScore.classList.toggle('beaten-best', beaten);
+  hudScoreBeaten = beaten;
+}
+```
+
+```css
+#score.approaching-best {
+  color: #ffd24a;                                          /* cyan → gold */
+  text-shadow: 0 0 14px rgba(255, 210, 74, .55);
+}
+#score.beaten-best {
+  color: #ffd24a;
+  text-shadow: 0 0 22px rgba(255, 210, 74, .9);
+  animation: scoreBeaten 1.4s ease-in-out infinite;
+}
+@keyframes scoreBeaten {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.08); }
+}
+```
+
+Three states total: normal → approaching (80%+) → beaten (101%+). Don't add a 4th threshold; players can't track more.
+
+**Pair with end-of-run NEW BEST.** Approaching/beaten = "you're doing it" during play. NEW BEST = "you did it" after. Two reinforcements, neither redundant.
+
+## Pattern — HUD diff-tracking to avoid style recalc churn
+
+Avoid setting `element.textContent = value` and toggling classes every frame unconditionally — that triggers style recalculation whether the value changed or not.
+
+```js
+// BAD — 60 style recalcs per second even when nothing changed:
+hudScore.textContent = state.score;
+hudScore.classList.toggle('approaching-best', approaching);
+
+// GOOD — only touch DOM on actual transitions:
+let lastDisplayedScore = 0;
+let hudScoreApproaching = false;
+
+if (state.score !== lastDisplayedScore) {
+  hudScore.textContent = state.score;
+  if (state.score > lastDisplayedScore && lastDisplayedScore > 0) {
+    retriggerClass(hudScore, 'pop');     // pop animation only on actual increase
+  }
+  lastDisplayedScore = state.score;
+}
+if (approaching !== hudScoreApproaching) {
+  hudScore.classList.toggle('approaching-best', approaching);
+  hudScoreApproaching = approaching;
+}
+```
+
+Skip the pop on `lastDisplayedScore === 0` transitions so game-start (0 → 0) and game-over → retry (0 → 0) don't fire stale animations.
+
 <!-- added: 2026-04-17 (001-void-pulse sprint 3) -->

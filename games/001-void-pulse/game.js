@@ -66,7 +66,28 @@
 
   const pulses = [];
   for (let i = 0; i < PULSE_POOL_SIZE; i++) {
-    pulses.push({ active: false, r: 0, speed: 0, heartbeat: false, bornT: 0 });
+    pulses.push({ active: false, r: 0, prevR: 0, speed: 0, heartbeat: false, bornT: 0 });
+  }
+
+  // Pre-generated starfield backdrop for subtle texture — zero-allocation render.
+  const STAR_COUNT = 40;
+  const stars = [];
+  for (let i = 0; i < STAR_COUNT; i++) {
+    stars.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      size: 1 + Math.random() * 1.4,
+      phase: Math.random() * Math.PI * 2,
+    });
+  }
+
+  // Detect reduced motion once — used to gate haptics + anim-heavy effects
+  // beyond what CSS @media (prefers-reduced-motion) already disables.
+  const reducedMotion = typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function haptic(ms) {
+    if (reducedMotion) return;
+    if (navigator.vibrate) navigator.vibrate(ms);
   }
 
   const particles = [];
@@ -319,6 +340,7 @@
       Sfx.miss();
       state.shakeT = 0.2;
       retriggerClass(app, 'shake');
+      haptic(20);
     }
     if (state.combo > state.peakCombo) state.peakCombo = state.combo;
   }
@@ -361,6 +383,7 @@
       if (p.active) continue;
       p.active = true;
       p.r = 0;
+      p.prevR = 0;
       p.speed = speedAt(state.t);
       p.heartbeat = heartbeat;
       p.bornT = state.t;
@@ -463,9 +486,24 @@
     updateParticles(dt);
   }
 
+  // HUD diff-tracking — avoids DOM churn when values haven't changed.
+  let lastDisplayedScore = 0;
+  let hudScoreApproaching = false;
+  let hudScoreBeaten = false;
+
   // ---------- 6. Render ----------
-  function render() {
+  function render(alpha) {
     ctx.clearRect(0, 0, W, H);
+
+    // Starfield — drawn first, faintly twinkling; gets softly washed by the
+    // vignette above it so it reads as "depth" not "pattern".
+    ctx.fillStyle = getVar('--fg');
+    for (const s of stars) {
+      const tw = 0.5 + 0.5 * Math.sin(state.t * 1.2 + s.phase);
+      ctx.globalAlpha = 0.18 + tw * 0.22;
+      ctx.fillRect(s.x - s.size / 2, s.y - s.size / 2, s.size, s.size);
+    }
+    ctx.globalAlpha = 1;
 
     // background vignette (intensifies with combo)
     const heat = Math.min(1, state.combo / 30);
@@ -506,16 +544,19 @@
     ctx.restore();
     ctx.globalAlpha = 1;
 
-    // pulses — highlight the one the tap would judge (nearest to ring)
+    // pulses — highlight the one the tap would judge (nearest to ring).
+    // Radius is interpolated between previous and current fixed-step values
+    // so 120Hz displays get smooth motion without running physics at refresh.
     const judgePulse = findJudgePulse();
     for (const p of pulses) {
       if (!p.active) continue;
+      const rDraw = p.prevR + (p.r - p.prevR) * alpha;
       const color = p.heartbeat ? getVar('--danger') : getVar('--fg');
       ctx.strokeStyle = color;
       ctx.lineWidth = p === judgePulse ? 4.5 : 3;
-      ctx.globalAlpha = Math.min(1, 0.5 + p.r / 260);
+      ctx.globalAlpha = Math.min(1, 0.5 + rDraw / 260);
       ctx.beginPath();
-      ctx.arc(CENTER_X, CENTER_Y, p.r, 0, Math.PI * 2);
+      ctx.arc(CENTER_X, CENTER_Y, rDraw, 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
@@ -536,7 +577,23 @@
     }
 
     // HUD
-    hudScore.textContent = state.score;
+    if (state.score !== lastDisplayedScore) {
+      hudScore.textContent = state.score;
+      if (state.score > lastDisplayedScore && lastDisplayedScore > 0) {
+        retriggerClass(hudScore, 'pop');
+      }
+      lastDisplayedScore = state.score;
+    }
+    const approaching = state.best > 0 && state.score >= state.best * 0.8 && state.score < state.best;
+    const beaten      = state.best > 0 && state.score > state.best;
+    if (approaching !== hudScoreApproaching) {
+      hudScore.classList.toggle('approaching-best', approaching);
+      hudScoreApproaching = approaching;
+    }
+    if (beaten !== hudScoreBeaten) {
+      hudScore.classList.toggle('beaten-best', beaten);
+      hudScoreBeaten = beaten;
+    }
     const m = comboMult();
     if (state.combo > 0) {
       const multStr = m > 1 ? '×' + (m % 1 === 0 ? m : m.toFixed(1)) + ' ' : '';
@@ -547,6 +604,10 @@
   }
 
   // ---------- 7. Loop ----------
+  // Fixed-timestep simulation + interpolated render. On 120/144Hz displays the
+  // render runs more often than update, so we draw each pulse at its
+  // prev→cur position lerped by the leftover accumulator — smooth motion
+  // without running physics at the refresh rate.
   let lastTime = 0;
   let acc = 0;
   function frame(now) {
@@ -555,11 +616,13 @@
     lastTime = now;
     acc += dt;
     while (acc >= FIXED_DT) {
+      for (const p of pulses) { if (p.active) p.prevR = p.r; }
       update(FIXED_DT);
       acc -= FIXED_DT;
       if (state.over) break;
     }
-    render();
+    const alpha = Math.min(1, acc / FIXED_DT);
+    render(alpha);
     if (!state.over) requestAnimationFrame(frame);
   }
 
@@ -588,6 +651,10 @@
     extraSpawns.length = 0;
     updateLivesUI();
     newBestEl.classList.remove('visible');
+    hudScore.classList.remove('approaching-best', 'beaten-best');
+    lastDisplayedScore = 0;
+    hudScoreApproaching = false;
+    hudScoreBeaten = false;
 
     overlay.classList.remove('visible'); overlay.classList.add('hidden');
     gameoverEl.classList.remove('visible'); gameoverEl.classList.add('hidden');
@@ -616,6 +683,7 @@
     if (state.newBestThisRun) {
       newBestEl.classList.add('visible');
       Sfx.levelup();
+      haptic([40, 40, 80]);
     }
     retriggerClass(app, 'shake');
     app.classList.add('flash');

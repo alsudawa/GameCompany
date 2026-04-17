@@ -143,3 +143,35 @@
 - [x] Run-end stats show per-run peaks; NEW BEST appears only when genuinely beating a prior run.
 - [x] Node syntax check: pass.
 
+---
+
+# Sprint 4 — Juice, smoothness, and hype (2026-04-17)
+
+**Directive:** "keep running — find improvements from multiple angles, not just bugs."
+
+## Shipped
+
+### Smoothness
+- **Render interpolation for 120/144Hz displays.** Loop snapshots `p.prevR` before each fixed-step update; render draws each pulse at `prevR + (r - prevR) * alpha` where `alpha = acc / FIXED_DT`. Physics stays at 60Hz for determinism; display runs at native refresh. Silky on high-Hz phones/laptops without burning CPU on faster physics.
+
+### HUD feel
+- **Score pop on increase.** When `state.score` changes, toggle the `.pop` class on the score element. Suppressed on start (0 → N) so restarting doesn't fire a stale animation.
+- **Approaching-best glow.** `#score.approaching-best` kicks in at 80% of best — color shifts cyan→gold with a soft glow. Tells the player they're in striking distance without an explicit progress bar.
+- **Beaten-best pulse.** When score passes best *during* play, `#score.beaten-best` adds a 1.4s breathing scale animation. Layers with the end-of-run NEW BEST pill: one says "you're doing it," the other says "you did it."
+
+### Mobile delight
+- **Haptic feedback.** `navigator.vibrate(20)` on miss, `[40,40,80]` on NEW BEST. Gated by `'vibrate' in navigator` and `prefers-reduced-motion` so neither desktop nor motion-sensitive players get unexpected buzz.
+
+### Visual variety
+- **Starfield backdrop.** 40 pre-generated stars, each with random phase; twinkle via `sin(state.t * 1.2 + phase)`. Drawn first so the vignette softens them. Zero-allocation render (positions are fixed, only alpha computed per frame). Adds "depth" without competing with rings.
+
+## Retest
+
+- [x] On a 120Hz display, pulses now move in small sub-pixel increments instead of visible 60Hz stair-stepping.
+- [x] Score pop triggers on every scoring tap; no pop on game-start (score 0 → 0 transition).
+- [x] Approaching-best glow at 80% and beyond; pulse kicks in at 101%+.
+- [x] `navigator.vibrate` no-op on desktop; fires on Android Chrome (confirmed via console stub).
+- [x] Stars don't compete with pulses — alpha stays ≤ 0.4 through the twinkle cycle.
+- [x] `prefers-reduced-motion`: score pop / beaten-pulse / haptics all disabled.
+- [x] Node syntax check: pass.
+

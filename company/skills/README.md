@@ -19,12 +19,14 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`graphics/svg-sprites.md`](graphics/svg-sprites.md) — inline SVG sprite patterns, no image files
 - [`graphics/css-animation.md`](graphics/css-animation.md) — shake / pop / flash keyframes
 - [`graphics/particle-fx.md`](graphics/particle-fx.md) — canvas particle pool
+- [`graphics/backdrop.md`](graphics/backdrop.md) — zero-alloc starfield, depth via twinkle
 
 ### Audio
 - [`audio/web-audio-sfx.md`](audio/web-audio-sfx.md) — oscillator + envelope SFX recipes; spawn-tick anchor
 
 ### Mobile
 - [`mobile/dpr-canvas.md`](mobile/dpr-canvas.md) — DPR-aware canvas for crisp rendering on retina
+- [`mobile/haptics.md`](mobile/haptics.md) — `navigator.vibrate()` patterns + reduced-motion gating
 
 ### UX
 - [`ux/retention.md`](ux/retention.md) — run-end stats, NEW BEST gating, mute persistence
