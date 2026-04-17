@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GameCompany — an AI-only casual game studio</title>
+  <meta name="description" content="Single-file browser casual games from an all-AI-agent game studio." />
+  <style>
+    :root {
+      --bg: #0a0e1f;
+      --fg: #e8e9ff;
+      --accent: #00d4ff;
+      --danger: #ff3d6b;
+      --subtle: #2a2e5c;
+      --shadow: 0 6px 24px rgba(0,0,0,.35);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    body {
+      background:
+        radial-gradient(ellipse 900px 600px at 50% -10%, rgba(0,212,255,.10), transparent 70%),
+        radial-gradient(ellipse 700px 500px at 50% 110%, rgba(255,61,107,.08), transparent 70%),
+        var(--bg);
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+    .wrap {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 48px 24px 64px;
+      flex: 1;
+      width: 100%;
+    }
+    header { margin-bottom: 48px; }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      font-size: 22px;
+    }
+    .brand-dot {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 18px var(--accent);
+      animation: pulse 1.6s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%,100% { transform: scale(1); opacity: .9; }
+      50%     { transform: scale(1.3); opacity: 1; }
+    }
+    h1 {
+      font-size: clamp(34px, 6vw, 56px);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.05;
+      margin-top: 32px;
+      max-width: 18ch;
+    }
+    h1 .accent { color: var(--accent); }
+    .lede {
+      margin-top: 16px;
+      font-size: clamp(16px, 2.2vw, 19px);
+      color: var(--fg);
+      opacity: .8;
+      max-width: 58ch;
+      line-height: 1.55;
+    }
+    .tags {
+      margin-top: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .tag {
+      font-size: 12px;
+      font-weight: 700;
+      padding: 5px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(232,233,255,.15);
+      color: var(--fg);
+      opacity: .75;
+    }
+    .catalog-title {
+      margin-top: 56px;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: var(--accent);
+      opacity: .85;
+    }
+    .games {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      margin-top: 20px;
+    }
+    @media (min-width: 640px) {
+      .games { grid-template-columns: 1fr 1fr; }
+    }
+    .card {
+      position: relative;
+      background: linear-gradient(180deg, rgba(42,46,92,.35), rgba(42,46,92,.1));
+      border: 1px solid rgba(0,212,255,.18);
+      border-radius: 18px;
+      padding: 22px;
+      text-decoration: none;
+      color: var(--fg);
+      transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow: hidden;
+    }
+    .card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(0,212,255,.45);
+      box-shadow: 0 10px 30px rgba(0,212,255,.08), var(--shadow);
+    }
+    .card .id {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .18em;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+    .card h3 {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    .card p { opacity: .82; line-height: 1.5; font-size: 15px; }
+    .card .play {
+      margin-top: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      color: var(--accent);
+      font-size: 14px;
+    }
+    .card .play::after {
+      content: "→";
+      transition: transform .15s ease;
+    }
+    .card:hover .play::after { transform: translateX(4px); }
+
+    .card.soon {
+      opacity: .55;
+      pointer-events: none;
+      border-style: dashed;
+    }
+
+    .team {
+      margin-top: 56px;
+      padding: 24px;
+      background: rgba(42,46,92,.18);
+      border-radius: 18px;
+      border: 1px solid rgba(232,233,255,.08);
+    }
+    .team h2 {
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: var(--danger);
+      margin-bottom: 14px;
+    }
+    .roster {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px 24px;
+      font-size: 14px;
+    }
+    .roster div { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px dashed rgba(232,233,255,.08); }
+    .roster span:last-child {
+      color: var(--accent);
+      font-variant: small-caps;
+      font-weight: 700;
+      letter-spacing: .05em;
+    }
+    footer {
+      margin-top: 48px;
+      padding: 24px;
+      font-size: 13px;
+      opacity: .6;
+      text-align: center;
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand"><span class="brand-dot"></span> GameCompany</div>
+      <h1>Casual games, shipped by <span class="accent">agents</span>.</h1>
+      <p class="lede">
+        An all-AI game studio. One human CEO delegates; six specialist agents
+        (Producer, Designer, Lead Dev, Artist, Sound, QA) cooperate on a
+        fixed six-stage pipeline. Every title is a single-file web game — no
+        build step, no dependencies, no external assets.
+      </p>
+      <div class="tags">
+        <span class="tag">HTML5</span>
+        <span class="tag">Vanilla JS</span>
+        <span class="tag">Inline SVG</span>
+        <span class="tag">Web Audio</span>
+        <span class="tag">Zero deps</span>
+      </div>
+    </header>
+
+    <div class="catalog-title">Games catalog</div>
+    <section class="games">
+      <a class="card" href="games/001-void-pulse/index.html">
+        <div class="id">001 · void-pulse</div>
+        <h3>void-pulse</h3>
+        <p>Tap the ring the moment a void pulse expands through it. Survive the heartbeat as it speeds up and splits into polyrhythms.</p>
+        <div class="play">Play now</div>
+      </a>
+      <div class="card soon">
+        <div class="id">002 · tba</div>
+        <h3>next drop</h3>
+        <p>The studio's second game. Designer is picking the mechanic.</p>
+        <div class="play">coming</div>
+      </div>
+    </section>
+
+    <div class="team">
+      <h2>The team</h2>
+      <div class="roster">
+        <div><span>Producer</span><span>Sonnet</span></div>
+        <div><span>Game Designer</span><span>Opus</span></div>
+        <div><span>Lead Developer</span><span>Sonnet</span></div>
+        <div><span>Artist</span><span>Haiku</span></div>
+        <div><span>Sound Designer</span><span>Haiku</span></div>
+        <div><span>QA Tester</span><span>Haiku</span></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Source on <a href="https://github.com/alsudawa/gamecompany">GitHub</a> ·
+    Built by AI agents orchestrated with Claude Code.
+  </footer>
+</body>
+</html>
