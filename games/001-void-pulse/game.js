@@ -72,51 +72,69 @@
   // '_' = rest. Eight 8th-note slots per bar. Hand-tuned to feel musical:
   // downbeats always have a note (no empty bar starts), rests fall on weak
   // subdivisions, hazards are placed where a "reflex" tap is tempting.
+  // Bar template library. 'N' = normal pulse, 'H' = hazard (do NOT tap),
+  // '_' = rest. Eight 8th-note slots per bar. Tuned so density & hazard
+  // frequency escalate musically without overwhelming: downbeats always carry
+  // a note, hazards sit on weak or tempting-to-reflex slots, each band leaves
+  // breath-room so the player can parse the pattern.
+  //
+  // Sprint 30 tuning: pulled hazard density down in mid/hard, inserted extra
+  // rest slots in climax, and added an extra template per band so repetition
+  // feels fresh. Goal: user reported "정신없이" (overwhelming) shortly past the
+  // opening — the ramp now stays readable deeper into the run.
   const BAR_TEMPLATES = {
-    warm:  [  // bars 1-2: establishes rhythm, no hazards, wide gaps
+    warm:  [  // establishes rhythm, no hazards, wide gaps
       ['N','_','_','_','N','_','_','_'],
       ['N','_','_','_','N','_','N','_'],
+      ['N','_','N','_','N','_','_','_'],
     ],
-    easy:  [  // bars 3-6: quarter-note pulse, one hazard on offbeat per bar
+    easy:  [  // quarter-note pulse, at most one hazard per bar, always late slot
       ['N','_','N','_','N','_','N','_'],
-      ['N','_','N','_','N','H','N','_'],
       ['N','_','N','_','N','_','N','H'],
+      ['N','_','N','_','N','_','_','H'],
+      ['N','_','N','_','N','H','N','_'],
     ],
-    mid:   [  // bars 7-14: 8th-note density, hazards paired with offbeats
+    mid:   [  // 8th-note density; hazards always preceded by a rest (telegraph)
+      ['N','_','N','_','N','_','N','H'],
       ['N','_','N','H','N','_','N','_'],
       ['N','N','_','_','N','_','N','H'],
-      ['N','_','N','_','N','H','N','N'],
-      ['N','H','_','_','N','_','N','H'],
+      ['N','_','N','_','N','H','_','N'],
+      ['N','_','_','H','N','_','N','H'],
     ],
-    hard:  [  // bars 15-22: dense, hazards clustered, syncopation
-      ['N','N','H','_','N','_','N','H'],
-      ['N','_','H','N','N','H','N','_'],
-      ['N','H','N','_','N','N','H','N'],
-      ['N','N','_','H','N','_','H','N'],
+    hard:  [  // syncopation, max 2 hazards/bar, never back-to-back
+      ['N','_','N','H','N','_','N','H'],
+      ['N','H','N','_','N','_','H','N'],
+      ['N','_','H','_','N','H','N','N'],
+      ['N','N','_','H','N','_','H','_'],
     ],
-    climax:[  // bars 23-28: maximum density + hazard-normal alternation
-      ['N','H','N','H','N','N','H','N'],
-      ['N','N','H','N','N','H','N','H'],
-      ['H','N','N','H','N','H','N','N'],
-      ['N','N','N','H','N','H','H','N'],
+    climax:[  // tension peak — but always a rest slot to re-sync vision
+      ['N','H','N','_','N','H','N','_'],
+      ['N','_','H','N','N','H','_','N'],
+      ['H','_','N','H','N','_','N','H'],
+      ['N','H','N','_','H','N','_','N'],
     ],
-    out:   [  // bars 29-30: fade — sparse normal notes, no hazards (finish line)
+    out:   [  // fade — sparse normal notes, no hazards (finish line)
       ['N','_','_','_','N','_','_','_'],
       ['N','_','_','_','_','_','N','_'],
+      ['N','_','N','_','_','_','_','_'],
     ],
   };
   // Speed per difficulty band — controls ring travel time, which affects
   // react-window size. Faster speeds on harder bars compress decision time
-  // without changing the beat grid (pulses still arrive ON the beat).
-  const BAND_SPEED = { warm: 300, easy: 340, mid: 400, hard: 470, climax: 540, out: 400 };
+  // without changing the beat grid (pulses still arrive ON the beat). Sprint
+  // 30: dropped climax from 540 → 495 so the peak bars stay readable.
+  const BAND_SPEED = { warm: 300, easy: 340, mid: 400, hard: 460, climax: 495, out: 380 };
   // Bar-by-bar difficulty band assignment. Length must equal BARS.
+  // Sprint 30 reshape: stretched warm (2→3) and easy (4→6), trimmed hard
+  // (8→6) and climax (6→4), extended out (2→3). Total stays 30 bars ~60s but
+  // the player now has longer to read the grid before density ramps.
   const BAND_SCHEDULE = [
-    'warm','warm',
-    'easy','easy','easy','easy',
+    'warm','warm','warm',
+    'easy','easy','easy','easy','easy','easy',
     'mid','mid','mid','mid','mid','mid','mid','mid',
-    'hard','hard','hard','hard','hard','hard','hard','hard',
-    'climax','climax','climax','climax','climax','climax',
-    'out','out',
+    'hard','hard','hard','hard','hard','hard',
+    'climax','climax','climax','climax',
+    'out','out','out',
   ];
 
   // Schema version — bump when scoring model changes so old bests (which
@@ -1062,6 +1080,231 @@
     },
   };
 
+  // ---------- BGM: beat-synced background track (Sprint 30) ----------
+  // Music locked to the 120 BPM chart grid so pulses and audio share a beat.
+  // Five voices (kick / snare / hat / bass / motif) thicken as difficulty bands
+  // escalate. Scheduled via `ctx.currentTime + delay` lookahead (60ms tick,
+  // 250ms horizon) — NOT setTimeout — so drift never exceeds sub-sample at
+  // 44.1kHz. Routed through its own gain node that feeds Sfx.master, so the
+  // three-state bus (normal/beaten/duck) and the mute suspend apply uniformly.
+  //
+  // Pattern grids: 1 = hit, 0 = rest. One bar = 8 eighth-note slots.
+  const BGM_PATTERN = {
+    warm:   { kick:[1,0,0,0,0,0,0,0], snare:[0,0,0,0,0,0,0,0], hat:[1,0,1,0,1,0,1,0], bass:[0,0,0,0,0,0,0,0], motif:[0,0,0,0,0,0,0,0] },
+    easy:   { kick:[1,0,0,0,1,0,0,0], snare:[0,0,0,0,0,0,0,0], hat:[1,0,1,0,1,0,1,0], bass:[0,0,0,0,0,0,0,0], motif:[0,0,0,0,0,0,0,0] },
+    mid:    { kick:[1,0,0,0,1,0,0,0], snare:[0,0,0,0,1,0,0,1], hat:[1,1,1,1,1,1,1,1], bass:[1,0,0,0,1,0,0,0], motif:[0,0,0,0,0,0,0,0] },
+    hard:   { kick:[1,0,0,1,1,0,0,0], snare:[0,0,0,0,1,0,0,1], hat:[1,1,1,1,1,1,1,1], bass:[1,0,1,0,1,0,1,0], motif:[0,0,0,1,0,0,0,0] },
+    climax: { kick:[1,0,1,0,1,0,1,0], snare:[0,0,1,0,1,0,1,0], hat:[1,1,1,1,1,1,1,1], bass:[1,1,1,1,1,1,1,1], motif:[1,0,0,1,0,1,0,0] },
+    out:    { kick:[1,0,0,0,1,0,0,0], snare:[0,0,0,0,0,0,0,0], hat:[1,0,0,0,1,0,0,0], bass:[0,0,0,0,0,0,0,0], motif:[0,0,0,0,0,0,0,0] },
+  };
+  // A natural minor-7 motif phrase cycled by slot index — hypnotic, sits under
+  // the ring's cyan/magenta palette without fighting the SFX frequency range.
+  const BGM_MOTIF_SEMITONES = [0, 3, 7, 10];  // A C E G
+  // Hard-phase bass walks 0 → -2 → -5 → 0 across its 4 bars for harmonic
+  // motion; other bands stay on the root so the music doesn't muddy the chart.
+  const BGM_BASS_WALK_HARD = [0, -2, -5, 0];
+  const BGM_MASTER_GAIN = 0.26;   // submix under Sfx.master; leaves headroom for taps
+  const BGM_LOOKAHEAD_S = 0.25;
+  const BGM_TICK_MS = 60;
+  const BGM_EIGHTH_S = 0.25;       // 120 BPM, 8th note
+
+  const BGM = {
+    timer: null,
+    anchor: 0,               // ctx-time of slot 0 (first chart bar downbeat)
+    scheduledThrough: -1,    // highest slot index already queued
+    running: false,          // has start() been called and not yet stopped?
+    paused: false,           // true while pauseGame is active
+    pauseStartT: 0,          // ctx.currentTime captured when paused
+    gain: null,
+    ctx: null,
+    bands: null,
+    _noise: null,
+
+    start(sfx, bands, runAnchorCtxT) {
+      if (!sfx || !sfx.ctx) return;
+      if (this.running) this.stop();
+      this.ctx = sfx.ctx;
+      this.gain = this.ctx.createGain();
+      this.gain.gain.value = state.muted ? 0 : BGM_MASTER_GAIN;
+      this.gain.connect(sfx.master);
+      this.anchor = runAnchorCtxT;
+      this.bands = bands;
+      this.scheduledThrough = -1;
+      this.running = true;
+      this.paused = false;
+      this._scheduleAhead();
+      this.timer = setInterval(() => this._scheduleAhead(), BGM_TICK_MS);
+    },
+    stop() {
+      if (this.timer) { clearInterval(this.timer); this.timer = null; }
+      this.running = false;
+      this.paused = false;
+      const g = this.gain;
+      const ctx = this.ctx;
+      if (g && ctx) {
+        try {
+          g.gain.cancelScheduledValues(ctx.currentTime);
+          g.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.05);
+        } catch { g.gain.value = 0; }
+        setTimeout(() => { try { g.disconnect(); } catch {} }, 90);
+      }
+      this.gain = null;
+    },
+    pause() {
+      if (!this.running || this.paused || !this.ctx) return;
+      this.paused = true;
+      // Track pause in wall-clock ms — ctx.currentTime freezes when the
+      // AudioContext is suspended (e.g. mute mid-run), which would under-
+      // report the real elapsed time needed to re-align with state.t on
+      // resume. performance.now() keeps advancing regardless.
+      this.pauseStartT = performance.now();
+      if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    },
+    resume() {
+      if (!this.running || !this.paused || !this.ctx) return;
+      // Slide the anchor forward by the paused duration so chart slots
+      // (which advance on state.t, not ctx time) re-align with the BGM grid.
+      const dtS = (performance.now() - this.pauseStartT) / 1000;
+      this.anchor += dtS;
+      this.paused = false;
+      this._scheduleAhead();
+      this.timer = setInterval(() => this._scheduleAhead(), BGM_TICK_MS);
+    },
+    setMuted(m) {
+      if (!this.ctx) return;
+      // If we're in the middle of a run, a mute means the AudioContext is
+      // about to be suspended — pause the scheduler so we don't silently
+      // drift relative to the chart. On unmute we resume with an anchor
+      // shift equal to the paused duration.
+      if (this.running && !state.paused) {
+        if (m && !this.paused) this.pause();
+        else if (!m && this.paused) this.resume();
+      }
+      if (!this.gain) return;
+      const target = m ? 0 : BGM_MASTER_GAIN;
+      try {
+        this.gain.gain.cancelScheduledValues(this.ctx.currentTime);
+        this.gain.gain.linearRampToValueAtTime(target, this.ctx.currentTime + 0.05);
+      } catch { this.gain.gain.value = target; }
+    },
+    _scheduleAhead() {
+      if (!this.running || this.paused) return;
+      if (!this.ctx || this.ctx.state !== 'running') return;
+      const nowT = this.ctx.currentTime;
+      const horizon = nowT + BGM_LOOKAHEAD_S;
+      const maxSlot = this.bands.length * 8 - 1;
+      while (this.scheduledThrough < maxSlot) {
+        const nextIdx = this.scheduledThrough + 1;
+        const whenT = this.anchor + nextIdx * BGM_EIGHTH_S;
+        if (whenT > horizon) break;
+        if (whenT >= nowT - 0.02) this._playSlot(nextIdx, whenT);
+        this.scheduledThrough = nextIdx;
+      }
+      if (this.scheduledThrough >= maxSlot) this.stop();
+    },
+    _playSlot(idx, whenT) {
+      const bar = Math.floor(idx / 8);
+      const slot = idx % 8;
+      const band = this.bands[bar];
+      const pat = BGM_PATTERN[band];
+      if (!pat) return;
+      if (pat.kick[slot])  this._kick(whenT);
+      if (pat.snare[slot]) this._snare(whenT);
+      if (pat.hat[slot])   this._hat(whenT);
+      if (pat.bass[slot]) {
+        let semis = 0;
+        if (band === 'hard') {
+          // Find first hard bar in the schedule so the walk always starts
+          // from the first hard bar regardless of schedule length changes.
+          let hardStart = this.bands.indexOf('hard');
+          if (hardStart < 0) hardStart = bar;
+          const hbi = bar - hardStart;
+          semis = BGM_BASS_WALK_HARD[((hbi % 4) + 4) % 4] | 0;
+        }
+        this._bass(whenT, semis);
+      }
+      if (pat.motif[slot]) {
+        this._motif(whenT, BGM_MOTIF_SEMITONES[slot % BGM_MOTIF_SEMITONES.length]);
+      }
+    },
+    _noiseBuf() {
+      if (this._noise) return this._noise;
+      const sr = this.ctx.sampleRate;
+      const buf = this.ctx.createBuffer(1, Math.floor(sr * 0.25), sr);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      this._noise = buf;
+      return buf;
+    },
+    _kick(t) {
+      const ctx = this.ctx;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(120, t);
+      o.frequency.exponentialRampToValueAtTime(40, t + 0.16);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.22, t + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+      o.connect(g).connect(this.gain);
+      o.start(t); o.stop(t + 0.2);
+    },
+    _snare(t) {
+      const ctx = this.ctx;
+      const src = ctx.createBufferSource(); src.buffer = this._noiseBuf();
+      const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1800;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.18, t + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+      src.connect(hp).connect(g).connect(this.gain);
+      src.start(t); src.stop(t + 0.14);
+      // Tight 320Hz body blip adds snap.
+      const o = ctx.createOscillator(); const og = ctx.createGain();
+      o.type = 'square'; o.frequency.setValueAtTime(320, t);
+      og.gain.setValueAtTime(0.0001, t);
+      og.gain.exponentialRampToValueAtTime(0.06, t + 0.005);
+      og.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+      o.connect(og).connect(this.gain);
+      o.start(t); o.stop(t + 0.1);
+    },
+    _hat(t) {
+      const ctx = this.ctx;
+      const src = ctx.createBufferSource(); src.buffer = this._noiseBuf();
+      const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 7000;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.09, t + 0.003);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
+      src.connect(hp).connect(g).connect(this.gain);
+      src.start(t); src.stop(t + 0.05);
+    },
+    _bass(t, semis) {
+      const ctx = this.ctx;
+      const freq = 55 * Math.pow(2, semis / 12);  // A1 = 55Hz
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.14, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
+      o.connect(g).connect(this.gain);
+      o.start(t); o.stop(t + 0.26);
+    },
+    _motif(t, semis) {
+      const ctx = this.ctx;
+      const freq = 220 * Math.pow(2, semis / 12);  // A3 = 220Hz
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.10, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+      o.connect(g).connect(this.gain);
+      o.start(t); o.stop(t + 0.24);
+    },
+  };
+
   // ---------- CSS var helper (cached) ----------
   const cssVar = {};
   function getVar(name) {
@@ -1228,6 +1471,7 @@
       state.muted = !state.muted;
       writeMuted(state.muted);
       Sfx.applyMute();
+      BGM.setMuted(state.muted);
       applyMuteUI();
       return;
     }
@@ -1284,6 +1528,7 @@
     state.muted = !state.muted;
     writeMuted(state.muted);
     Sfx.applyMute();
+    BGM.setMuted(state.muted);
     applyMuteUI();
   });
   applyMuteUI();
@@ -2104,6 +2349,7 @@
     pauseEl.classList.add('visible');
     pauseEl.setAttribute('aria-hidden', 'false');
     Sfx.setBus('duck');
+    BGM.pause();
   }
   function beginResumeCountdown() {
     if (!state.paused) return;
@@ -2520,6 +2766,7 @@
           state.paused = false;
           state.resumeAt = 0;
           clearPauseOverlay();
+          BGM.resume();
           lastTime = now;
           acc = 0;
         } else {
@@ -2642,6 +2889,12 @@
     state.chartIdx = 0;
     state.chartDone = false;
     state.maxPossibleScore = built.maxScore;
+    // Kick off the beat-synced BGM. Anchor to Sfx.ctx time + lead-in so the
+    // first downbeat lines up with the first chart pulse arriving at ring-R.
+    if (Sfx.ctx) {
+      const runAnchorCtxT = Sfx.ctx.currentTime + CHART_LEAD_IN_S;
+      BGM.start(Sfx, BAND_SCHEDULE, runAnchorCtxT);
+    }
     resetSrTierCache();
     announce('Chart started. ' + state.lives + ' lives.');
     app.classList.remove('deathcam');
@@ -2693,6 +2946,7 @@
     state.paused = false;
     state.resumeAt = 0;
     clearPauseOverlay();
+    BGM.stop();
     state.gameoverAtMs = performance.now();
     const prevBest = state.best;
     if (state.score > state.best) {
