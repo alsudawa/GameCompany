@@ -1267,6 +1267,63 @@ Accessibility. Auditing the current HTML surfaced a silent-majority bug: `<div i
 
 ---
 
+## Sprint 28 — Performance / power lens / runtime lifecycle (2026-04-17)
+
+### Lens
+
+Runtime power. Void-pulse's `requestAnimationFrame` loop and its `AudioContext` both run as long as the tab is open — even when the tab is hidden, even when the user has muted. On desktop that's nearly free; on mobile it's the shape of "why did my battery die" complaints. Browsers throttle hidden-tab `rAF` to ~1Hz but the callback still executes the full draw path (clear, starfield, ambient, particles, pulses, overlay). A muted `AudioContext` with gain=0 still samples its graph. These are both invisible background taxes. This sprint adds three cheap knobs that fix the bulk of it.
+
+### Changes
+
+- **`POWER_SAVE` detection at boot** — reads `navigator.connection.saveData` OR `prefers-reduced-data: reduce`; either triggers. Single const, no polling.
+- **`AMBIENT_CAP = POWER_SAVE ? 10 : 20`** — halves the persistent drift particle pool (ember / petal) under power-save. Keeps theme identity intact; doesn't erase.
+- **`Sfx._suspend()` / `Sfx._resume()`** — promise-returning `ctx.suspend()` / `ctx.resume()` with `.catch(() => {})` guards for iOS transition-state edge cases. `_resume()` re-checks `state.muted` so a visibility-return doesn't override a deliberate mute.
+- **`Sfx.applyMute()` wired to suspend/resume** — muting releases the audio hardware claim; unmuting re-acquires it. Complements the existing gain-zero ramp (both happen together for smooth + cheap).
+- **`visibilitychange` handler suspends audio on hidden, resumes on visible** — released hardware claim during backgrounded tabs. Kept separate from the existing `pauseGame()` call (visibility is a separate axis from player-initiated pause).
+- **`frame()` early-return when `document.hidden`** — sets `lastTime = now` to prevent dt-accumulation on return, re-requests `rAF` to keep the chain live so the loop resumes instantly on visible. Skips the clear+starfield+ambient+particles+pulses+overlay draw path entirely.
+- **Did NOT suspend on `pauseGame()`** — the pause overlay already ducks the master bus to 35% with a smooth 0.4s ramp; suspending would make resume audibly pop and would drop the 3-2-1 countdown's pre-scheduled ticks.
+
+### Patterns extracted → `company/skills/graphics/power-lifecycle.md` (new)
+
+- **Render-skip when `document.hidden`** — throttled `rAF` still runs your draw code; early-return with `lastTime` reset and `rAF` re-chain cuts background CPU to near-zero.
+- **Suspend AudioContext on mute AND on visibility hidden** — gain-zero still samples the graph; `suspend()` releases the hardware claim. Two triggers, one release path.
+- **Promise-returning `suspend/resume` with empty catch** — iOS rejects during certain state transitions; silent catch means worst case is "optimization didn't apply," not a crash.
+- **Respect user's mute intent on resume** — re-check `state.muted` in `_resume()` so visibility-return doesn't undo a deliberate mute.
+- **`prefers-reduced-data` + `navigator.connection.saveData` as power-save hint** — two signals, either triggers; read once at boot.
+- **Halve, don't erase** — ambient particles halved under power-save; theme identity preserved. Zeroing would remove the character users paid for in attention.
+- **DON'T suspend on pause overlay** — duck bus (smooth 0.4s ramp) ≠ suspend (hardware release). Conflating them loses the smooth-ramp UX and drops pre-scheduled 3-2-1 ticks.
+- **Lifecycle audit table** — Start/Active/Pause/Hidden/Mute/Gameover × running/paused/hidden/update-fires/render-fires/audio-state. Three invariants derived: `audio running ⇔ (not muted AND tab visible)`; `render fires ⇔ (tab visible AND state.running)`; `update fires ⇔ (state.running AND !paused AND tab visible)`.
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 28 | Performance / power / lifecycle | AudioContext suspend on mute+hidden, rAF render-skip when hidden, power-save ambient halving; new skill doc (~135 lines) |
+
+### Cost
+
+- game.js: +35 lines (Sfx._suspend/_resume, applyMute wiring, visibilitychange suspend/resume, frame() hidden early-return, POWER_SAVE const, AMBIENT_CAP branch)
+- index.html: 0
+- style.css: 0
+- New `graphics/power-lifecycle.md` (~135 lines); README index updated
+
+### Next candidates
+
+- **Tap-to-zoom ghost strip** — still open.
+- **Service worker for offline play** — still open.
+- **Per-theme heartbeat variant** — heartbeat ping through theme-conditional layer.
+- **Sweetener pulse on achievement unlock** — hint theme signature as part of the unlock cue.
+- **Ambient-density preference slider** — user control over drift particle count.
+- **Distribution sprint** — Open Graph image, Twitter card meta, dynamic per-seed title for shareable preview cards.
+- **Focus-visible outline audit** — some buttons may have invisible focus rings under certain themes.
+- **Keyboard-only flow audit** — cold-load → play → gameover → retry → stats → reset without a mouse.
+- **Localization pass** — externalize UI strings for future translations.
+- **Stats-panel sparkline** — overlay the last-N run scores inside the stats card.
+- **Milestone reveal** — add a "next milestone" line (e.g., "50 runs ▾ 14 to go") to stats.
+- **Stats export** — JSON copy-to-clipboard button for players who care to archive their numbers.
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

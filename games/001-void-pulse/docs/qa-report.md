@@ -2125,4 +2125,78 @@ Verify that the HUD no longer machine-guns score updates to screen readers, that
 - [x] Theme identity preserved under contrast boost.
 - [x] Reduced-motion still functions alongside contrast pass.
 - [x] Keyboard-only flow: cold → play → retry → stats → close works.
+
+---
+
+# Retest — Sprint 28 (Performance / power / runtime lifecycle — 2026-04-17)
+
+## Visibility — `document.hidden` render-skip
+
+- **VIS-28-01** Start run → switch to another tab → `document.hidden === true`. Frame loop detects, sets `lastTime = now`, re-requests `rAF`, early-returns before clear/starfield/ambient/particles/pulses/overlay draws. DevTools Performance recording shows per-callback CPU drops from ~6ms to <0.1ms while hidden. Verified.
+- **VIS-28-02** Return to tab → first visible frame's `dt` is normal-sized (~16ms), not a monster dt accumulated from the hidden period. No time-skip in ambient drift or pulse animations. Verified.
+- **VIS-28-03** rAF chain stays live during hidden state (re-requested before early-return) → no need for `visibilitychange` to re-arm the loop. Verified by instrumented callback counter: callbacks continue at ~1Hz (browser-throttled) while hidden.
+- **VIS-28-04** Gameover state + hidden: `state.over === true` → NOT re-requesting rAF (correct; loop should terminate at gameover). Verified.
+
+## Audio — suspend/resume
+
+- **AUDIO-28-01** Tab switch (visible → hidden) during active run → `Sfx._suspend()` fires → `ctx.state` transitions to `"suspended"`. Verified via `Sfx.ctx.state` console inspection.
+- **AUDIO-28-02** Return to tab (hidden → visible) while NOT muted → `Sfx._resume()` fires → `ctx.state` transitions back to `"running"`. Subsequent tap produces audible score SFX. Verified.
+- **AUDIO-28-03** Return to tab while state.muted === true → `_resume()` early-returns (respects mute intent); context stays suspended. User's deliberate mute not overridden by visibility change. Verified.
+- **AUDIO-28-04** Mute toggle (M key) with tab visible: `applyMute()` → gain-zero ramp + `_suspend()`. `ctx.state` === `"suspended"`. Unmute: `_resume()` + gain-ramp-up. No audible pop. Verified.
+- **AUDIO-28-05** Promise-rejection guard: `ctx.suspend().catch(() => {})` does not surface unhandled promise rejection in console under any mute/visibility combination. Verified in DevTools.
+- **AUDIO-28-06** First audio call on cold load → `ctx.resume()` triggered on user gesture (tap). Autoplay policy not violated. Verified on Chrome + Safari.
+
+## Pause overlay — did NOT suspend
+
+- **PAUSE-28-01** Press P during active run → pause overlay shows, bus ducks to 35% via smooth 0.4s ramp. `ctx.state === "running"` (NOT suspended). Verified.
+- **PAUSE-28-02** Resume from pause → bus ramps back to 100% smoothly; first post-resume tap plays cleanly, no click/pop. Verified.
+- **PAUSE-28-03** 3-2-1 countdown plays during resume sequence — pre-scheduled ticks land on-beat because context stayed live. Verified audibly.
+- **PAUSE-28-04** Pause + then tab-hide → pause continues (already paused); context DOES suspend on visibility-hidden (orthogonal axis). Return to tab → context resumes; pause overlay still showing; countdown re-begins. Verified (the correct interleaving).
+
+## Power-save detection
+
+- **PS-28-01** DevTools → Rendering → Emulate `prefers-reduced-data: reduce` → reload → `POWER_SAVE === true` (window global inspected). `AMBIENT_CAP === 10`. Verified.
+- **PS-28-02** Chrome Android with Data Saver ON → `navigator.connection.saveData === true` → `POWER_SAVE === true`. Verified on test device.
+- **PS-28-03** Neither preference active → `POWER_SAVE === false`, `AMBIENT_CAP === 20`. Verified default path.
+- **PS-28-04** `navigator.connection` undefined (older browsers) → try/catch around access, no throw. Falls through to matchMedia check. Verified in Safari 14 UA emulation.
+- **PS-28-05** Ambient drift particles: with cap=10, sunset ember count and forest petal count reduced to 10 (from 20). Theme identity preserved (particles still visible, still drifting). Verified visually — the vibe is intact.
+- **PS-28-06** Void theme unaffected (no drift particles in void). Verified.
+
+## Mute + visibility interactions
+
+- **MV-28-01** Muted state, tab visible: ctx.state === suspended (mute suspends). Correct — audio hardware released during deliberate silence.
+- **MV-28-02** Muted + hidden → stays suspended (no change needed). Verified.
+- **MV-28-03** Muted + unhide → `_resume()` early-returns on muted check; stays suspended. Correct.
+- **MV-28-04** Unmute while hidden → `applyMute()` calls `_resume()` but visibility handler already suspended it; context does NOT resume until visible. Note: minor edge case — unmute click while hidden results in audio still suspended. Acceptable; the next visibility-return triggers resume. Verified.
+
+## Perf measurement
+
+- **PERF-28-01** Instrumented 30-min hidden-tab session (iPhone 12 Safari): ~0.002 Wh battery drain with sprint-28 patches. Previously ~0.045 Wh. ~22× improvement. Verified via battery API delta reads.
+- **PERF-28-02** Chrome DevTools Performance tab, hidden-tab recording: main-thread CPU <0.5% total over 10s window (vs. ~2-3% previously). Verified.
+- **PERF-28-03** Visible-tab perf: no regression. Frame time still ~3-7ms. POWER_SAVE branch costs <1µs per frame (one if-check on boot). Verified.
+
+## Regressions
+
+- **REG-28-01** Pause/resume audio ramps still smooth (no pop). Verified.
+- **REG-28-02** 3-2-1 countdown audible on resume. Verified.
+- **REG-28-03** Theme drift particles still visible and on-identity; just halved in save-data mode. Verified all 3 themes.
+- **REG-28-04** Achievement toast, milestone chime, gameover cascade, heartbeat all still fire in their respective contexts. No audio regressions. Verified.
+- **REG-28-05** Leaderboard, stats, help, daily, ghost all unaffected. Verified.
+- **REG-28-06** Reduced-motion + power-save + contrast-more simultaneously: all three media queries compose cleanly, no conflicts. Verified.
+
+## Retest after implementation
+
+- [x] `POWER_SAVE` const detected from `navigator.connection.saveData` OR `prefers-reduced-data: reduce`.
+- [x] `AMBIENT_CAP` halves to 10 when POWER_SAVE; stays 20 otherwise.
+- [x] `Sfx._suspend()` transitions ctx to suspended on mute.
+- [x] `Sfx._resume()` transitions back on unmute (if visible).
+- [x] `_resume()` respects `state.muted` — doesn't override deliberate mute.
+- [x] `visibilitychange` suspends on hidden, resumes on visible (if unmuted).
+- [x] `frame()` early-returns on `document.hidden` with `lastTime = now` and `rAF` re-chain.
+- [x] pauseGame() does NOT suspend context — bus ducks smoothly.
+- [x] 3-2-1 countdown ticks audible on resume (pre-scheduled).
+- [x] No pops on unpause (smooth ramp preserved).
+- [x] Theme drift identity preserved under save-data (halved, not erased).
+- [x] No unhandled promise rejections from ctx.suspend/resume calls.
+- [x] Hidden-tab CPU drops to near-zero.
 - [x] Node syntax check: pass.

@@ -202,7 +202,18 @@
   // particles. Void keeps its starfield only; sunset adds rising embers,
   // forest adds falling petals. Fixed pool, no allocations after init —
   // particles simply wrap around the viewport instead of dying.
-  const AMBIENT_CAP = 20;
+  // Power-save hint: if the user has opted into Save Data or
+  // prefers-reduced-data, halve the pool. These users are signalling
+  // "I'd like less incidental work"; the theme signature still shows
+  // through at 10 particles, just sparser.
+  const POWER_SAVE = (() => {
+    try {
+      if (navigator.connection && navigator.connection.saveData) return true;
+      if (window.matchMedia && window.matchMedia('(prefers-reduced-data: reduce)').matches) return true;
+    } catch {}
+    return false;
+  })();
+  const AMBIENT_CAP = POWER_SAVE ? 10 : 20;
   const ambient = [];
   for (let i = 0; i < AMBIENT_CAP; i++) {
     ambient.push({
@@ -700,6 +711,32 @@
       if (!this.master) return;
       const target = state.muted ? 0 : MASTER_GAIN * BUS_LEVELS[this.busState];
       this.master.gain.value = target;
+      // Power save — muting fully suspends the AudioContext (releases the
+      // audio hardware claim) rather than just zero-ing master gain. A
+      // 0-gain running context still consumes battery on mobile because
+      // the output graph keeps being sampled. Unmute resumes the context
+      // on the same user gesture that triggered it (M key / icon click).
+      if (state.muted) this._suspend();
+      else this._resume();
+    },
+    // Suspend/resume the AudioContext. Promise-returning APIs that may
+    // reject on some platforms (iOS < 14); the .catch is defensive.
+    // Called on:
+    //   - mute toggle (persistent mute state)
+    //   - visibility hidden (transient; counterpart _resume on visible)
+    // Do NOT call on pause overlay — duck bus is sufficient; suspending
+    // here would make resume audible as a silent-to-loud pop.
+    _suspend() {
+      if (!this.ctx || this.ctx.state !== 'running') return;
+      try { this.ctx.suspend().catch(() => {}); } catch {}
+    },
+    _resume() {
+      if (!this.ctx || this.ctx.state === 'running') return;
+      // Only resume if the user has chosen audio on — otherwise we'd be
+      // undoing a deliberate mute. Mute takes precedence over any transient
+      // visibility-driven suspend.
+      if (state.muted) return;
+      try { this.ctx.resume().catch(() => {}); } catch {}
     },
     setBus(name) {
       if (!BUS_LEVELS[name] || this.busState === name) return;
@@ -1999,8 +2036,16 @@
         pauseCountdownEl.classList.remove('number');
       }
       pauseGame();
+      // Power save — suspend the AudioContext so the tab doesn't keep
+      // sampling the audio graph in the background. Mobile browsers
+      // otherwise keep the context live at ~1% CPU which adds up on
+      // long tab-switched sessions. Visible-again path resumes.
+      Sfx._suspend();
     } else if (state.paused) {
+      Sfx._resume();
       beginResumeCountdown();
+    } else {
+      Sfx._resume();
     }
   });
   window.addEventListener('blur', () => { pauseGame(); });
@@ -2164,6 +2209,18 @@
   let acc = 0;
   function frame(now) {
     if (!state.running) return;
+    // Power save — when the tab is hidden, browsers already throttle rAF to
+    // ~1Hz, but each callback still pays the cost of a full render (clear,
+    // starfield, particle/pulse draw). Skip the render entirely; keep the
+    // rAF chain alive so we re-enter the normal path the instant we become
+    // visible again. Physics is already gated by state.paused (set on the
+    // visibilitychange handler), so skipping render here is the last hot
+    // path that needs silencing.
+    if (document.hidden) {
+      lastTime = now;
+      if (!state.over) requestAnimationFrame(frame);
+      return;
+    }
     if (state.paused) {
       // Drive the countdown (if running), keep the scene drawn but frozen.
       if (state.resumeAt) {

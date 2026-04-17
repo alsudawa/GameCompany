@@ -27,6 +27,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`graphics/perf-budget.md`](graphics/perf-budget.md) — zero-alloc render audit + adaptive quality + dev FPS overlay
 - [`graphics/ambient-drift.md`](graphics/ambient-drift.md) — theme-conditional persistent drift particles (wrap-around pool, no alloc, two-direction branch)
 - [`graphics/staggered-reveal.md`](graphics/staggered-reveal.md) — inline `animation-delay` for time-indexed element reveals (replay-as-animation, reduced-motion fallback, shared-axis pacing)
+- [`graphics/power-lifecycle.md`](graphics/power-lifecycle.md) — AudioContext suspend on mute+visibility-hidden + rAF render-skip when `document.hidden` + `prefers-reduced-data`/`saveData` ambient halving
 
 ### Audio
 - [`audio/web-audio-sfx.md`](audio/web-audio-sfx.md) — oscillator + envelope SFX recipes; spawn-tick anchor
