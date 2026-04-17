@@ -185,6 +185,25 @@
     particles.push({ active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 0, color: '#fff', size: 4 });
   }
 
+  // Ambient drift — a theme-signature layer of slowly-moving decorative
+  // particles. Void keeps its starfield only; sunset adds rising embers,
+  // forest adds falling petals. Fixed pool, no allocations after init —
+  // particles simply wrap around the viewport instead of dying.
+  const AMBIENT_CAP = 20;
+  const ambient = [];
+  for (let i = 0; i < AMBIENT_CAP; i++) {
+    ambient.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      size: 1.2 + Math.random() * 1.8,
+      phase: Math.random() * Math.PI * 2,
+      // Base speed magnitudes; update() re-signs/scales based on theme.
+      vBase: 18 + Math.random() * 22,
+      swayAmp: 10 + Math.random() * 18,
+      swayRate: 0.6 + Math.random() * 0.9,
+    });
+  }
+
   const extraSpawns = []; // absolute game-times for polyrhythm extras
 
   // ---------- 3. Init ----------
@@ -1142,6 +1161,59 @@
     ctx.globalAlpha = 1;
   }
 
+  // Ambient drift — subtle per-theme decoration. Void has no drift (starfield
+  // carries the atmosphere); sunset drifts upward like embers; forest drifts
+  // downward like petals with wide horizontal sway. On reduced-motion we skip
+  // the update entirely, so the particles sit frozen as if the air is still.
+  function updateAmbient(dt) {
+    if (currentTheme === 'void') return;
+    if (reducedMotion) return;
+    const dir = currentTheme === 'forest' ? 1 : -1;   // +down / -up
+    const t = state.t;
+    for (const a of ambient) {
+      a.y += dir * a.vBase * dt;
+      // sway via phase-locked sine — each particle has its own rate+amp so
+      // they don't visibly march in lockstep
+      a.x += Math.sin(t * a.swayRate + a.phase) * a.swayAmp * dt;
+      // soft horizontal wrap so particles don't pile up at an edge
+      if (a.x < -12) a.x = W + 12;
+      else if (a.x > W + 12) a.x = -12;
+      // vertical wrap = respawn on the opposite side with a fresh x/phase
+      if (dir < 0 && a.y < -14) {
+        a.y = H + 14;
+        a.x = Math.random() * W;
+        a.phase = Math.random() * Math.PI * 2;
+      } else if (dir > 0 && a.y > H + 14) {
+        a.y = -14;
+        a.x = Math.random() * W;
+        a.phase = Math.random() * Math.PI * 2;
+      }
+    }
+  }
+  function renderAmbient() {
+    if (currentTheme === 'void') return;
+    // Color follows the theme's accent; alpha is low so the layer reads as
+    // atmosphere, not foreground. Flicker via phase for sunset embers only.
+    const isEmber = currentTheme === 'sunset';
+    ctx.fillStyle = getVar('--accent');
+    const t = state.t;
+    for (const a of ambient) {
+      const baseA = 0.10 + (a.size - 1.2) * 0.05;     // bigger = more visible
+      const flicker = isEmber ? 0.5 + 0.5 * Math.sin(t * 3.2 + a.phase) : 1;
+      ctx.globalAlpha = baseA * (0.6 + 0.4 * flicker);
+      if (isEmber) {
+        // small circle dot for embers
+        ctx.beginPath();
+        ctx.arc(a.x, a.y, a.size, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // elongated oval for petals — fake it via scaled rect saving a save/restore
+        ctx.fillRect(a.x - a.size * 0.5, a.y - a.size * 1.1, a.size, a.size * 2.2);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
   // ---------- 5. Update ----------
   function update(dt) {
     // Death-cam: the sim keeps running but at a fraction of real-time so the
@@ -1200,6 +1272,7 @@
     if (state.shakeT > 0) state.shakeT = Math.max(0, state.shakeT - dt);
 
     updateParticles(simDt);
+    updateAmbient(simDt);
   }
 
   // HUD diff-tracking — avoids DOM churn when values haven't changed.
@@ -1305,6 +1378,9 @@
         ctx.fillRect(s.x - s.size / 2, s.y - s.size / 2, s.size, s.size);
       }
       ctx.globalAlpha = 1;
+      // Ambient drift layer is gated by the same adaptive-quality flag —
+      // both are pure decor and drop together on a slow device.
+      renderAmbient();
     }
 
     // background vignette (intensifies with combo) — cached by heat-bucket so we

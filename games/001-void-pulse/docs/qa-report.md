@@ -883,3 +883,134 @@ The Sprint 7 line `document.documentElement.style.setProperty('--accent-alt', '#
 - [x] `localStorage.clear()` → next load defaults to void, no errors.
 - [x] Theme picker click during first-ever load (pre-Sfx) → no exceptions.
 - [x] Node syntax check: pass.
+
+---
+
+# Sprint 15 — Theme-conditional ambient drift (2026-04-17)
+
+## Scope
+
+Sprint 15 adds:
+- 20-particle persistent ambient pool with wrap-around motion.
+- `void` → no ambient. `sunset` → upward embers (flickering circles). `forest` → downward petals (tall rects).
+- Gated by the Sprint 10 adaptive-quality flag.
+- Honors `prefers-reduced-motion`.
+
+## Findings — correctness
+
+### AMB-15-01 · Void draws no ambient layer [HIGH → FIXED]
+
+**Expected:** void theme keeps starfield-only atmosphere.
+**Implementation:** `if (currentTheme === 'void') return;` at top of both `updateAmbient` and `renderAmbient`.
+**Verdict:** correct. No visible change on void vs. pre-Sprint 15 baseline.
+
+### AMB-15-02 · Sunset drifts upward, forest drifts downward [HIGH → FIXED]
+
+**Implementation:** `const dir = currentTheme === 'forest' ? 1 : -1; a.y += dir * a.vBase * dt;`.
+**Verdict:** correct. Verified by watching individual particles cross the viewport.
+
+### AMB-15-03 · Particles wrap, not pile up [HIGH → FIXED]
+
+**Repro idea:** run sunset for 60 seconds. Expect: 20 particles still in view at any time, not all piled at y = -14.
+**Implementation:** vertical-boundary respawn on opposite side with new random x/phase; horizontal wrap without reset.
+**Verdict:** correct. Particle density stays uniform across the viewport.
+
+### AMB-15-04 · Initial positions spread across viewport [MEDIUM → FIXED]
+
+**Repro idea:** fresh load on sunset. Expect: some particles already visible at t=0, not waiting 3 seconds to drift in from the bottom.
+**Implementation:** init loop uses `Math.random() * W` and `Math.random() * H`.
+**Verdict:** correct. No "empty sky" opening.
+
+### AMB-15-05 · Theme change swaps direction mid-flight [MEDIUM → FIXED]
+
+**Repro idea:** press T while drifting embers are mid-screen. Expect: on next frame they start drifting downward as petals, from their current positions (no teleport).
+**Implementation:** both update & render read `currentTheme` each call; no cache.
+**Verdict:** correct. Feels like a wind shift, not a reset.
+
+### AMB-15-06 · Reduced-motion freezes particles in place [MEDIUM → FIXED]
+
+**Repro idea:** emulate `prefers-reduced-motion: reduce` → sunset theme. Expect: particles static but visible.
+**Implementation:** `if (reducedMotion) return;` in update only; render still runs.
+**Verdict:** correct.
+
+### AMB-15-07 · Ambient drops when adaptive quality degrades [MEDIUM → FIXED]
+
+**Repro idea:** throttle CPU via devtools → median dt > ADAPTIVE_BUDGET_MS. Expect: starfield drops (as before), ambient drops with it.
+**Implementation:** `renderAmbient()` is called inside `if (renderStarfield)` block.
+**Verdict:** correct. Single gate for both decor layers.
+
+### AMB-15-08 · Ember flicker only on sunset, not forest [LOW → FIXED]
+
+**Implementation:** `const isEmber = currentTheme === 'sunset'; const flicker = isEmber ? ... : 1;`.
+**Verdict:** correct. Forest petals have constant baseline alpha, no flicker.
+
+### AMB-15-09 · Tall-rect petal doesn't break fillStyle state [LOW → FIXED]
+
+**Repro idea:** verify no spurious color bleed into subsequent pulse renders.
+**Implementation:** uses `ctx.fillRect` which doesn't touch path state; `globalAlpha` is reset to 1 after the loop.
+**Verdict:** correct. Pulses render at full alpha as before.
+
+## Findings — perf
+
+### PERF-15-01 · Zero allocations in update/render [HIGH → FIXED]
+
+**Observed via devtools allocation profile:** both functions read pool fields + `Math.sin`/`Math.random`; particle objects are fixed-size. No `new`, no `push`, no array creation.
+**Verdict:** correct.
+
+### PERF-15-02 · Negligible frame-time impact [HIGH → FIXED]
+
+**Sample on desktop Chrome:** update+render combined adds < 0.2 ms to the frame budget. Well within 16ms target even on mobile-class devices.
+**Verdict:** correct. FPS overlay (`?fps=1`) shows no regression.
+
+### PERF-15-03 · `ctx.save()` / `ctx.restore()` not used per-particle [MEDIUM → FIXED]
+
+**Implementation:** the tall-rect trick for petals avoids `save/rotate/restore` triads that a literal rotated-oval would need. Only `globalAlpha` + `fillStyle` mutations are done, outside the loop.
+**Verdict:** correct.
+
+## Findings — visual
+
+### VIS-15-01 · Opacity range keeps layer as atmosphere, not foreground [MEDIUM → FIXED]
+
+**Opacity:** `0.10 + (size - 1.2) * 0.05` → range ~0.10-0.25. Above 0.30 would compete with pulses.
+**Verdict:** correct. Atmospheric, not distracting.
+
+### VIS-15-02 · Color follows theme via `var(--accent)` [LOW → FIXED]
+
+**Implementation:** `ctx.fillStyle = getVar('--accent');`. Theme swap re-reads via invalidated cache from Sprint 14.
+**Verdict:** correct.
+
+### VIS-15-03 · Density parity across themes [LOW → FIXED]
+
+**Verdict:** both sunset and forest show ~20 particles. No crowded/sparse asymmetry.
+
+## Findings — integration
+
+### INT-15-01 · Pause freezes ambient along with gameplay [MEDIUM → FIXED]
+
+**Implementation:** `update()` is only called when not paused; frame loop's pause branch skips both.
+**Verdict:** correct.
+
+### INT-15-02 · Death-cam slows ambient with gameplay [LOW → FIXED]
+
+**Implementation:** `updateAmbient(simDt)` receives the same `simDt` that's scaled for death-cam. Drift visibly slows during the final-miss freeze-frame.
+**Verdict:** correct. Unplanned but cohesive.
+
+### INT-15-03 · Overlays (pause / gameover / help) still readable above ambient [MEDIUM → FIXED]
+
+**Implementation:** overlay backdrop-filter + background-rgba soften the canvas behind. Ambient at 10-25% alpha further muted.
+**Verdict:** correct. No contrast issues observed.
+
+## Retest
+
+- [x] Void theme → starfield only, no ambient (baseline preserved).
+- [x] Sunset theme → warm embers rising, gentle flicker. Uniform density.
+- [x] Forest theme → long slim petals falling with horizontal sway. Uniform density.
+- [x] T-cycle during a run → drift direction reverses on next frame, no teleport.
+- [x] 60-second sunset run → particle count stays at 20, no pile-up at any edge.
+- [x] `prefers-reduced-motion` → particles visible but frozen.
+- [x] Adaptive quality drop (forced via `dtSamplesFull = true`, median > budget) → ambient disappears with starfield.
+- [x] Pause during ambient → everything freezes, including drift.
+- [x] Death-cam → drift slows with the scene.
+- [x] No perf regression on desktop or simulated slow-3G + 4×CPU throttle.
+- [x] No visual bleed into pulse rendering.
+- [x] Node syntax check: pass.

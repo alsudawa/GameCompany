@@ -579,6 +579,57 @@ The actual engineering meat is not choosing swatches — it's the **cache invali
 
 ---
 
+## Sprint 15 — Theme-conditional ambient drift (2026-04-17)
+
+### Lens
+
+**Atmosphere as theme signature.** Sprint 14 added three palettes, but the gameplay-canvas layer was still visually identical across them once pulses started flying. Void, sunset, and forest all had the same starfield behind the action. A proper theme swap should feel like a weather change, not a tinted screenshot.
+
+### Changes
+
+- **New ambient particle pool** — 20 persistent particles with pre-randomized `x/y/size/phase/vBase/swayAmp/swayRate`. Not spawn-and-die; they wrap around the viewport, so the pool is constant-size.
+- **Theme-parameterized behavior**:
+  - **Void** → no ambient layer (starfield alone carries it)
+  - **Sunset** → upward ember drift, flickering circle dots
+  - **Forest** → downward petal drift, tall thin rectangles (elongated oval via cheap fillRect, no save/restore/rotate)
+- **Per-particle unique `vBase` + `swayAmp` + `swayRate`** — set once at init, never re-randomized. Prevents lockstep look while keeping the pattern deterministic and cheap.
+- **Initialized across the whole viewport at start** (not at `y = H+14`) — no "empty sky" first-seconds gap.
+- **Gated by the same adaptive-quality flag as the starfield** (`renderStarfield`) — both are decor, both drop together when median-dt samples exceed budget.
+- **`reducedMotion` branch in `updateAmbient`** — returns early, particles freeze at their current positions (still rendered, just still).
+- **Zero cache to invalidate on theme change** — both update and render read `currentTheme` each call, so the `T` shortcut or picker click changes direction/shape on the very next frame. Wind-shift, not reset.
+
+### Patterns extracted → `company/skills/graphics/ambient-drift.md`
+
+- **Persistent pool + wrap-around** as the right structure for ambient (vs. spawn/die pool for foreground burst).
+- **Theme-parametrize by sign, not by behavior** — `dir = theme === 'forest' ? 1 : -1` collapses three themes to one branch.
+- **Shape hint per theme** — circle/ember vs. tall-rect/petal tells a story without adding assets.
+- **Tall fillRect as faux-oval** — avoids per-particle `ctx.save`/`rotate`/`restore` overhead at the cost of a tiny geometric white-lie.
+- **Gate ambient + starfield as one decor group** — perceptually one "atmosphere" from the player's view.
+- **Per-particle uniqueness from fixed random at init, not per-frame** — keeps look varied without chaos or cost.
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 15 | Atmosphere as theme signature | 20-particle ambient pool, 2-direction branch, reduced-motion gated, new skill doc |
+
+### Cost
+
+- game.js: +65 lines (ambient pool + updateAmbient + renderAmbient + update/render hookups)
+- index.html: +0 (pure canvas layer)
+- style.css: +0 (no chrome)
+- One new skill doc (`graphics/ambient-drift.md`)
+
+### Next candidates
+
+- **Theme-conditional SFX** — still open from Sprint 14 backlog. Forest miss → low rustle; sunset miss → dry crackle.
+- **Ghost replay scrubber** — unchanged from prior sprints. Record `{t, heartbeat, hit/miss}` per pulse in best-run storage, replay on gameover as a faded silhouette ring.
+- **Rarer / harder achievements** — "no-miss 30s", "5-day streak", "3 perfects in one heartbeat" — needs additional stat tracking but plumbing is ready.
+- **System-preference auto-theme** — first-load default from `prefers-color-scheme` + possibly `prefers-contrast`.
+- **Ambient density preference** — some players may want the drift layer off without going to reduced-motion. A settings toggle could expose it.
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

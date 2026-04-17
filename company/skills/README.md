@@ -25,6 +25,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`graphics/backdrop.md`](graphics/backdrop.md) — zero-alloc starfield, depth via twinkle
 - [`graphics/death-cam.md`](graphics/death-cam.md) — slow-mo freeze-frame beat on fatal endings
 - [`graphics/perf-budget.md`](graphics/perf-budget.md) — zero-alloc render audit + adaptive quality + dev FPS overlay
+- [`graphics/ambient-drift.md`](graphics/ambient-drift.md) — theme-conditional persistent drift particles (wrap-around pool, no alloc, two-direction branch)
 
 ### Audio
 - [`audio/web-audio-sfx.md`](audio/web-audio-sfx.md) — oscillator + envelope SFX recipes; spawn-tick anchor
