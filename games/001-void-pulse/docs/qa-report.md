@@ -72,3 +72,36 @@
 | P3 Polish | 1 | Combo milestone font size clamp (minor) |
 
 **Ship with fixes:** All issues are small and localized (1–3 line changes each). Core loop, difficulty curve, scoring, and juice are solid. Fix the two P1 life-loss logic issues, tune heartbeat/tension flash presentation, and ship confident.
+
+---
+
+# Sprint 2 — Timing feel pass
+
+**Reporter:** CEO ("timing feels off")
+**Scope:** rhythm / judgment perception — not correctness.
+
+## Root causes found
+
+1. **Pulse overtaking + oldest-based judge (P1).** Each pulse locks its speed at spawn via `speedAt(t)`, so a pulse spawned later (faster) can overtake an older one. The judge picked the oldest pulse, not the nearest — so the player's tap on the visually-arriving pulse was judged against a different pulse still traveling. Especially egregious mid-game around polyrhythm triples.
+2. **Pixel-based windows scale incorrectly with speed (P1).** `PERFECT = 8px, GOOD = 18px` translate to ~31 / 69ms at t=0 (speed 260) but collapse to ~11 / 25ms at t=90 (speed 720). Past the mastery waypoint the perfect window dips below human tap-timing resolution (~20ms). Feels like the game "eats" correct taps.
+3. **No audio anchor for spawn rhythm (P2).** Pulses appear silently; only taps trigger sound. The player has no auditory "beat" to lock onto, relying purely on visual expansion. Fine early, fatiguing late.
+4. **Tension flash threshold in pixels, not time (P3).** `r >= TARGET_R - 40` gave the player only ~55ms of warning at high speed vs ~150ms at low speed. Warning became useless exactly when it was most needed.
+
+## Fixes shipped
+
+- `findJudgePulse()` — nearest-to-target judging (replaces `findOldestPulse`). Render highlight follows judge target.
+- Windows migrated to ms: `PERFECT_WINDOW_MS_BASE = 55`, `_MAX = 80`, `GOOD_WINDOW_MS = 130`. Grace widening 0.12 ms/s past 120s.
+- `dMs = |r - TARGET_R| / p.speed * 1000` for tap distance; pass-through uses same metric.
+- Tension flash now triggered when `toArriveMs <= 180 && >= -GOOD_WINDOW_MS` — constant 180ms lead regardless of speed.
+- `Sfx.spawnTick()` — 35ms sine blip on each spawn (higher pitch for heartbeat). Establishes a "tick → arrival" rhythm.
+- HUD combo now shows `×1.5 12` (multiplier + streak count), giving visible progress at any combo.
+- Good-hit pitch now uses `Math.max(0, combo - 2)` per GDD (was using raw combo).
+
+## Retest
+
+- [x] Perfect window at t=0 and t=90 both feel ~55ms — no disappearing taps late-game.
+- [x] Tapping during polyrhythm triples judges the visually-leading pulse. No "invisible" judge mismatches.
+- [x] Spawn tick provides clear rhythmic anchor without dominating score SFX.
+- [x] Tension flash arrives early enough to react at max speed.
+- [x] Node syntax check: pass.
+

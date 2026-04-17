@@ -2,6 +2,7 @@
 
 **Designer:** @game-designer (Opus)
 **Status:** approved for build
+**Revised:** 2026-04-17 — sprint 2 retuned judgement to time-domain (see bottom)
 
 ## Hook
 Tap the ring at the exact moment a pulse wave reaches it — survive the void's heartbeat as it speeds up and splits into polyrhythms.
@@ -83,3 +84,15 @@ After game-over, a 400ms input lockout plays while the overlay animates in (prev
 1. **Ambiguous taps with overlapping pulses.** In polyrhythm phases two pulses may be near-target simultaneously. → *Mitigation:* always judge the **oldest** (largest-radius) active pulse; show it with 10% more stroke opacity so the player knows which is "up."
 2. **Reaction-time wall past 720 px/s.** Hitting 8px windows at max speed may exceed human reaction bounds. → *Mitigation:* soft cap enforced; Perfect window widens to 10px after t≥120s as a grace gift (`perfectWindow = 8 + Math.max(0, (t-120) * 0.02)`, capped at 12px).
 3. **Visual monotony** (just expanding circles). → *Mitigation:* background has a subtle vignette + radial gradient that intensifies with combo; every 5th pulse is a "heartbeat" color (`--danger` tint) that scores +50% — visual variety without rule complexity.
+
+---
+
+## Sprint 2 revisions (2026-04-17)
+
+CEO playtest: "timing feels off." Original pixel-based judging didn't survive the speed ramp. Revisions:
+
+- **Judgement moved to time domain.** Windows now `PERFECT = 55–80 ms` (grace-widened past t=120s) and `GOOD = 130 ms`. Tap distance is computed as `|r − TARGET_R| / pulse.speed × 1000`. This keeps the feel constant across the whole difficulty curve (was collapsing to ~11ms at peak speed).
+- **Judge pulse = nearest-to-target, not oldest.** Because each pulse locks its speed at spawn (`p.speed = speedAt(bornT)`), a newer-faster pulse can overtake an older-slower one. Judging "oldest" disagreed with the player's spatial model during polyrhythm triples. Now `findJudgePulse()` returns the pulse with the smallest `|r − TARGET_R|`; the render highlight follows the same query.
+- **Pass-through + tension telegraph moved to time.** Pass-through fires at `toArriveMs < -GOOD_WINDOW_MS`. Tension flash activates at `toArriveMs ≤ 180ms`, constant lead regardless of speed.
+- **Auditory rhythm anchor.** `Sfx.spawnTick()` — 35ms sine blip at every spawn (520Hz base / 740Hz heartbeat). Gives the player a "tick → arrival" cadence to lock onto.
+- **HUD combo shows streak count too.** Format: `×1.5 12`. Visible progress at combo < 5 where the multiplier is still 1×.

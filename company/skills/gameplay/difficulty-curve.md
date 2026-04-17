@@ -78,3 +78,45 @@ function perfectWindow() {
 }
 ```
 Starts at 8px, widens 2px over 100s of play past the 120s mark. Invisible to casual players, appreciated by masters.
+
+<!-- added: 2026-04-17 (001-void-pulse sprint 2) -->
+
+## Pattern — Time-domain judge windows (never pixel-domain)
+
+Any game with speed-varying entities (falling items, expanding rings, scrolling notes) must express judge windows in **time**, not distance. Pixel-based windows silently shrink as speed ramps, turning your designed 31ms perfect into an 11ms inhuman window at the difficulty peak.
+
+```js
+// WRONG — pixel-based. Collapses with speed.
+const PERFECT_WINDOW_PX = 8;
+if (Math.abs(entity.r - TARGET_R) <= PERFECT_WINDOW_PX) {...}
+
+// RIGHT — time-based. Constant in human terms.
+const PERFECT_WINDOW_MS = 55;
+const dMs = Math.abs(entity.r - TARGET_R) / entity.speed * 1000;
+if (dMs <= PERFECT_WINDOW_MS) {...}
+```
+
+Rule of thumb:
+- Perfect: **40–80ms** (percussive-feeling; ≥ 50ms unless your game is specifically a precision tester)
+- Good: **100–150ms**
+- Grace widening: +0.1 to +0.15 ms per second past the mastery waypoint
+
+The same rule applies to pass-through detection (`toArriveMs < -GOOD_WINDOW_MS`) and tension telegraphs (`toArriveMs <= 180`) — any threshold touching a moving entity should live in ms, not px.
+
+## Pattern — Nearest-entity judging (not oldest)
+
+When multiple entities can be live simultaneously and each has an independent speed, **the player's visual model is spatial**: they tap the thing that's arriving. Judging "oldest" (by spawn time or array index) disagrees with that model whenever a newer fast entity overtakes an older slow one — exactly what happens during polyrhythm phases or lane-based games.
+
+```js
+function findJudgeEntity() {
+  let chosen = null, bestD = Infinity;
+  for (const e of entities) {
+    if (!e.active) continue;
+    const d = Math.abs(e.pos - TARGET);
+    if (d < bestD) { bestD = d; chosen = e; }
+  }
+  return chosen;
+}
+```
+
+Use the same query for the visual "live entity" highlight — one query, one invariant. If the render says "this is live" and the judge says "that is live," the player feels cheated.

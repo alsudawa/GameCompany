@@ -66,3 +66,17 @@
 
 - [ ] If a bonus SFX stacks on a primary SFX (e.g. heartbeat + score), check that the master gain doesn't clip at the peak — run a 20-combo simulation mentally: is the loudest moment still pleasant?
 - [ ] Verify the pitch ceiling for combo-pitched SFX — past a cap (e.g. combo 12 at 1.06×) the frequency should clamp, not keep climbing into inaudible ranges.
+
+<!-- added: 2026-04-17 (001-void-pulse sprint 2) -->
+
+## Felt timing (perception, not correctness)
+
+A correctness pass says "it works." A felt-timing pass asks "does it feel fair?" For any game with speed-varying entities:
+
+- [ ] **Judge windows expressed in ms, not px** — if `speedAt(t)` ramps entity velocity, then a pixel-based judge window shrinks invisibly with time. Scan for `Math.abs(r - TARGET) <= PX_CONSTANT`; convert to `|d|/speed*1000 <= MS_CONSTANT`.
+- [ ] **Judge target = visual "live" highlight** — if you highlight pulse X but judge pulse Y when the player taps, it feels stolen. One query (e.g. nearest-to-target) used for both render and judging.
+- [ ] **Speed-sweep playtest at t=0, t=45, t=90** — manually verify perfect taps register at each waypoint. Sub-20ms windows are effectively unhittable at any speed.
+- [ ] **Tension / telegraph lead-time constant in ms** — pixel-based telegraph thresholds arrive earlier early-game and later late-game. Use `toArriveMs <= LEAD_MS` instead.
+- [ ] **Auditory rhythm anchor present** — for any tap-timing game, is there a spawn-time sound? Pure visual is fatiguing past 60s.
+- [ ] **Combo visible at any count** — HUD shouldn't hide the streak when combo ∈ [1, 4]. Show the count even before the multiplier activates.
+- [ ] **Per-entity locked speed + "oldest" judge = overtake bug** — if `entity.speed = speedAt(spawnT)` and later spawns are faster, newer entities overtake older ones. "Judge oldest" then disagrees with the player's spatial visual model. Judge nearest-to-target instead.

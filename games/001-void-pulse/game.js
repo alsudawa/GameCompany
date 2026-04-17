@@ -14,10 +14,13 @@
   const FIXED_DT = 1 / 60;
   const MAX_DT   = 1 / 30;
 
-  const PERFECT_WINDOW_BASE = 8;
-  const PERFECT_WINDOW_MAX  = 12;
-  const GOOD_WINDOW = 18;
-  const GRACE_START_T = 120;       // seconds before perfect window starts widening
+  // Time-based judge windows (ms). Decouples difficulty from pulse speed so
+  // the human-timing window stays constant as speed ramps up.
+  const PERFECT_WINDOW_MS_BASE = 55;
+  const PERFECT_WINDOW_MS_MAX  = 80;
+  const GOOD_WINDOW_MS         = 130;
+  const TENSION_LEAD_MS        = 180;  // how early the target ring telegraphs an arrival
+  const GRACE_START_T = 120;            // seconds before perfect window starts widening
 
   const STARTING_LIVES = 3;
   const TAP_DEBOUNCE_MS = 120;
@@ -130,6 +133,11 @@
       });
     },
     heartbeat() { this._env('sine', 110, 0.12, 0.22, 165); },
+    // Brief high-register blip at spawn — gives the player a rhythm anchor
+    // so tap timing isn't purely visual. Quiet enough to not dominate the mix.
+    spawnTick(isHeartbeat) {
+      this._env('sine', isHeartbeat ? 740 : 520, 0.035, 0.055);
+    },
   };
 
   // ---------- CSS var helper (cached) ----------
@@ -172,15 +180,21 @@
   }
 
   // ---------- Judging ----------
-  function perfectWindow() {
-    return Math.min(PERFECT_WINDOW_MAX, PERFECT_WINDOW_BASE + Math.max(0, (state.t - GRACE_START_T) * 0.02));
+  function perfectWindowMs() {
+    return Math.min(PERFECT_WINDOW_MS_MAX, PERFECT_WINDOW_MS_BASE + Math.max(0, (state.t - GRACE_START_T) * 0.12));
   }
 
-  function findOldestPulse() {
+  // Judge the pulse whose current radius is closest to the target ring.
+  // Prior versions judged the "oldest" pulse, but per-pulse speed is locked
+  // at spawn, so a newer fast pulse can overtake an older slow one — in which
+  // case "oldest" disagrees with the player's visual expectation.
+  function findJudgePulse() {
     let chosen = null;
+    let bestD = Infinity;
     for (const p of pulses) {
       if (!p.active) continue;
-      if (!chosen || p.bornT < chosen.bornT) chosen = p;
+      const d = Math.abs(p.r - TARGET_R);
+      if (d < bestD) { bestD = d; chosen = p; }
     }
     return chosen;
   }
@@ -190,13 +204,13 @@
   }
 
   function judgeTap() {
-    const p = findOldestPulse();
+    const p = findJudgePulse();
     if (!p) return; // lenient: tapping with no pulse costs nothing
-    const d = Math.abs(p.r - TARGET_R);
-    const pw = perfectWindow();
+    const dMs = Math.abs(p.r - TARGET_R) / p.speed * 1000;
+    const pwMs = perfectWindowMs();
     const heartbeatMul = p.heartbeat ? HEARTBEAT_BONUS : 1;
 
-    if (d <= pw) {
+    if (dMs <= pwMs) {
       const mult = comboMult();
       state.score += Math.round(100 * mult * heartbeatMul);
       state.combo += 1;
@@ -211,16 +225,15 @@
         Sfx.levelup();
       }
       p.active = false;
-    } else if (d <= GOOD_WINDOW) {
+    } else if (dMs <= GOOD_WINDOW_MS) {
       const mult = comboMult();
       state.score += Math.round(50 * mult * heartbeatMul);
       state.combo += 1;
       spawnBurst(CENTER_X, CENTER_Y, getVar('--accent'), 6, 210);
-      Sfx.good(state.combo);
-      if (p.heartbeat) Sfx.heartbeat();
+      Sfx.good(Math.max(0, state.combo - 2));
       p.active = false;
     } else {
-      // tapped at wrong radius — consume the pulse so it can't also pass-through
+      // tapped outside the good window — consume the pulse so it can't also pass-through
       p.active = false;
       loseLife();
       Sfx.miss();
@@ -266,6 +279,7 @@
       p.speed = speedAt(state.t);
       p.heartbeat = heartbeat;
       p.bornT = state.t;
+      Sfx.spawnTick(heartbeat);
       return p;
     }
     return null;
@@ -344,10 +358,12 @@
     for (const p of pulses) {
       if (!p.active) continue;
       p.r += p.speed * dt;
-      if (p.r >= TARGET_R - 40 && p.r <= TARGET_R + GOOD_WINDOW) {
+      // Time-to-arrive (negative = already past)
+      const toArriveMs = (TARGET_R - p.r) / p.speed * 1000;
+      if (toArriveMs <= TENSION_LEAD_MS && toArriveMs >= -GOOD_WINDOW_MS) {
         state.tensionFlash = true;
       }
-      if (p.r > TARGET_R + GOOD_WINDOW) {
+      if (toArriveMs < -GOOD_WINDOW_MS) {
         p.active = false;
         loseLife();
         state.shakeT = 0.15;
@@ -405,14 +421,14 @@
     ctx.restore();
     ctx.globalAlpha = 1;
 
-    // pulses
-    const oldest = findOldestPulse();
+    // pulses — highlight the one the tap would judge (nearest to ring)
+    const judgePulse = findJudgePulse();
     for (const p of pulses) {
       if (!p.active) continue;
       const color = p.heartbeat ? getVar('--danger') : getVar('--fg');
       ctx.strokeStyle = color;
-      ctx.lineWidth = p === oldest ? 4.5 : 3;
-      ctx.globalAlpha = Math.min(1, 0.35 + p.r / 200);
+      ctx.lineWidth = p === judgePulse ? 4.5 : 3;
+      ctx.globalAlpha = Math.min(1, 0.5 + p.r / 260);
       ctx.beginPath();
       ctx.arc(CENTER_X, CENTER_Y, p.r, 0, Math.PI * 2);
       ctx.stroke();
@@ -437,7 +453,12 @@
     // HUD
     hudScore.textContent = state.score;
     const m = comboMult();
-    hudCombo.textContent = m > 1 ? ('×' + (m % 1 === 0 ? m : m.toFixed(1))) : '';
+    if (state.combo > 0) {
+      const multStr = m > 1 ? '×' + (m % 1 === 0 ? m : m.toFixed(1)) + ' ' : '';
+      hudCombo.textContent = multStr + state.combo;
+    } else {
+      hudCombo.textContent = '';
+    }
   }
 
   // ---------- 7. Loop ----------

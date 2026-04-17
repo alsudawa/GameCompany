@@ -121,3 +121,29 @@ score(combo = 0) {
 }
 ```
 1.06× per combo ≈ one semitone. Capping at combo=12 prevents inaudible frequencies past ~3 octaves.
+
+<!-- added: 2026-04-17 (001-void-pulse sprint 2) -->
+
+## Pattern — Spawn-tick audio anchor for timing games
+
+In tap-timing games, players need **auditory beat** to lock onto rhythm — pure-visual timing fatigues. Add a short, quiet high-register blip every time a judgeable entity spawns. It's additive (doesn't compete with score / hit SFX) and it's the cheapest way to make a timing game feel fair.
+
+```js
+spawnTick(variant) {
+  this._env('sine', variant ? 740 : 520, 0.035, 0.055);
+}
+```
+
+- **Duration 30–40ms.** Longer bleeds into the score SFX and muddies the mix.
+- **Volume 0.04–0.06.** Softer than every other SFX — it's a cue, not an event.
+- **Sine only.** Square / saw at this volume sounds like UI errors.
+- **Pitch variants for spawn subtypes.** Different frequency (not different waveform) lets the player distinguish bonus / heartbeat pulses by ear with zero added cognitive load.
+
+Call it inside the spawn function so it fires exactly in sync with the entity's first frame of existence:
+
+```js
+function spawnPulse(isHeartbeat) {
+  // ...allocate from pool, set state...
+  Sfx.spawnTick(isHeartbeat);
+}
+```
