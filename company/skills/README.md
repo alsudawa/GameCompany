@@ -41,6 +41,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`ux/share.md`](ux/share.md) — Web Share API + clipboard fallback for frictionless virality
 - [`ux/onboarding.md`](ux/onboarding.md) — looping CSS-animated demo + keyboard-shortcut hints on the start overlay
 - [`ux/help-modal.md`](ux/help-modal.md) — `?` key + auto-pause discoverable help modal for stacked hidden mechanics
+- [`ux/leaderboard-local.md`](ux/leaderboard-local.md) — local top-N per-seed leaderboard with relative-time labels + new-row highlight
 
 ### QA
 - [`qa/casual-checklist.md`](qa/casual-checklist.md) — pre-ship checklist + multi-perspective sweep (player / mobile / onboarding / retention / distribution)

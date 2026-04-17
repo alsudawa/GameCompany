@@ -424,6 +424,61 @@ Net effect: a 360px-wide phone now sees the rule of the game without reading, an
 
 ---
 
+## Sprint 12 — Local top-5 per-seed leaderboard (2026-04-17)
+
+### Lens
+- **Micro-goal density**: best-only is binary feedback. After the first run sets a personal best, every subsequent run is "did I beat it" (1 bit of information). A top-5 turns each retry into a measurable micro-goal — "can I knock the 5th-place line off?" — giving 4 extra targets to chase within a session.
+- **Storytelling via timestamps**: scores without temporal context are scoreboards of strangers. Adding "yesterday" / "2h ago" to each entry turns the board into a tiny diary: *yesterday I had sharper reflexes than today.*
+
+### Changes shipped
+
+1. **Per-seed top-5 leaderboard**, namespaced same as `BEST_KEY` / `HISTORY_KEY` (`void-pulse-board-seed-{N}` in daily mode, `void-pulse-board` in free-play). Capped at 5 entries; sorted descending by score with tiebreak = earliest `atMs` wins.
+2. **Relative-time formatter** with coarse buckets — "just now" / "Nm ago" / "Nh ago" / "yesterday" / "Nd ago" / "30+d ago". No second-precision noise.
+3. **`lb-new` highlight** on the just-set score — accent-color background + 1.6s one-shot pulse animation. Player can locate their run instantly within the list.
+4. **`lb-top` gold tint** on the rank-1 row — a player who just set a #2 score still sees the gold #1 looming above them.
+5. **Empty-state hides** — wrapper `hidden` if `board.length === 0`. No "you haven't played" guilt trip on first visit.
+6. **Daily mode label switch** — "Top runs" → "Top daily runs". Same wording shift as the history sparkline did in sprint 7.
+7. **Leaderboard primed at init**, not only at gameover — so a returning player who tabs in sees their daily board even before playing.
+
+### Patterns extracted
+
+- **Top-N store: each entry has `atMs`** — temporal context is half the storytelling. Score-only is a wall, score+time is a diary.
+- **Earliest-wins tiebreak** — rewards first achievement, more honest than latest-wins for a personal leaderboard.
+- **Coarse relative-time buckets** — precise seconds invite comparison of trivia. Group at minute / hour / day boundaries.
+- **Score-0 doesn't enter board** — prevents an immediate-mistap on the first run from leaving a 0 sitting at #5 forever.
+- **Per-seed namespace** — same convention as best/history keys. Daily and free-play maintain independent leaderboards.
+
+### Sprint 2-12 wrap-up table
+
+| Sprint | Lens | Representative addition |
+|---|---|---|
+| 2 | Perceived timing | Time-domain judge windows |
+| 3 | Multi-perspective sweep | DPR, mute, keyboard, onboarding |
+| 4 | Smoothness + juice | 120Hz interpolation, haptics, starfield |
+| 5 | Robustness + trend | Tab-pause, combo meter, run-history |
+| 6 | Accessibility + virality | Colorblind dashing, Share API, pity life |
+| 7 | Ritual | Daily seeded challenge |
+| 8 | Moment-of-death + progression | Death-cam, per-seed history, tomorrow teaser |
+| 9 | Onboarding + power-user | CSS demo loop, M/P shortcuts |
+| 10 | Perf + HUD scannability + bug | Gradient cache, adaptive quality, dynamic lives glyphs |
+| 11 | Audio dynamics + discoverability | Three-state bus, `?` help modal, auto-pause/resume |
+| 12 | Micro-goal density | Per-seed top-5 leaderboard with relative timestamps |
+
+### Cost
+
+- game.js: +85 lines (board read/write + insertScore + formatRelative + renderLeaderboard + hookups)
+- index.html: +6 lines (leaderboard wrapper + ol + label)
+- style.css: +60 lines (leaderboard rows, lb-top, lb-new keyframe)
+- One new skill doc (`ux/leaderboard-local.md`)
+
+### Next candidates
+
+- **Theme picker** — let players choose between 3 palettes (the void / sunset / forest)
+- **Achievements / streaks** — Wordle-style daily streak ("3 days in a row"), "first 100 perfects"
+- **Replay scrubber** — record the last run's pulse positions for a ghost replay on the gameover overlay
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

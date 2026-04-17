@@ -625,3 +625,73 @@ html, body {
   .help-list li { grid-template-columns: 110px 1fr; font-size: 12px; }
   .help-key { font-size: 12px; }
 }
+
+/* ---------- Top-N per-seed leaderboard ---------- */
+.leaderboard {
+  margin: 4px auto 0;
+  width: min(280px, 92%);
+}
+.leaderboard-head {
+  display: flex;
+  justify-content: center;
+  font-size: 11px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--fg);
+  opacity: .6;
+  margin-bottom: 6px;
+}
+.leaderboard-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 3px;
+}
+.lb-row {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  gap: 10px;
+  padding: 4px 10px;
+  align-items: baseline;
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  background: rgba(232, 233, 255, .04);
+  transition: background .14s ease;
+}
+.lb-row.lb-top {
+  background: rgba(255, 210, 74, .10);
+}
+.lb-row.lb-new {
+  background: rgba(0, 212, 255, .18);
+  animation: lbNewPulse 1.6s ease-out;
+}
+.lb-rank {
+  color: var(--fg);
+  opacity: .6;
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.lb-row.lb-top .lb-rank { color: #ffd24a; opacity: 1; }
+.lb-row.lb-new  .lb-rank { color: var(--accent); opacity: 1; }
+.lb-score {
+  color: var(--fg);
+  font-weight: 600;
+}
+.lb-row.lb-top .lb-score { color: #ffd24a; }
+.lb-when {
+  color: var(--fg);
+  opacity: .5;
+  font-size: 11px;
+  letter-spacing: .04em;
+}
+@keyframes lbNewPulse {
+  0%   { background: rgba(0, 212, 255, .35); transform: translateX(-3px); }
+  60%  { background: rgba(0, 212, 255, .18); transform: translateX(0); }
+  100% { background: rgba(0, 212, 255, .18); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lb-row.lb-new { animation: none; }
+}

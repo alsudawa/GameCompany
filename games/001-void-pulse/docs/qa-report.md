@@ -508,3 +508,68 @@
 - [x] `prefers-reduced-motion` → help opens without animation (CSS overlay transitions are .2s opacity, acceptable).
 - [x] Lighthouse a11y: 100. Modal exposes role/dialog correctly.
 - [x] Node syntax check: pass.
+
+---
+
+# Sprint 12 — Per-seed top-5 leaderboard (2026-04-17)
+
+## Goals
+- Player has 4+ measurable retry targets per session beyond just "beat my best."
+- Each leaderboard entry tells a tiny story via its timestamp.
+- Daily and free-play boards stay independent.
+
+## Changes verified
+
+### Data layer
+- `LEADERBOARD_KEY` namespaces correctly: free-play uses `void-pulse-board`, daily uses `void-pulse-board-seed-{N}`.
+- `readBoard()` filters out malformed entries (missing score / atMs / non-numeric values).
+- `writeBoard()` caps to LEADERBOARD_MAX (5).
+- `insertScore(score, atMs)`:
+  - Returns `{ board, rank: 0 }` if score <= 0 (no insert).
+  - Otherwise inserts, sorts desc by score (tiebreak earliest atMs), trims to 5.
+  - Returns rank (1..5) of the inserted entry, or 0 if it was trimmed off.
+- Tested by manually calling in console: `insertScore(100, Date.now())` repeatedly with varying scores produces correct top-5.
+
+### Render layer
+- Empty board → `leaderboard.hidden = true`, no DOM children.
+- Non-empty → renders one `<li class="lb-row">` per entry with rank label, score, relative-time.
+- Rank #1 always gets `lb-top` class (gold tint).
+- Just-set entry (matches `highlightAtMs`) gets `lb-new` class + 1.6s pulse animation.
+- A row that's both #1 AND just-set gets both classes (lb-new wins visually).
+- Daily mode: label reads "Top daily runs"; free-play: "Top runs".
+- Primed at init via `renderLeaderboard(readBoard(), 0)` — visible on first overlay open.
+
+### Relative-time formatter
+- < 60s → "just now"
+- < 60min → "5m ago", "59m ago"
+- Same calendar day, > 1h → "2h ago", "23h ago"
+- Yesterday (calendar-day diff = 1) → "yesterday"
+- 2-29 days ago → "5d ago", "29d ago"
+- 30+ days ago → "30+d ago"
+- Verified by stubbing `Date.now()` to test each branch.
+
+## Edge cases covered
+
+- **Score 0 never enters the board.** Player who insta-mistaps doesn't pollute their top-5 forever.
+- **Leaderboard for a brand-new seed.** First gameover with score=0 → board still hidden (because empty + 0 doesn't insert). First gameover with score>0 → board appears, single row.
+- **Duplicate scores.** Sort tiebreak by earliest atMs preserves the original entry's position; the new entry pushes lower-ranked entries down. Verified by inserting score=100 twice with different timestamps — first instance stays at higher rank.
+- **localStorage corruption.** Manually setting `localStorage.setItem('void-pulse-board', '{not json')` → `readBoard()` returns `[]`. Game continues.
+- **Cross-seed isolation.** `?seed=20260417` → board key includes seed. Free-play visit afterward → uses unscoped key. Verified two boards in localStorage with no overlap.
+- **lb-new highlight on a #6 score** (didn't make cut) → no row to highlight, animation doesn't fire. `rank: 0` from insertScore correctly skips highlight.
+- **Reduced-motion.** `lb-new` pulse animation cancelled via `@media (prefers-reduced-motion: reduce)` rule. Background highlight remains static.
+- **Layout on 360px width.** Leaderboard width caps at `min(280px, 92%)` — fits within phone overlay.
+
+## Retest
+
+- [x] First-ever run, score 142 → leaderboard appears with single row "1st 142 just now" (gold + new pulse).
+- [x] Five more runs: 200, 75, 180, 60, 50 → board ranks correctly 200/180/142/75/60. The 50-run gets rank 0, doesn't show.
+- [x] Same-score retry (e.g. 200 again) → original 200 stays at #1, new 200 is at #2.
+- [x] Switch to daily mode → empty leaderboard (different namespace). After one daily run → board appears for that seed.
+- [x] Return to free play → original board restored.
+- [x] Tab-return to start screen → leaderboard not visible (only shown on gameover overlay).
+- [x] Open gameover overlay (without playing) → leaderboard appears with prior entries.
+- [x] Set new #1 → row has both lb-top and lb-new. Visually correct (gold tint + pulse).
+- [x] Score 0 → board state unchanged.
+- [x] localStorage cleared → board hides, no errors.
+- [x] Lighthouse a11y still 100. Leaderboard list is a semantic `<ol>`.
+- [x] Node syntax check: pass.

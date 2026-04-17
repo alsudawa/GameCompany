@@ -117,6 +117,8 @@
   // Same story for run history — daily progression is per-seed so the
   // sparkline shows "how I'm doing on THIS daily", not mixed with free-play.
   const HISTORY_KEY = SEED !== null ? 'void-pulse-history-seed-' + SEED : 'void-pulse-history';
+  const LEADERBOARD_KEY = SEED !== null ? 'void-pulse-board-seed-' + SEED : 'void-pulse-board';
+  const LEADERBOARD_MAX = 5;
 
   // ---------- 2. State ----------
   const state = {
@@ -220,8 +222,14 @@
   const historyLabel = document.getElementById('historyLabel');
   const tomorrowEl = document.getElementById('tomorrow');
   const tomorrowTimeEl = document.getElementById('tomorrowTime');
+  const leaderboardEl = document.getElementById('leaderboard');
+  const leaderboardLabel = document.getElementById('leaderboardLabel');
+  const leaderboardListEl = document.getElementById('leaderboardList');
   bestScoreEl.textContent = state.best;
-  if (SEED !== null) historyLabel.textContent = 'Daily progress';
+  if (SEED !== null) {
+    historyLabel.textContent = 'Daily progress';
+    leaderboardLabel.textContent = 'Top daily runs';
+  }
 
   // Milliseconds until local midnight — used to tease tomorrow's daily
   // on the gameover screen ("Next daily in 6h 12m").
@@ -287,6 +295,34 @@
   }
   function writeHistory(arr) {
     try { localStorage.setItem(HISTORY_KEY, JSON.stringify(arr.slice(-RUN_HISTORY_CAP))); } catch {}
+  }
+  // Top-N per-seed leaderboard. Each entry: { score: number, atMs: number }.
+  // Stored sorted descending by score, capped at LEADERBOARD_MAX.
+  function readBoard() {
+    try {
+      const raw = localStorage.getItem(LEADERBOARD_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .filter(e => e && typeof e.score === 'number' && typeof e.atMs === 'number')
+        .slice(0, LEADERBOARD_MAX);
+    } catch { return []; }
+  }
+  function writeBoard(arr) {
+    try { localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(arr.slice(0, LEADERBOARD_MAX))); } catch {}
+  }
+  // Insert a score; returns { board, rank } where rank is the 1-indexed
+  // position of the new entry, or 0 if it didn't make the cut.
+  function insertScore(score, atMs) {
+    if (score <= 0) return { board: readBoard(), rank: 0 };
+    const board = readBoard();
+    const entry = { score, atMs };
+    board.push(entry);
+    board.sort((a, b) => b.score - a.score || a.atMs - b.atMs);
+    const trimmed = board.slice(0, LEADERBOARD_MAX);
+    const rank = trimmed.indexOf(entry) + 1;     // 0 if dropped by trim
+    writeBoard(trimmed);
+    return { board: trimmed, rank };
   }
   // Sliding window of recent run durations (seconds); last RAGE_REQUIRED only.
   function readRageDurations() {
@@ -587,6 +623,64 @@
   }
   // Prime gameover history on first paint so returning players see their trend.
   renderHistory(readHistory());
+
+  // Format an "atMs" timestamp as a coarse relative string. Buckets:
+  //   < 60s     → "just now"
+  //   < 60min   → "Nm ago"
+  //   today     → "Nh ago"
+  //   yesterday → "yesterday"
+  //   else      → "Nd ago"  (or "30+d ago" for older)
+  function formatRelative(atMs, now) {
+    const diffMs = Math.max(0, now - atMs);
+    if (diffMs < 60000) return 'just now';
+    const min = Math.floor(diffMs / 60000);
+    if (min < 60) return min + 'm ago';
+    const at = new Date(atMs);
+    const todayLocal = new Date(now);
+    const sameDay = at.getFullYear() === todayLocal.getFullYear()
+      && at.getMonth() === todayLocal.getMonth()
+      && at.getDate() === todayLocal.getDate();
+    if (sameDay) return Math.floor(min / 60) + 'h ago';
+    const startOfTodayMs = new Date(todayLocal.getFullYear(), todayLocal.getMonth(), todayLocal.getDate()).getTime();
+    const startOfAtDayMs = new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime();
+    const days = Math.round((startOfTodayMs - startOfAtDayMs) / 86400000);
+    if (days === 1) return 'yesterday';
+    if (days >= 30) return '30+d ago';
+    return days + 'd ago';
+  }
+  const RANK_LABELS = ['1st', '2nd', '3rd', '4th', '5th'];
+  function renderLeaderboard(board, highlightAtMs) {
+    while (leaderboardListEl.firstChild) leaderboardListEl.removeChild(leaderboardListEl.firstChild);
+    if (!board.length) {
+      leaderboardEl.hidden = true;
+      return;
+    }
+    leaderboardEl.hidden = false;
+    const now = Date.now();
+    for (let i = 0; i < board.length; i++) {
+      const e = board[i];
+      const li = document.createElement('li');
+      li.className = 'lb-row';
+      if (highlightAtMs && e.atMs === highlightAtMs) li.classList.add('lb-new');
+      if (i === 0) li.classList.add('lb-top');
+      const rank = document.createElement('span');
+      rank.className = 'lb-rank';
+      rank.textContent = RANK_LABELS[i] || (i + 1) + 'th';
+      const score = document.createElement('span');
+      score.className = 'lb-score';
+      score.textContent = String(e.score);
+      const when = document.createElement('span');
+      when.className = 'lb-when';
+      when.textContent = formatRelative(e.atMs, now);
+      li.appendChild(rank);
+      li.appendChild(score);
+      li.appendChild(when);
+      leaderboardListEl.appendChild(li);
+    }
+  }
+  // Prime once so the leaderboard is visible if the player has prior runs even
+  // before they finish today's first run.
+  renderLeaderboard(readBoard(), 0);
 
   // ---------- Judging ----------
   function perfectWindowMs() {
@@ -1271,6 +1365,10 @@
     const trimmed = history.slice(-RUN_HISTORY_CAP);
     writeHistory(trimmed);
     renderHistory(trimmed);
+    // Per-seed top-N: insert this run, render the table, highlight if new.
+    const runAtMs = Date.now();
+    const { board, rank } = insertScore(state.score, runAtMs);
+    renderLeaderboard(board, rank > 0 ? runAtMs : 0);
     // Track rage-retry window: push this run's duration.
     const rage = readRageDurations();
     rage.push(+state.t.toFixed(2));
