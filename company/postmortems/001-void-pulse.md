@@ -1504,6 +1504,58 @@ Sprint 30 added beat-synced BGM, Sprint 31 verified it. But the musical anchor v
 
 ---
 
+## Sprint 33 — BGM duck on hazard-hit (audio mix lens) (2026-04-17)
+
+### Lens
+
+Sprint 30 shipped beat-synced BGM; Sprint 31's QA noted that during `hard` / `climax` bands, the kick+snare layer stacks with the hazard-hit SFX transient and the punishment read can feel "washed" — the music is fighting for the same midrange that makes the hazard-tap feel *bad*. The fix a mixing engineer would reach for first is a sidechain duck: when the hazard SFX fires, briefly pull the music down so the punishment lands clean, then let it swell back as the red wash fades.
+
+### Changes
+
+- **`BGM.duck(amount=0.35, attackS=0.03, holdS=0.09, releaseS=0.32)`** method on the BGM module. Writes a fast down-ramp → brief hold → release envelope to the BGM gain node.
+- **Anchor current gain before the attack ramp.** `setValueAtTime(g.value, t)` before the first ramp makes overlapping ducks (two hazards 100ms apart) compose naturally instead of snapping.
+- **Target the module's `BGM_MASTER_GAIN` on release, not 1.0.** A hardcoded 1.0 would leak audio if the duck fired during a mute ramp; reading the nominal level keeps everything layered cleanly.
+- **Respects mute / pause / stop.** `duck()` early-returns if `!running`, `paused`, or `muted`. `setMuted` / `pause` / `stop` all use `cancelScheduledValues` on the same gain, so any of them cleanly override an in-flight duck.
+- **Call-site** is in the hazard-tap branch of `judgeTap`, right after the hazard SFX (inside the `!state.deathCam` guard so the fatal hit doesn't try to duck into an already-stopping BGM).
+
+### Tuning rationale
+
+- **amount 0.35 ≈ -9dB** — deep enough to get out of the SFX's way, shallow enough that the music stays present (not "did the audio break?").
+- **release 0.32s** — couples to the `state.hazardHitT = 0.28s` red-wash duration. Music returns as the visual heals.
+- **attack 0.03s** — fast, but not instant. A 0ms jump creates zipper clicks on some browsers.
+
+### Patterns extracted → `company/skills/audio/sidechain-duck.md` (new, ~120 lines)
+
+- Transient event-duck is distinct from steady-state bus-swap (`audio/audio-dynamics.md`). Different time scale, different composition rules.
+- `setValueAtTime(g.value, t)` anchor is the key to overlap-safe ducking — without it, the second-duck-during-first-duck case is undefined.
+- Release-to-`MASTER_GAIN` (not 1.0) keeps the layered graph honest when the master is already ramping.
+- Per-layer gain node is a prerequisite — if music and SFX share a gain, you can't sidechain.
+- Don't use for continuous events; use for punctuation (hazard, damage, big-combo celebration).
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 33 | Audio mix polish | BGM duck on hazard-hit with overlap-safe envelope; new skill doc `audio/sidechain-duck.md` |
+
+### Cost
+
+- game.js: +22 lines (one `duck()` method + one call site + call-site comment)
+- No new assets, no HTML, no CSS
+- 1 new skill doc (`audio/sidechain-duck.md`, ~120 lines)
+- README index: 1 new entry
+
+### Next candidates
+
+- **Per-band BGM intensity hint in HUD** — color the beat ring by current band (artist + audio crossover lens).
+- **Onboarding / demo refresh** — `.demo` element on start overlay still shows pre-rhythm-pivot visuals.
+- **Beat indicator as onboarding cue** — demo overlay could show the ring pulsing pre-start.
+- **Localization pass** / **service worker** (still open).
+- **Focus-visible outline audit** / **keyboard-only flow audit** (still open).
+- **Stats-panel sparkline** / **stats export** (still open).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

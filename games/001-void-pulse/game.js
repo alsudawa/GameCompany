@@ -1188,6 +1188,27 @@
         this.gain.gain.linearRampToValueAtTime(target, this.ctx.currentTime + 0.05);
       } catch { this.gain.gain.value = target; }
     },
+    // Sidechain-style duck for punctuation events (hazard tap). Attack is
+    // snappy so the BGM gets out of the way of the punishment SFX transient;
+    // release overlaps the tail of the red wash (~280ms) so the music fades
+    // back in as the visual recovers. cancelScheduledValues + an explicit
+    // setValueAtTime anchor ensures an overlapping duck on a second hazard
+    // cleanly re-starts the envelope from wherever gain currently sits.
+    duck(amount = 0.35, attackS = 0.03, holdS = 0.09, releaseS = 0.32) {
+      if (!this.running || this.paused) return;
+      if (state.muted) return;
+      if (!this.gain || !this.ctx) return;
+      const g = this.gain.gain;
+      const t = this.ctx.currentTime;
+      const low = BGM_MASTER_GAIN * amount;
+      try {
+        g.cancelScheduledValues(t);
+        g.setValueAtTime(g.value, t);
+        g.linearRampToValueAtTime(low, t + attackS);
+        g.setValueAtTime(low, t + attackS + holdS);
+        g.linearRampToValueAtTime(BGM_MASTER_GAIN, t + attackS + holdS + releaseS);
+      } catch { /* ignore — mute ramp will restore anyway */ }
+    },
     _scheduleAhead() {
       if (!this.running || this.paused) return;
       if (!this.ctx || this.ctx.state !== 'running') return;
@@ -1928,6 +1949,9 @@
           haptic(30);
           if (typeof Sfx.hazardHit === 'function') Sfx.hazardHit();
           else Sfx.miss();
+          // Sidechain duck: BGM drops ~65% under the hazard SFX transient so
+          // the punishment lands clean, then recovers as the red wash fades.
+          if (typeof BGM.duck === 'function') BGM.duck();
         }
       }
       // Early-tap on a hazard is swallowed — same forgiveness as normal.

@@ -38,6 +38,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`audio/theme-conditional-sfx.md`](audio/theme-conditional-sfx.md) — additive theme accent layer (lazy noise buffer + filter branch for crackle/rustle, void = no-op)
 - [`audio/web-audio-scheduling.md`](audio/web-audio-scheduling.md) — `ctx.currentTime + delay` pre-scheduling for tight rhythmic audio (vs. setTimeout drift), gate-on-reduced-motion for visual-synced audio
 - [`audio/synced-bgm.md`](audio/synced-bgm.md) — beat-synced generative BGM module (band-conditional pattern table + 60ms tick / 250ms lookahead scheduler + anchor-shift pause/resume via performance.now)
+- [`audio/sidechain-duck.md`](audio/sidechain-duck.md) — transient event-duck on music gain (anchor-current-value + attack/hold/release envelope + overlap-safe composition, distinct from steady-state bus swap)
 
 ### Mobile
 - [`mobile/dpr-canvas.md`](mobile/dpr-canvas.md) — DPR-aware canvas for crisp rendering on retina
