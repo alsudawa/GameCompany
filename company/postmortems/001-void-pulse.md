@@ -2045,6 +2045,89 @@ The skill doc remains largely correct. The only "gotcha" is that the first appli
 
 ---
 
+## Sprint 42 — Share text enrichment (retention × virality lens)
+
+**Lens:** the share button has shipped since Sprint 6 with a bare-bones text: `I scored 28500 in void-pulse (new best!) <url>`. The gameover screen shows `28500 · 92%` — the % is the real retention metric ("I got 92%, I can do better"). But the share text drops the %. **Why is the score's best brag-stat being stripped before it leaves the game?**
+
+### What was actually wrong
+
+The share text format:
+- Daily: `void-pulse · Daily Apr 17: 28500 — can you beat it? <url>`
+- Free: `I scored 28500 in void-pulse (new best!) <url>`
+
+A bare score number is a naked stat. The recipient has no frame of reference. "Is 28500 good?" Without context, they can't tell. And the player's best retention hook (the % and the peak combo) is private, known only to them.
+
+### Design
+
+Enrich the share text with up to 2 compact stats inline:
+- **%-accuracy** of the theoretical max (the retention metric, most evocative number)
+- **Peak combo** (second-most-memorable run datum, short to express)
+
+Formatted: `28500 (92% · peak ×4)`.
+
+Thresholds:
+- %-accuracy: only when `maxPossibleScore > 0` (a real run was built).
+- Peak combo: only when `peakCombo >= 2` (×1 means no combo at all — nothing to brag).
+
+Both missing → fall back to bare score (no empty parens, no `0%`).
+
+### Why middle-dot separator + parens
+
+- **Parens subordinate the stats to the score** — "28500" is the headline, "(92% · peak ×4)" is supporting detail. Without parens the stats fight the score for attention.
+- **Middle-dot (·) not comma** — comma reads as a list; middle-dot reads as a terse stat-line. Matches the gameover display convention (`28500 · 92%`).
+- **No newlines** — some chat platforms strip them; one-line share text is portable.
+
+### Why only 2 stats (not 4 or 5)
+
+Capped at 2 for signal density. Earlier draft had peak combo + % + perfect count + hazard-pass count:
+`28500 (92% · peak ×4 · 24 perfects · 8 dodges)`
+
+That's 4 stats. Reads as a wall, not a brag. The top 2 (%-accuracy, peak-combo) carry 90% of the signal for 50% of the characters. Rest belong in the stats panel, not the share line.
+
+### What this sprint didn't do
+
+- **Emoji ladder** (Wordle-style visual grid). Considered and deferred. The run has natural bar-chunks (30 bars) so the structure is there, but:
+  - 30 emojis is a big addition vs the 15-char stats summary.
+  - Emoji rendering is inconsistent across chat platforms.
+  - The stats summary already carries the story ("92% · peak ×4" = "this was a great run").
+  Documented as a consideration in the skill doc's new section.
+- **Live-per-run stats beyond %-and-peak** — perfects, hazards-dodged, heartbeats-hit all exist in state but don't justify the character budget in a shareable line.
+- **Seed-specific comparison** — "your friend got 85%, you got 92%" style compare-share is a bigger feature, not a polish sprint.
+
+### Patterns extracted
+
+Updated [`ux/share.md`](../skills/ux/share.md) with a new **"Enrich the text with run context"** section covering:
+- Which stats to include (%-accuracy and peak combo — the two highest signal-per-character stats).
+- Formatting rules: parens wrap, middle-dot separator, threshold-gate each stat.
+- Cap at ~3 stats so a share line stays a line.
+- Emoji-ladder decision heuristic (when does it help? when is it noise?).
+
+Didn't create a new skill doc — this is an extension of existing pattern, not a new one.
+
+### Wrap-up
+
+- Share text now includes `(pct% · peak ×N)` when meaningful.
+- Threshold-gated: no `(0% · peak ×1)` embarrassments.
+- Fallback: bare score when neither stat has signal.
+- Existing URL / daily-seed logic untouched.
+- Skill doc updated with formatting heuristics, cap-at-3-stats rule, and emoji-ladder decision framework.
+
+### Cost
+
+- game.js: +~14 lines (stats array build + statStr compose)
+- style.css: 0
+- skill doc: +~40 lines (new "Enrich the text with run context" section)
+- postmortem: Sprint 42 section
+
+### Next candidates
+
+- **Per-tier audio tier-up cue** — combo text tint ships in 41; pair with an audio tier-up to make the progression audible too.
+- **Emoji ladder in share (deferred from 42)** — if retention data shows share-engagement dropping, the ladder is the next ammunition.
+- **Keyboard-only full-flow verification** (still open, 3 sprints).
+- **Localization scaffolding** / **service worker** / **gamepad input** (still open, long).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

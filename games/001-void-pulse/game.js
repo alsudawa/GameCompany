@@ -1629,10 +1629,24 @@
     return url.toString();
   }
   function shareScore() {
+    // Enrich with run context — % accuracy + peak combo give recipients
+    // real signal about the run, not just a bare number. Formatted inline:
+    // "28500 (92% · peak ×4)". Stats only appear when meaningful:
+    //   - pct only if the chart's max was non-zero (i.e. a real run happened)
+    //   - peak combo only at ×2 or higher (×1 = didn't combo, nothing to brag)
+    const stats = [];
+    if (state.maxPossibleScore > 0) {
+      const p = Math.round((state.score / state.maxPossibleScore) * 100);
+      stats.push(p + '%');
+    }
+    if (state.peakCombo >= 2) {
+      stats.push('peak ×' + state.peakCombo);
+    }
+    const statStr = stats.length ? ' (' + stats.join(' · ') + ')' : '';
     const prefix = SEED !== null
       ? 'void-pulse · Daily ' + formatSeedLabel(SEED) + ': '
       : 'I scored ';
-    const base = prefix + state.score +
+    const base = prefix + state.score + statStr +
       (SEED !== null ? ' — can you beat it?' : ' in void-pulse') +
       (state.newBestThisRun ? ' (new best!)' : '') +
       ' ' + shareUrl();
