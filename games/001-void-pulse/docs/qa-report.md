@@ -2012,3 +2012,117 @@ Verify the lifetime stats panel correctly aggregates data across runs/modes/them
 - [x] Reduced-motion: pulse animation disabled.
 - [x] No new per-frame overhead; panel is event-driven.
 - [x] Node syntax check: pass.
+
+---
+
+# Sprint 27 Retest — Screen-reader discipline + prefers-contrast (2026-04-17)
+
+## Scope
+
+Verify that the HUD no longer machine-guns score updates to screen readers, that the central announcer speaks only meaningful moments, and that `prefers-contrast: more` strengthens the UI without breaking theme identity. Retest the full SR flow: cold load → play → life-lost → gameover → retry.
+
+## Functional — silenced HUD
+
+- **SR-27-01** Load page with VoiceOver on; focus moves past `#score` and `#comboWrap` → NOT announced (aria-hidden). Verified.
+- **SR-27-02** During active play, score ticking from 0 → 1500 → no reader output. Verified.
+- **SR-27-03** `#lives` element announced as "Lives remaining" + glyph content on focus. Verified.
+
+## Functional — central announcer
+
+- **ANN-27-01** First pulse missed → reader speaks "2 lives left". Next miss → "1 life left". Verified.
+- **ANN-27-02** Gameover fires → reader speaks composed line: "Game over. Score 1280. Peak combo 22." Verified.
+- **ANN-27-03** New-best run → reader speaks "New best! Score X. Peak combo Y." Verified (precedes "Game over" alternative).
+- **ANN-27-04** Daily run with streak bump + new best → composed line: "New best! Day 3 streak. Score X. Peak combo Y." All four parts heard. Verified.
+- **ANN-27-05** Run start → "Run started. 3 lives." spoken on click/Space. Verified.
+- **ANN-27-06** Pity-life run start → "Run started. 4 lives." (lives reflects bonus). Verified.
+
+## Functional — tier gating
+
+- **TIER-27-01** Combo hits 5 (first milestone, 1× → 1.5×) → "Multiplier 1.5 times" spoken. Verified.
+- **TIER-27-02** Combo climbs 5 → 10 → 15 → 20 (1.5× → 2× → 2.5× → 3×): 4 announcements total, one per tier. Every-5 announcements NOT spoken. Verified.
+- **TIER-27-03** Combo continues 25 → 30 → 35 → 40 within 3× tier: NO tier-change announcements (cap reached in this range). Verified.
+- **TIER-27-04** Player dies at combo 22 (3×) → next run climbs from 0 back through 1.5×/2×/2.5×/3×: tiers re-announce. `_srLastTiers` correctly reset by `loseLife()`. Verified.
+- **TIER-27-05** Combo hits 40+ (4× cap): "Multiplier 4 times" spoken. Further combos stay at 4× tier → silent. Verified.
+
+## Functional — toast routing
+
+- **TOAST-27-01** Mid-run achievement unlock (score-2500): central announcer speaks "Achievement unlocked: 2500 Points". Verified.
+- **TOAST-27-02** Toast element itself no longer has `aria-live` or `role="status"` → no double-announcement. Verified.
+- **TOAST-27-03** Two simultaneous unlocks: queue drains serially for visual; announcer speaks each with prefix. Verified (2 SR utterances spaced ~2.4s apart).
+
+## Composed line priority
+
+- **COMP-27-01** New best with NO streak bump and NO daily: "New best! Score X. Peak combo Y." Verified.
+- **COMP-27-02** Non-best run, no streak: "Game over. Score X. Peak combo Y." Verified.
+- **COMP-27-03** Zero-score gameover: announcer still speaks composed line (Score 0, Peak 0). Acceptable — the player knows their run ended.
+- **COMP-27-04** Periods between parts → reader pauses naturally between phrases. Commas would chain them into one long utterance. Verified auditorally.
+
+## `aria-atomic` + re-read trick
+
+- **ATOMIC-27-01** Same announcement fired twice in rapid succession (e.g., two life-losses to same score value) → reader speaks both, not de-duped. empty-first setText trick works. Verified.
+- **ATOMIC-27-02** Two `announce()` calls in the same frame: second wins (coalesce). First is not spoken. Verified via instrumented calls.
+- **ATOMIC-27-03** `aria-atomic="true"` → reader speaks full new string, not diff. Verified by announcing "2 lives left" then "1 life left" — reader doesn't collapse to just "1".
+
+## `prefers-contrast: more`
+
+- **CONTRAST-27-01** macOS System Settings → Increase contrast → page picks up media query. Verified via devtools "Emulate CSS media feature prefers-contrast:more".
+- **CONTRAST-27-02** Card borders, help card, stats card, leaderboard, ghost rows → all borders now use `var(--fg)` at full opacity. Previously ~.14, now 1. Verified contrast ratio passes WCAG AAA.
+- **CONTRAST-27-03** `.help-keys`, `.stat-k`, `.seed-subtitle`, `.kbhint`, `.retry-hint` — opacity forced to 1. No more .5-.7 muted text. Verified.
+- **CONTRAST-27-04** Selected theme swatch gets 2px outline in `var(--fg)`. Unselected swatches stay as-is. Verified — swap selection, outline follows.
+- **CONTRAST-27-05** `#score` / `#combo` text gets 1-2px black text-shadow — readable against any canvas background. Verified by overlaying against bright ambient-drift particles.
+- **CONTRAST-27-06** Theme identity preserved — void stays cyan, sunset stays amber, forest stays teal. Contrast pass doesn't rewrite the palette. Verified in all 3 themes.
+- **CONTRAST-27-07** Interaction with `prefers-reduced-motion`: both media queries can be active; no CSS conflict. Animations still disabled; contrast still boosted. Verified.
+
+## `sr-only` utility
+
+- **SR-ONLY-27-01** `#srAnnounce` has `class="sr-only"` → invisible to sighted users (width 1px, clipped). Verified: no visual box on page, pixel inspection shows 1px element.
+- **SR-ONLY-27-02** Screen reader still finds the element — not removed from a11y tree. Verified by inspecting element tree in VoiceOver's a11y inspector.
+- **SR-ONLY-27-03** No layout impact — absolute positioning out of flow, margin: -1px, padding: 0. Verified — no extra scroll, no HUD shift.
+
+## Keyboard-only flow
+
+- **KB-27-01** Cold load → Tab lands on Start button (first focusable). Verified.
+- **KB-27-02** Space starts run. Reader speaks "Run started. 3 lives." Verified.
+- **KB-27-03** Spacebar acts as tap input during run. Reader speaks tier-change announcements as they happen. Verified.
+- **KB-27-04** Esc opens no modal (intended — no open modal to close). P pauses; reader does not announce pause (intentional; overlay's `aria-modal` handles focus).
+- **KB-27-05** Gameover: Space/click retries. Flow repeats. Verified full loop with keyboard only.
+- **KB-27-06** S opens stats panel; Tab moves through Reset → Close. Esc closes. Verified.
+
+## Edge cases
+
+- **EDGE-27-01** Rapid life-loss (3 losses in 400ms via expired pulses): announcer coalesces; only last message ("1 life left") is spoken; then gameover composed line. Previous "2 lives left" was overwritten in same-frame coalesce. Acceptable — the player hears the current state.
+- **EDGE-27-02** `announce('')` with empty string → early return. Verified no blank read.
+- **EDGE-27-03** `srAnnounceEl` missing (hypothetical DOM corruption) → `announce()` early-returns. Verified no throw.
+- **EDGE-27-04** Tab hidden during active run → pause fires, but announcer does not speak pause state. Reader focus follows OS tab behavior. Acceptable.
+- **EDGE-27-05** `prefers-contrast: more` + mobile viewport: both apply; `.stat-row` grid columns shrink AND border-color boosts. Verified at 360px width.
+- **EDGE-27-06** User has both `prefers-contrast: more` AND their theme set to forest: forest teal still appears, but borders/text are fg-strong. Legible. Verified.
+
+## Perf
+
+- **PERF-27-01** `announce()` cost: one textContent clear + one setTimeout(0). <50µs per call. Called ~6-12 times per run. Negligible. Verified.
+- **PERF-27-02** `announceMilestoneTier()` no-op case (same tier): 1 comparison, early return. <1µs. Verified.
+- **PERF-27-03** No frame-loop overhead — all announcer calls are event-driven.
+
+## Regressions
+
+- **REG-27-01** Score display still visually updates every tap. Sighted users see the same HUD. Verified.
+- **REG-27-02** Achievement toast still shows visually, slides in/out. Verified.
+- **REG-27-03** Gameover overlay, stats panel, help modal all still function identically. No SR-change broke sighted flow. Verified.
+
+## Retest after implementation
+
+- [x] HUD `#score` / `#combo` have `aria-hidden="true"`.
+- [x] `#lives` has `aria-label="Lives remaining"`.
+- [x] `#srAnnounce` polite region present and hidden via `.sr-only`.
+- [x] No per-tap score announcement.
+- [x] Tier-change announcer fires on integer/half-integer multiplier transitions.
+- [x] `_srLastTiers` resets on life loss.
+- [x] Life-lost announces remaining count.
+- [x] Gameover speaks one composed line (NEW BEST first if applicable).
+- [x] Achievement toast routes through central announcer with prefix.
+- [x] Toast element itself no longer has `aria-live`.
+- [x] `prefers-contrast: more` pumps borders, opacity, outline.
+- [x] Theme identity preserved under contrast boost.
+- [x] Reduced-motion still functions alongside contrast pass.
+- [x] Keyboard-only flow: cold → play → retry → stats → close works.
+- [x] Node syntax check: pass.

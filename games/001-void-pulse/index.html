@@ -22,14 +22,16 @@
   <main id="app">
     <canvas id="stage" width="720" height="960" aria-label="void-pulse canvas"></canvas>
 
-    <div id="hud" aria-live="polite">
-      <div id="score">0</div>
-      <div id="comboWrap">
+    <div id="hud">
+      <div id="score" aria-hidden="true">0</div>
+      <div id="comboWrap" aria-hidden="true">
         <div id="combo"></div>
         <div id="comboMeter"><div id="comboMeterFill"></div></div>
       </div>
-      <div id="lives"><span class="life">◯</span><span class="life">◯</span><span class="life">◯</span></div>
+      <div id="lives" aria-label="Lives remaining"><span class="life">◯</span><span class="life">◯</span><span class="life">◯</span></div>
     </div>
+
+    <div id="srAnnounce" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <div id="seedPill" class="seed-pill" hidden>DAILY · <span id="seedDate"></span></div>
 
@@ -172,7 +174,7 @@
       </div>
     </div>
 
-    <div id="achievementToast" class="ach-toast hidden" role="status" aria-live="polite">
+    <div id="achievementToast" class="ach-toast hidden" aria-hidden="true">
       <span class="ach-toast-badge" aria-hidden="true">▲</span>
       <span class="ach-toast-text">
         <span class="ach-toast-head">Achievement</span>

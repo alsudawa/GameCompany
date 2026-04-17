@@ -662,6 +662,11 @@
     // ceremony" (the full cascade is reserved for the gameover context).
     Sfx.achievementToast();
     haptic([12, 22, 40]);
+    // Route the unlock through the central announcer with the "Achievement
+    // unlocked:" prefix so screen readers speak context even if they've
+    // silenced the toast's own aria-live (some SRs suppress role=status
+    // updates when a dialog is focused; the announcer region is persistent).
+    announce('Achievement unlocked: ' + ach.label);
     setTimeout(() => {
       el.classList.remove('visible');
       setTimeout(() => {
@@ -1137,6 +1142,48 @@
     el.classList.add(cls);
   }
 
+  // Screen-reader announcer — a single polite live-region used for the
+  // handful of moments that justify interrupting the player's focus:
+  // milestone tier changes, new best, streak bump, life lost, gameover.
+  // The visual HUD is aria-hidden precisely so this region speaks instead
+  // of firing one announcement per score tick.
+  //
+  // Debounce: many events can flood at once (a perfect tap crosses a
+  // milestone AND bumps score past best AND unlocks an achievement). We
+  // coalesce repeated calls in the same tick via a trailing setTimeout(0)
+  // so the screen reader hears the *last* coalesced message, not five
+  // truncated half-readings.
+  const srAnnounceEl = document.getElementById('srAnnounce');
+  let _srPending = null;
+  let _srLastTiers = { mult: 1, streak: 0 };
+  function announce(msg) {
+    if (!srAnnounceEl || !msg) return;
+    _srPending = msg;
+    if (_srPending !== null) {
+      // Clearing the text first forces assistive tech to re-read the new
+      // string even if it's identical to the prior one (same-string reads
+      // are often silently skipped otherwise).
+      srAnnounceEl.textContent = '';
+      setTimeout(() => {
+        if (_srPending === null) return;
+        srAnnounceEl.textContent = _srPending;
+        _srPending = null;
+      }, 0);
+    }
+  }
+  function announceMilestoneTier(mult) {
+    // Fire only on *tier change* (integer-mult transitions), not every ×5
+    // combo bump. Examples: 1 → 1.5 (first tier), 2.5 → 3 (cap reached).
+    // Guarded by _srLastTiers so re-entering a tier after a miss re-counts.
+    if (mult === _srLastTiers.mult) return;
+    _srLastTiers.mult = mult;
+    announce('Multiplier ' + (mult % 1 === 0 ? mult : mult.toFixed(1)) + ' times');
+  }
+  function resetSrTierCache() {
+    _srLastTiers.mult = 1;
+    _srLastTiers.streak = 0;
+  }
+
   // Draw last-N runs as a sparkline of bars. Normalized to the best value
   // shown so bar heights are meaningful relative to the player's ceiling.
   // Latest run = accent; best-of-window = gold; others muted.
@@ -1443,6 +1490,10 @@
         // overtone layered on top of levelup. Sparse by design — gated on
         // the tier so it's "you arrived at the top", not "you hit another 5".
         if (m >= 3) Sfx.themeSweeten();
+        // Announce milestones at TIER changes only (first time hitting each
+        // multiplier). Every-5 announcements would be as spammy as the old
+        // score live-region. Floor-of-mult transition = tier change.
+        announceMilestoneTier(m);
       }
       p.active = false;
     } else if (dMs <= GOOD_WINDOW_MS) {
@@ -1484,9 +1535,16 @@
   function loseLife() {
     state.combo = 0;
     state.missCount += 1;
+    _srLastTiers.mult = 1;    // reset so next milestone announces fresh
     const lostIdx = state.lives - 1;
     state.lives -= 1;
     updateLivesUI();
+    // Announce only the count of lives remaining (not "life lost") so the
+    // message is actionable: player hears "2 lives" and knows how close to
+    // death they are. Gameover has its own announcement below.
+    if (state.lives > 0) {
+      announce(state.lives + ' ' + (state.lives === 1 ? 'life' : 'lives') + ' left');
+    }
     // Flash the just-lost glyph so the player perceives the hit at HUD level,
     // not just as a missed pulse on the canvas.
     const glyphs = hudLives.querySelectorAll('.life');
@@ -2222,6 +2280,8 @@
     state.tensionFlash = false;
     state.deathCam = false;
     state.deathCamT = 0;
+    resetSrTierCache();
+    announce('Run started. ' + state.lives + ' lives.');
     app.classList.remove('deathcam');
     for (const p of pulses) p.active = false;
     for (const p of particles) p.active = false;
@@ -2384,6 +2444,16 @@
       Sfx.levelup();
       haptic([40, 40, 80]);
     }
+    // Compose a single gameover announcement so the screen reader speaks one
+    // summary line, not 6 fragmented reads. Order: NEW BEST first (highest
+    // salience), then streak bump, then final score + peak combo.
+    const parts = [];
+    if (state.newBestThisRun) parts.push('New best!');
+    else parts.push('Game over.');
+    if (streakBumped) parts.push('Day ' + streakAfter.streak + ' streak.');
+    parts.push('Score ' + state.score + '.');
+    parts.push('Peak combo ' + state.peakCombo + '.');
+    announce(parts.join(' '));
     // Daily mode: nudge returning-ness with a "come back tomorrow" countdown.
     // Uses device-local midnight; deliberately coarse (h+m, no seconds) so
     // the overlay isn't a ticking distraction.

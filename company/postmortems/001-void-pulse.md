@@ -1208,6 +1208,65 @@ This sprint adds a **lifetime stats panel** — a cross-mode, cross-theme aggreg
 
 ---
 
+## Sprint 27 — Accessibility lens / screen-reader discipline + contrast (2026-04-17)
+
+### Lens
+
+Accessibility. Auditing the current HTML surfaced a silent-majority bug: `<div id="hud" aria-live="polite">` meant every single score update (2–10 per second during active play) was being queued into screen readers, producing an unusable machine-gun of numbers. A screen-reader user can't see the HUD; what they were hearing was a completely different (and broken) game. This sprint fixes the announcement discipline and adds a `prefers-contrast: more` pass for low-vision users.
+
+### Changes
+
+- **Silenced the HUD** — `#score` and `#comboWrap` got `aria-hidden="true"`; `#lives` kept its semantic meaning via `aria-label="Lives remaining"`. Removed the HUD-wide `aria-live="polite"`.
+- **Added `#srAnnounce`** — a single `sr-only` visually-hidden `<div role="status" aria-live="polite" aria-atomic="true">` positioned adjacent to the HUD.
+- **`announce(msg)` helper** with the empty-first / setTimeout(0) re-read trick and in-frame coalesce via `_srPending`.
+- **`announceMilestoneTier(mult)`** — tier-change gating (1 → 1.5 → 2 → 2.5 → 3 → 3.5 → 4). Fires only on integer/half-integer transitions, not every ×5 combo step. Reset to 1 on `loseLife()`.
+- **Life-lost announcement** — `"2 lives left"` / `"1 life left"`; gameover is handled separately.
+- **Gameover composed line** — single announce call composes (NEW BEST? + streak bump? + score + peak combo) as one reader utterance. Priority-ordered so an interrupted read still delivers the headline.
+- **Start announcement** — `"Run started. 3 lives."` at the top of `start()`.
+- **Achievement toast re-routed** — removed the toast's own `role="status"` / `aria-live`; added `announce('Achievement unlocked: ' + label)` to the toast queue path. Single live region, consistent prefix.
+- **`.sr-only` utility class** — standard WCAG `clip: rect(0,0,0,0)` visually-hidden pattern.
+- **`@media (prefers-contrast: more)`** — pumps border colors from ~.14 opacity to full `var(--fg)`, forces `.kbhint / .seed-subtitle / .stat-k` opacity to 1, adds 2px outline on selected theme swatch, adds 1-2px black text-shadow to canvas-overlaid HUD numbers.
+
+### Patterns extracted → `company/skills/ux/screen-reader-announcements.md` (new)
+
+- **Silence the HUD, add one announcer** — single live region is predictable; multiple regions have inconsistent queue semantics across AT.
+- **Announce moments, not state** — `aria-live` on fast-updating numbers is always a bug; cue only transitions.
+- **Tier-change gating, not every-N gating** — fire at integer-multiplier transitions, reset on combo break.
+- **Compose gameover as a single line** — highest-salience first; periods for reader pauses; one `announce()` call.
+- **Empty-first textContent trick** — forces re-read of identical strings across AT de-duplication.
+- **Re-route secondary live regions through central announcer** — prefix context, single queue, avoids dialog-focus suppression edge cases.
+- **`prefers-contrast: more` as secondary pass** — pump borders and opacity, don't rewrite palette; add text-shadow for canvas-overlaid text.
+- **`sr-only` via clip:rect** — canonical visually-hidden; avoids `display:none` (hides from AT) and `visibility:hidden` (same).
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 27 | Accessibility / SR discipline | HUD silenced, single polite announcer with tier-change gating; contrast-preference pass; new skill doc (~180 lines) |
+
+### Cost
+
+- game.js: +55 lines (announcer helper + tier gate + hooks at milestone/loseLife/gameover/start/toast)
+- index.html: +2 lines (live region), -1 aria-live from HUD, -1 from toast
+- style.css: +51 lines (.sr-only + prefers-contrast block)
+- New `ux/screen-reader-announcements.md` (~190 lines); README index updated
+
+### Next candidates
+
+- **Tap-to-zoom ghost strip** — still open.
+- **Service worker for offline play** — still open.
+- **Per-theme heartbeat variant** — heartbeat ping through theme-conditional layer.
+- **Sweetener pulse on achievement unlock** — hint theme signature as part of the unlock cue.
+- **Ambient-density preference** — slider for drift particle count.
+- **Focus-visible outline audit** — some buttons (daily-link, theme-swatch) may have invisible focus rings; sprint-28 candidate.
+- **Keyboard-only flow audit** — can a keyboard-only user navigate from cold-load → play → gameover → retry → stats → reset without a mouse?
+- **Distribution sprint** — Open Graph image, Twitter card meta, dynamic per-seed title.
+- **Performance sprint** — close AudioContext when hidden+muted, adaptive ambient-drift cap on mobile.
+- **Stats-panel sparkline** — overlay the last-N run scores inside the stats card.
+- **Localization pass** — externalize UI strings for future translations.
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

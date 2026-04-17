@@ -948,6 +948,58 @@ html, body {
   .ach-chip .ach-desc { display: none; }
 }
 
+/* ---------- Accessibility utilities (Sprint 27) ---------- */
+/* Visually-hidden but screen-reader-accessible. Used for #srAnnounce live
+   region. Standard WCAG "clip" pattern; avoids display:none (which hides
+   from SR) and visibility:hidden (same). position:absolute + 1px clip keeps
+   the element in the a11y tree without painting pixels. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* High-contrast preference: Windows high-contrast mode, macOS "Increase
+   contrast" setting, or any user who explicitly prefers stronger edges.
+   Strategy: pump border opacities from ~.14 → 1, add 1px outline to key
+   interactive elements, brighten the accent on chips, lift .opacity=.X
+   demotion on labels. Not a full palette rewrite — the theme's identity
+   stays, the *contrast ratios* climb. */
+@media (prefers-contrast: more) {
+  .btn,
+  .icon-btn,
+  .share-btn,
+  .help-card,
+  .stats-card,
+  .ach-chip,
+  .leaderboard,
+  .ghost-row,
+  .stat-row {
+    border-color: var(--fg) !important;
+  }
+  .help-keys,
+  .stat-k,
+  .seed-subtitle,
+  .kbhint,
+  .retry-hint,
+  .first-visit-hint {
+    opacity: 1 !important;
+  }
+  .theme-swatch[aria-checked="true"] {
+    outline: 2px solid var(--fg);
+  }
+  #score,
+  #combo {
+    text-shadow: 0 0 1px #000, 0 0 2px #000;
+  }
+}
+
 /* ---------- Start overlay: lifetime stats entry (Sprint 26) ---------- */
 .ghost-link-btn {
   display: inline-block;
