@@ -93,7 +93,7 @@
       </div>
       <div id="history" class="history" aria-label="Last runs">
         <span id="historyLabel" class="history-label">Last runs</span>
-        <svg id="historySvg" viewBox="0 0 120 28" width="120" height="28" aria-hidden="true"></svg>
+        <svg id="historySvg" class="spark-svg" viewBox="0 0 120 28" width="120" height="28" aria-hidden="true"></svg>
       </div>
       <div id="ghost" class="ghost-strip" hidden aria-label="Ghost run comparison">
         <div class="ghost-row ghost-row-now">
@@ -170,6 +170,12 @@
           </span></div>
           <div class="stat-row"><span class="stat-k">First played</span><span class="stat-v" id="lsFirst">—</span></div>
           <div class="stat-row"><span class="stat-k">Last played</span><span class="stat-v" id="lsLast">—</span></div>
+          <div class="stat-row stat-row-span stat-row-spark">
+            <span class="stat-k">Recent trend</span>
+            <span class="stat-v stat-spark-cell">
+              <svg id="statsSparkSvg" class="spark-svg" viewBox="0 0 160 32" width="160" height="32" aria-hidden="true"></svg>
+            </span>
+          </div>
         </div>
         <div class="stats-actions">
           <button id="statsExport" class="stats-export-btn" type="button" hidden>Copy as text</button>

@@ -63,6 +63,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`ux/mid-run-toast.md`](ux/mid-run-toast.md) — rare-tier achievement toast during play via `midRun: true` flag + frame-loop eval + serial queue + bank-on-unlock write discipline
 - [`ux/lifetime-stats.md`](ux/lifetime-stats.md) — cross-mode lifetime aggregate panel (single JSON blob + default-fill read, one bump per gameover, empty state, two-step reset, derived rates)
 - [`ux/stats-export.md`](ux/stats-export.md) — copy-as-text lifetime-stats export (human-readable multi-line snapshot + mirrors share-btn clipboard-flow UX + hidden-until-data + positive-action-left positioning vs destructive Reset)
+- [`ux/sparkline.md`](ux/sparkline.md) — inline SVG sparkline renderer, shared across gameover + stats panel surfaces (fillSparkline(el,scores,W,H,SLOTS) + .spark-svg shared CSS class + right-align-latest + role-color rule with best/latest tie preference)
 - [`ux/screen-reader-announcements.md`](ux/screen-reader-announcements.md) — single polite live region + tier-change gating + `aria-atomic` composed gameover line + `prefers-contrast` pass + `sr-only` clip utility
 
 ### QA

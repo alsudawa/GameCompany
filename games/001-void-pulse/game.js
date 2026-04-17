@@ -1648,34 +1648,33 @@
   // Draw last-N runs as a sparkline of bars. Normalized to the best value
   // shown so bar heights are meaningful relative to the player's ceiling.
   // Latest run = accent; best-of-window = gold; others muted.
+  //
+  // Sprint 37: extracted the bar-drawing logic into `fillSparkline` so the
+  // stats panel can reuse it with a different target SVG + dimensions. The
+  // gameover `renderHistory` keeps its visibility toggle (hides the whole
+  // `#history` container when empty) because the stats panel handles its
+  // empty state at a different level (the `.stats-empty` class on the
+  // parent overlay hides the whole sparkline row via CSS).
   const SPARK_NS = 'http://www.w3.org/2000/svg';
-  function renderHistory(scores) {
-    while (historySvg.firstChild) historySvg.removeChild(historySvg.firstChild);
-    if (!scores || scores.length === 0) {
-      historyEl.style.display = 'none';
-      return;
-    }
-    historyEl.style.display = '';
+  function fillSparkline(svgEl, scores, W, H, SLOTS) {
+    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+    if (!scores || scores.length === 0) return;
     const maxScore = Math.max(1, ...scores);
-    const bestIdx  = scores.lastIndexOf(maxScore); // pick rightmost tie so latest-tie lights gold
+    const bestIdx  = scores.lastIndexOf(maxScore); // rightmost tie so latest-tie lights gold
     const latest   = scores.length - 1;
-    const W_SVG = 120, H_SVG = 28;
-    const SLOTS = RUN_HISTORY_CAP;
-    const slotW = W_SVG / SLOTS;
+    const slotW = W / SLOTS;
     const barW  = Math.max(6, slotW - 4);
-    // baseline
     const base = document.createElementNS(SPARK_NS, 'line');
     base.setAttribute('class', 'hline');
-    base.setAttribute('x1', '0'); base.setAttribute('x2', String(W_SVG));
-    base.setAttribute('y1', String(H_SVG - 0.5)); base.setAttribute('y2', String(H_SVG - 0.5));
-    historySvg.appendChild(base);
-    // right-align bars so latest run sits on the right
+    base.setAttribute('x1', '0'); base.setAttribute('x2', String(W));
+    base.setAttribute('y1', String(H - 0.5)); base.setAttribute('y2', String(H - 0.5));
+    svgEl.appendChild(base);
     const offset = SLOTS - scores.length;
     for (let i = 0; i < scores.length; i++) {
       const v = scores[i];
-      const h = Math.max(2, Math.round((v / maxScore) * (H_SVG - 4)));
+      const h = Math.max(2, Math.round((v / maxScore) * (H - 4)));
       const x = (offset + i) * slotW + (slotW - barW) / 2;
-      const y = H_SVG - h;
+      const y = H - h;
       const rect = document.createElementNS(SPARK_NS, 'rect');
       rect.setAttribute('class',
         'hbar' + (i === latest ? ' latest' : '') + (i === bestIdx && i !== latest ? ' best' : ''));
@@ -1684,8 +1683,17 @@
       rect.setAttribute('width',  String(barW));
       rect.setAttribute('height', String(h));
       rect.setAttribute('rx', '1');
-      historySvg.appendChild(rect);
+      svgEl.appendChild(rect);
     }
+  }
+  function renderHistory(scores) {
+    if (!scores || scores.length === 0) {
+      historyEl.style.display = 'none';
+      while (historySvg.firstChild) historySvg.removeChild(historySvg.firstChild);
+      return;
+    }
+    historyEl.style.display = '';
+    fillSparkline(historySvg, scores, 120, 28, RUN_HISTORY_CAP);
   }
   // Prime gameover history on first paint so returning players see their trend.
   renderHistory(readHistory());
@@ -2470,6 +2478,7 @@
   const statsClose = document.getElementById('statsPanelClose');
   const statsReset = document.getElementById('statsReset');
   const statsExport = document.getElementById('statsExport');
+  const statsSparkSvg = document.getElementById('statsSparkSvg');
   let statsOpenedDuringRun = false;
   function formatDuration(seconds) {
     seconds = Math.max(0, Math.floor(seconds));
@@ -2517,6 +2526,14 @@
     // Reset + Export affordances only make sense once there's data behind them.
     if (statsReset)  statsReset.hidden  = empty;
     if (statsExport) statsExport.hidden = empty;
+    // Recent-trend sparkline — same last-N history used by the gameover
+    // screen, just a wider/taller render to fit the stats card. Row is
+    // CSS-hidden when .stats-empty is active, so skip the draw entirely.
+    if (statsSparkSvg && !empty) {
+      fillSparkline(statsSparkSvg, readHistory(), 160, 32, RUN_HISTORY_CAP);
+    } else if (statsSparkSvg) {
+      while (statsSparkSvg.firstChild) statsSparkSvg.removeChild(statsSparkSvg.firstChild);
+    }
   }
   // Compose a plain-text snapshot of the lifetime stats, suitable for pasting
   // into a DM, tweet, or backup note. One line per semantic group, mirroring

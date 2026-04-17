@@ -1701,6 +1701,60 @@ The lifetime stats panel accumulates rich data — runs, perfects, accuracy, pea
 
 ---
 
+## Sprint 37 — Stats-panel sparkline (data viz lens) (2026-04-17)
+
+### Lens
+
+Sprint 36 shipped a text-based stats export; this sprint closes the loop on the data lens by adding a visual trend — the last-N run scores rendered as a sparkline inside the stats panel. The gameover screen already shows a compact sparkline, but that's only visible immediately after a run dies. Putting the same data in the stats panel makes it discoverable at any time, without dying first.
+
+### Changes
+
+- **New row `.stat-row-spark`** in the stats-grid: label "Recent trend" + 160×32 inline SVG sparkline. Row CSS-gated via `.stats-empty` so it disappears entirely when `runs === 0`.
+- **Refactored `renderHistory(scores)`** into a thin wrapper over a new `fillSparkline(svgEl, scores, W, H, SLOTS)` helper. Pure DOM-writer: takes target SVG + viewBox dimensions + max slots, draws baseline + bars, no DOM lookups.
+- **Shared `.spark-svg` class** on both sparkline SVGs (`#historySvg` gameover + `#statsSparkSvg` stats panel). Stylesheet rules moved from `#historySvg .hbar` → `.spark-svg .hbar`, so future sparkline surfaces just add the class.
+- **Stats panel sparkline is larger** than the gameover one (160×32 vs 120×28) — the stats card can afford the real estate, and the larger canvas makes individual bar variance easier to read.
+- **renderStats() hooks in** right after the empty-state toggle: fills the sparkline when data exists, clears it otherwise.
+
+### Design rules captured
+
+- **One shared renderer, multiple target SVGs.** Don't hardcode `getElementById` inside the renderer — pass the element as an arg. Future you will want a second sparkline somewhere.
+- **Normalize to max-in-window, not all-time max.** A player with a best-ever 5000 whose last 8 runs were 200-400 shouldn't see empty rectangles.
+- **Right-align bars.** `now` is on the right; older runs push left. Matches LTR time-series reading convention.
+- **Best-tie rule prefers `.latest`.** When the latest run ties window max, color it `.latest` only (not both classes). Double-coloring competes visually.
+- **SVG namespace matters.** `document.createElementNS('http://www.w3.org/2000/svg', 'rect')` — `createElement` makes HTML elements SVG ignores.
+
+### Patterns extracted → `company/skills/ux/sparkline.md` (new, ~180 lines)
+
+- Full `fillSparkline` snippet, caller patterns for gameover vs stats panel.
+- Sizing heuristics table (HUD badge 60×14, gameover 120×28, stats panel 160×32, full chart 400×120).
+- Role-color rules (latest = accent, best = highlight, latest.best collision preference).
+- Anti-patterns (innerHTML clear, hardcoded colors, allocating per-frame, no baseline, fixed pixel sizes).
+- Accessibility (aria-hidden on SVG, parent row carries semantic label).
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 37 | Data viz / UX polish | Stats-panel sparkline + shared `.spark-svg` renderer refactor; new skill doc `ux/sparkline.md` |
+
+### Cost
+
+- index.html: +5 lines (new stat-row + SVG + class on existing #historySvg)
+- style.css: ~24 lines (generalized .spark-svg selectors + stats-row-spark styling + stats-empty gate)
+- game.js: ~35 lines (extract fillSparkline + renderHistory thin wrapper + statsSparkSvg ref + renderStats hook)
+- 1 new skill doc (`ux/sparkline.md`, ~180 lines)
+- README index: 1 new entry
+
+### Next candidates
+
+- **Per-band BGM intensity hint in HUD** — color the beat ring by current band (artist + audio crossover lens).
+- **Overlay focus-trap audit** — still open from Sprint 35.
+- **JSON export extension** — disclosure for power users who want raw stats.
+- **QA audit sprint** — 6 feature sprints in a row since Sprint 31; time for another audit pass.
+- **Localization pass** / **service worker** (still open).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

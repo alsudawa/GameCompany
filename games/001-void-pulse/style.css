@@ -426,13 +426,17 @@ html, body {
   text-transform: uppercase;
   opacity: .55;
 }
-#historySvg .hbar {
+/* Shared sparkline styling — applied by both the gameover history svg
+   (#historySvg) and the stats-panel trend svg (#statsSparkSvg) via
+   the .spark-svg class. Bar roles: latest = accent highlight, best
+   (if not the latest) = gold accent, all others = subtle. */
+.spark-svg .hbar {
   fill: var(--subtle);
   transition: fill .12s ease;
 }
-#historySvg .hbar.latest { fill: var(--accent); }
-#historySvg .hbar.best   { fill: var(--highlight); }
-#historySvg .hline {
+.spark-svg .hbar.latest { fill: var(--accent); }
+.spark-svg .hbar.best   { fill: var(--highlight); }
+.spark-svg .hline {
   stroke: rgba(232, 233, 255, .18);
   stroke-width: 1;
 }
@@ -1209,6 +1213,23 @@ html, body {
 .stat-theme-void   { background: #00d4ff; border-color: #7fe6ff; }
 .stat-theme-sunset { background: #ffb55a; border-color: #ffd68f; }
 .stat-theme-forest { background: #3ecf8e; border-color: #7fe6b8; }
+/* Recent-trend row: inline sparkline. Uses the shared .spark-svg colors
+   but renders in a wider/taller box than the gameover version since it
+   can afford the real estate inside the stats card. Hidden entirely when
+   the panel is in its empty state (no runs yet) — stats-empty gate also
+   disables the Reset / Export buttons, so the whole row is absent. */
+.stat-row-spark {
+  align-items: center;
+}
+.stat-spark-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+.stat-spark-cell .spark-svg {
+  display: block;
+}
+.stats-empty .stat-row-spark { display: none; }
 .stats-actions {
   display: flex;
   justify-content: space-between;
