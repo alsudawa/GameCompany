@@ -30,6 +30,8 @@
   const MASTER_GAIN = 0.55;
   const RESUME_COUNTDOWN_MS = 3000;     // 3-2-1 before play resumes after tab return
   const RUN_HISTORY_CAP = 8;             // last-N runs kept for sparkline
+  const DEATHCAM_DURATION_S = 0.55;     // slow-mo before gameover overlay fades in
+  const DEATHCAM_TIME_SCALE = 0.22;     // world advances at 22% speed during slow-mo
   // Anti-frustration: if a player dies fast N times in a row, next run grants
   // one sympathy life. Detects "rage-retry" without interrupting the loop.
   const RAGE_DURATION_S  = 15;          // "fast" = died in under 15s
@@ -89,6 +91,9 @@
   // Best is namespaced per-seed: daily challenges have their own leaderboard
   // independent of free-play best. Free-play uses the original key.
   const BEST_KEY = SEED !== null ? 'void-pulse-best-seed-' + SEED : 'void-pulse-best';
+  // Same story for run history — daily progression is per-seed so the
+  // sparkline shows "how I'm doing on THIS daily", not mixed with free-play.
+  const HISTORY_KEY = SEED !== null ? 'void-pulse-history-seed-' + SEED : 'void-pulse-history';
 
   // ---------- 2. State ----------
   const state = {
@@ -110,6 +115,9 @@
     hitCount: 0,
     newBestThisRun: false,
     bonusLifeGranted: false,
+    // death-cam (slow-mo on fatal miss before the gameover overlay shows)
+    deathCam: false,
+    deathCamT: 0,
     // pause / resume
     paused: false,
     resumeAt: 0,     // performance.now() ms when countdown ends; 0 while paused-indefinitely
@@ -186,7 +194,25 @@
   const seedDateStartEl = document.getElementById('seedDateStart');
   const dailyLink = document.getElementById('dailyLink');
   const freeLink  = document.getElementById('freeLink');
+  const historyLabel = document.getElementById('historyLabel');
+  const tomorrowEl = document.getElementById('tomorrow');
+  const tomorrowTimeEl = document.getElementById('tomorrowTime');
   bestScoreEl.textContent = state.best;
+  if (SEED !== null) historyLabel.textContent = 'Daily progress';
+
+  // Milliseconds until local midnight — used to tease tomorrow's daily
+  // on the gameover screen ("Next daily in 6h 12m").
+  function msToTomorrow() {
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    return next.getTime() - now.getTime();
+  }
+  function formatHhMm(ms) {
+    const totalMin = Math.max(0, Math.floor(ms / 60000));
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    return h + 'h ' + String(m).padStart(2, '0') + 'm';
+  }
 
   // Seed-mode UI: show DAILY pill + start-overlay subtitle when in seeded play.
   // Otherwise expose the "Try today's daily" link on the free-play start overlay.
@@ -231,13 +257,13 @@
   }
   function readHistory() {
     try {
-      const raw = localStorage.getItem('void-pulse-history');
+      const raw = localStorage.getItem(HISTORY_KEY);
       const parsed = raw ? JSON.parse(raw) : [];
       return Array.isArray(parsed) ? parsed.filter(n => typeof n === 'number').slice(-RUN_HISTORY_CAP) : [];
     } catch { return []; }
   }
   function writeHistory(arr) {
-    try { localStorage.setItem('void-pulse-history', JSON.stringify(arr.slice(-RUN_HISTORY_CAP))); } catch {}
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(arr.slice(-RUN_HISTORY_CAP))); } catch {}
   }
   // Sliding window of recent run durations (seconds); last RAGE_REQUIRED only.
   function readRageDurations() {
@@ -329,6 +355,9 @@
     // While paused or during resume-countdown, taps are swallowed so the
     // first tap after tab-return doesn't accidentally consume a pulse.
     if (state.paused) return;
+    // During death-cam (the 0.55s slow-mo before gameover), swallow input so
+    // the player can't stack a frantic tap into the retry overlay.
+    if (state.deathCam) return;
     if (now - state.lastTapMs < TAP_DEBOUNCE_MS) return;
     state.lastTapMs = now;
     judgeTap();
@@ -545,7 +574,19 @@
     state.combo = 0;
     state.lives -= 1;
     updateLivesUI();
-    if (state.lives <= 0) gameover();
+    if (state.lives <= 0 && !state.deathCam) {
+      // Enter death-cam: slow the sim for a dramatic beat before the
+      // gameover overlay. Fires exactly once (guarded on !deathCam) so a
+      // cascading miss during slow-mo can't reset the timer.
+      // The caller (judgeTap / expiring-pulse handler) already played the
+      // miss SFX / shake / haptic; we just add a bigger red burst to mark
+      // this as the FATAL one.
+      state.deathCam = true;
+      state.deathCamT = DEATHCAM_DURATION_S;
+      spawnBurst(CENTER_X, CENTER_Y, getVar('--danger'), 18, 340);
+      haptic([30, 40, 80]);
+      app.classList.add('deathcam');
+    }
   }
 
   function updateLivesUI() {
@@ -646,24 +687,40 @@
 
   // ---------- 5. Update ----------
   function update(dt) {
-    state.t += dt;
+    // Death-cam: the sim keeps running but at a fraction of real-time so the
+    // fatal moment is readable. Timer itself uses real dt so the slow-mo
+    // always ends on a fixed wall-clock (0.55s) — predictable.
+    if (state.deathCam) {
+      state.deathCamT -= dt;
+      if (state.deathCamT <= 0) {
+        state.deathCam = false;
+        app.classList.remove('deathcam');
+        gameover();
+        return;
+      }
+    }
+    const simDt = state.deathCam ? dt * DEATHCAM_TIME_SCALE : dt;
 
-    if (state.t >= state.nextSpawnAt) {
+    state.t += simDt;
+
+    if (!state.deathCam && state.t >= state.nextSpawnAt) {
       const heartbeat = ((state.pulsesSpawned + 1) % HEARTBEAT_INTERVAL) === 0;
       spawnPulse(heartbeat);
       scheduleNext();
     }
-    for (let i = extraSpawns.length - 1; i >= 0; i--) {
-      if (state.t >= extraSpawns[i]) {
-        spawnPulse(false);
-        extraSpawns.splice(i, 1);
+    if (!state.deathCam) {
+      for (let i = extraSpawns.length - 1; i >= 0; i--) {
+        if (state.t >= extraSpawns[i]) {
+          spawnPulse(false);
+          extraSpawns.splice(i, 1);
+        }
       }
     }
 
     state.tensionFlash = false;
     for (const p of pulses) {
       if (!p.active) continue;
-      p.r += p.speed * dt;
+      p.r += p.speed * simDt;
       // Time-to-arrive (negative = already past)
       const toArriveMs = (TARGET_R - p.r) / p.speed * 1000;
       if (toArriveMs <= TENSION_LEAD_MS && toArriveMs >= -GOOD_WINDOW_MS) {
@@ -671,17 +728,21 @@
       }
       if (toArriveMs < -GOOD_WINDOW_MS) {
         p.active = false;
-        loseLife();
-        state.shakeT = 0.15;
-        retriggerClass(app, 'shake');
+        // During death-cam, expiring pulses don't re-trigger life loss —
+        // the run is already ending; further losses would double-shake.
+        if (!state.deathCam) {
+          loseLife();
+          state.shakeT = 0.15;
+          retriggerClass(app, 'shake');
+        }
       }
     }
 
-    if (state.targetPopT > 0) state.targetPopT = Math.max(0, state.targetPopT - dt);
-    if (state.comboMilestoneFade > 0) state.comboMilestoneFade = Math.max(0, state.comboMilestoneFade - dt);
+    if (state.targetPopT > 0) state.targetPopT = Math.max(0, state.targetPopT - simDt);
+    if (state.comboMilestoneFade > 0) state.comboMilestoneFade = Math.max(0, state.comboMilestoneFade - simDt);
     if (state.shakeT > 0) state.shakeT = Math.max(0, state.shakeT - dt);
 
-    updateParticles(dt);
+    updateParticles(simDt);
   }
 
   // HUD diff-tracking — avoids DOM churn when values haven't changed.
@@ -935,6 +996,9 @@
     state.comboMilestoneText = '';
     state.comboMilestoneFade = 0;
     state.tensionFlash = false;
+    state.deathCam = false;
+    state.deathCamT = 0;
+    app.classList.remove('deathcam');
     for (const p of pulses) p.active = false;
     for (const p of particles) p.active = false;
     extraSpawns.length = 0;
@@ -1008,6 +1072,15 @@
       newBestEl.classList.add('visible');
       Sfx.levelup();
       haptic([40, 40, 80]);
+    }
+    // Daily mode: nudge returning-ness with a "come back tomorrow" countdown.
+    // Uses device-local midnight; deliberately coarse (h+m, no seconds) so
+    // the overlay isn't a ticking distraction.
+    if (SEED !== null) {
+      tomorrowTimeEl.textContent = formatHhMm(msToTomorrow());
+      tomorrowEl.hidden = false;
+    } else {
+      tomorrowEl.hidden = true;
     }
     retriggerClass(app, 'shake');
     app.classList.add('flash');

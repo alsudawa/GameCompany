@@ -23,6 +23,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`graphics/css-animation.md`](graphics/css-animation.md) — shake / pop / flash keyframes
 - [`graphics/particle-fx.md`](graphics/particle-fx.md) — canvas particle pool
 - [`graphics/backdrop.md`](graphics/backdrop.md) — zero-alloc starfield, depth via twinkle
+- [`graphics/death-cam.md`](graphics/death-cam.md) — slow-mo freeze-frame beat on fatal endings
 
 ### Audio
 - [`audio/web-audio-sfx.md`](audio/web-audio-sfx.md) — oscillator + envelope SFX recipes; spawn-tick anchor

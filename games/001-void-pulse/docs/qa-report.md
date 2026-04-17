@@ -288,3 +288,49 @@
 - [x] Invalid seed (`?seed=abc`) falls back to free play gracefully.
 - [x] Node syntax check: pass.
 
+---
+
+# Sprint 8 — Moment-of-death + daily progression (2026-04-17)
+
+## Features
+
+### Death-cam slow-mo (all modes)
+- On fatal miss: sim slows to 22% for 550ms with red vignette + desaturated canvas.
+- Timer uses real wall-clock dt (not scaled) so the beat always ends at 550ms.
+- Input and spawn scheduler frozen during cam.
+- Cascading life-loss from expiring pulses suppressed during cam.
+- Reduced-motion override: vignette animation disabled, static overlay used.
+
+### Per-seed history (daily mode)
+- `void-pulse-history-seed-{seed}` key isolates daily progression from free-play.
+- Sparkline label swapped: "Last runs" → "Daily progress" in daily mode.
+
+### Tomorrow-teaser (daily mode)
+- `Next daily in Hh MMm` below sparkline on daily gameover.
+- Countdown to device-local midnight.
+- Recomputed fresh on every gameover (no stale value).
+- Coarse h+m format — no ticking seconds counter.
+
+## Edge cases covered
+
+- **Double-trigger of death-cam.** Guarded on `!state.deathCam` in loseLife → fatal hit enters the cam exactly once even if multiple pulses expire in the same frame.
+- **SFX double-play on fatal tap.** loseLife no longer plays `Sfx.miss()` itself — the caller (judgeTap) already did. Cam only adds a bigger red burst + longer haptic (`[30, 40, 80]`) as the "this one was fatal" marker.
+- **Pause during cam.** Because frame's pause branch returns before `update()`, the `state.deathCamT` countdown naturally pauses too. On tab-return + countdown, cam resumes where it left off.
+- **Retry during cam.** Tap input + gameover-retry tap both swallowed (`state.deathCam` check in handleInputAction + the gameoverEl isn't yet visible).
+- **Gameover is called exactly once.** `state.deathCam = false` reset before `gameover()` so subsequent calls to the same path (unreachable in practice) wouldn't re-enter.
+- **Filter + vignette cleaned up.** `app.classList.remove('deathcam')` both in update (on timer expiry) and in start (on retry).
+- **Self-referencing HISTORY_KEY bug.** Caught during dev — a `replace_all` accidentally replaced the string literal in the const's own RHS. Fixed to literal `'void-pulse-history'`.
+
+## Retest
+
+- [x] Fatal miss → 550ms slow-mo; pulses and particles visibly drift at ~22% speed; gameover overlay fades in after.
+- [x] Input during cam produces no effect (tap-spam safe).
+- [x] Pulses expiring during cam do not play shake/miss-sfx again.
+- [x] On retry, filter + vignette cleanly removed.
+- [x] Daily mode gameover shows "Daily progress" label on the sparkline.
+- [x] Daily mode gameover shows "Next daily in Xh Ym" with correct local-midnight offset.
+- [x] Free-play gameover — no tomorrow-teaser.
+- [x] Free-play vs daily: separate history arrays in localStorage.
+- [x] `prefers-reduced-motion`: death-cam vignette set to static opacity, no animation.
+- [x] Node syntax check: pass.
+

@@ -217,8 +217,30 @@ html, body {
 }
 .flash { animation: flash .4s ease; }
 
+/* Death-cam: the 0.55s slow-mo beat before the gameover overlay fades in. */
+#app.deathcam #stage {
+  filter: saturate(.35) brightness(.85);
+  transition: filter .18s ease;
+}
+#app.deathcam::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(255, 61, 107, .26) 100%);
+  animation: deathcamFade .55s ease-out forwards;
+  z-index: 5;
+  border-radius: var(--radius);
+}
+@keyframes deathcamFade {
+  0%   { opacity: 0; }
+  20%  { opacity: 1; }
+  100% { opacity: .78; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .shake, .pop, .flash, .new-best, #score.beaten-best, .pause-countdown { animation: none !important; }
+  #app.deathcam::before { animation: none !important; opacity: .5; }
 }
 
 /* Mute toggle (top-right) */
@@ -316,6 +338,15 @@ html, body {
 #historySvg .hline {
   stroke: rgba(232, 233, 255, .18);
   stroke-width: 1;
+}
+.tomorrow {
+  margin-top: 10px;
+  font-size: 11px;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  color: #ffd24a;
+  opacity: .8;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Pause overlay */

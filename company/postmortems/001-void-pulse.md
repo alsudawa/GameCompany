@@ -236,6 +236,51 @@ The daily pattern is game-agnostic. Any future GameCompany title with run-based 
 
 ---
 
+## Sprint 8 — Moment-of-death + daily progression (2026-04-17)
+
+**Lens used:** moment-of-death (the single highest-emotion 500ms in the game) + longitudinal progression (what I see when I come back to today's daily five times?) + ritual (why come back tomorrow?).
+
+### Problems diagnosed
+
+1. **The fatal hit is too fast to register.** 16ms from miss → overlay. Players don't see what killed them, so they don't learn. A key feedback loop — "what did I do wrong?" — is broken.
+2. **Daily history mixed with free-play.** Sprint 5 shipped run-history sparkline using a single `void-pulse-history` key. In Sprint 7 daily mode, that same sparkline was a meaningless mashup of daily + free-play scores. Per-seed score had its own key; per-seed history did not.
+3. **Daily mode has no return hook.** Player finishes today's daily, sees "Daily progress", and has no idea when the next daily drops. Missed opportunity at the peak emotional moment.
+
+### Ships
+
+- **Death-cam slow-mo.** On the fatal hit, sim slows to 22% for 550ms with a red vignette + desaturated canvas filter + larger red particle burst. Timer uses real wall-clock dt so the beat ends on schedule regardless of sim scale. Input swallowed throughout. Reduced-motion override disables the flash animation.
+- **Per-seed history.** `void-pulse-history-seed-{seed}` key. Daily sparkline now shows only this seed's runs, labeled "Daily progress" instead of "Last runs".
+- **Tomorrow-teaser.** `Next daily in 6h 12m` on daily-mode gameover. Countdown to device-local midnight, recomputed fresh on each gameover, coarse h+m format so it's not a ticking distraction.
+
+### What the extraction surfaced (skills)
+
+- New `skills/graphics/death-cam.md` — the two-clock pattern (world clock scaled, timer on real dt), what to freeze during the cam (spawns, cascade-losses, input), CSS filter + vignette recipe, tuning table for duration / time-scale / vignette peak.
+- Appended `skills/gameplay/seeded-daily.md` — per-seed history key, re-labeled history ("Daily progress"), tomorrow-teaser pattern.
+
+### Cumulative sprint arc
+
+The lens rotation keeps producing non-trivial work:
+
+| Sprint | Lens | Representative addition |
+|---|---|---|
+| 2 | Perceived timing | Time-domain judge windows |
+| 3 | Multi-perspective sweep | DPR, mute, keyboard, onboarding |
+| 4 | Smoothness + juice | 120Hz interpolation, haptics, starfield |
+| 5 | Robustness + trend | Tab-pause, combo meter, run-history |
+| 6 | Accessibility + virality | Colorblind dashing, Share API, pity life |
+| 7 | Ritual | Daily seeded challenge |
+| 8 | Moment-of-death + progression | Death-cam, per-seed history, tomorrow teaser |
+
+Each feature individually is small; together they've quadrupled the game's depth without changing the single-tap mechanic.
+
+### Next candidates
+
+- **Per-seed local leaderboard** — top-5 on today's daily, unlocks after 3+ attempts
+- **First-run hand-tutorial** — a non-interactive demo pulse on the start overlay so new players see the mechanic before committing
+- **Audio dynamics** — master bus rises ~2dB when in "beaten-best" state; subtle but felt
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

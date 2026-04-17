@@ -109,3 +109,46 @@ Without a visible indicator, players won't realize they're on a daily and wonder
 - **Same best key across seeds** → daily score overwrites free-play score, frustrates returning players
 
 <!-- added: 2026-04-17 (001-void-pulse sprint 7) -->
+
+## Pattern — Per-seed run history
+
+The ux/progress-feedback.md sparkline should be **namespaced to the seed** in daily mode, otherwise yesterday's 520 vs today's 300 looks like regression when it's actually a harder seed.
+
+```js
+const HISTORY_KEY = SEED !== null
+  ? 'game-history-seed-' + SEED
+  : 'game-history';
+// readHistory / writeHistory use HISTORY_KEY unchanged.
+```
+
+Also re-label the section: "Last runs" in free play → "Daily progress" in seeded mode. Small wording shift, big semantic signal.
+
+```js
+if (SEED !== null) historyLabel.textContent = 'Daily progress';
+```
+
+## Pattern — Tomorrow-teaser
+
+On daily gameover, show "Next daily in Hh MMm" as a returning-player hook. Count down to device-local midnight, format coarsely (h + m, never seconds — a ticking seconds-counter on the gameover is distracting noise).
+
+```js
+function msToTomorrow() {
+  const now = new Date();
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  return next.getTime() - now.getTime();
+}
+function formatHhMm(ms) {
+  const total = Math.max(0, Math.floor(ms / 60000));
+  return Math.floor(total / 60) + 'h ' + String(total % 60).padStart(2, '0') + 'm';
+}
+
+// On gameover, in daily mode only:
+if (SEED !== null) {
+  tomorrowTimeEl.textContent = formatHhMm(msToTomorrow());
+  tomorrowEl.hidden = false;
+}
+```
+
+One gotcha: don't store the computed string and show it without re-computing on each gameover — the value changes as time passes. Compute fresh every gameover.
+
+<!-- appended: 2026-04-17 (001-void-pulse sprint 8) -->
