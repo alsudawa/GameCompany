@@ -1,0 +1,513 @@
+// ============================================================
+// void-pulse — GameCompany 001
+// Tap the ring when a void pulse expands through it.
+// ============================================================
+(() => {
+  'use strict';
+
+  // ---------- 1. Constants (tunables) ----------
+  const W = 720, H = 960;
+  const CENTER_X = W / 2;
+  const CENTER_Y = H / 2;
+  const TARGET_R = 260;
+
+  const FIXED_DT = 1 / 60;
+  const MAX_DT   = 1 / 30;
+
+  const PERFECT_WINDOW_BASE = 8;
+  const PERFECT_WINDOW_MAX  = 12;
+  const GOOD_WINDOW = 18;
+  const GRACE_START_T = 120;       // seconds before perfect window starts widening
+
+  const STARTING_LIVES = 3;
+  const TAP_DEBOUNCE_MS = 120;
+  const GAMEOVER_LOCKOUT_MS = 400;
+
+  const PULSE_POOL_SIZE = 32;
+  const PARTICLE_CAP = 256;
+
+  const HEARTBEAT_INTERVAL = 5;
+  const HEARTBEAT_BONUS    = 1.5;
+  const COMBO_STEP = 5;
+  const COMBO_MULT_MAX = 4;
+
+  // ---------- 2. State ----------
+  const state = {
+    running: false,
+    over: false,
+    t: 0,
+    score: 0,
+    best: readBest(),
+    combo: 0,
+    lives: STARTING_LIVES,
+    pulsesSpawned: 0,
+    nextSpawnAt: 0,
+    lastTapMs: 0,
+    gameoverAtMs: 0,
+    // fx timers
+    targetPopT: 0,
+    shakeT: 0,
+    comboMilestoneText: '',
+    comboMilestoneFade: 0,
+    tensionFlash: false,
+  };
+
+  const pulses = [];
+  for (let i = 0; i < PULSE_POOL_SIZE; i++) {
+    pulses.push({ active: false, r: 0, speed: 0, heartbeat: false, bornT: 0 });
+  }
+
+  const particles = [];
+  for (let i = 0; i < PARTICLE_CAP; i++) {
+    particles.push({ active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 0, color: '#fff', size: 4 });
+  }
+
+  const extraSpawns = []; // absolute game-times for polyrhythm extras
+
+  // ---------- 3. Init ----------
+  const canvas = document.getElementById('stage');
+  const ctx = canvas.getContext('2d');
+  const app = document.getElementById('app');
+  const hudScore = document.getElementById('score');
+  const hudCombo = document.getElementById('combo');
+  const hudLives = document.getElementById('lives');
+  const overlay = document.getElementById('overlay');
+  const gameoverEl = document.getElementById('gameover');
+  const btnStart = document.getElementById('start');
+  const finalScoreEl = document.getElementById('finalScore');
+  const bestScoreEl = document.getElementById('bestScore');
+  bestScoreEl.textContent = state.best;
+
+  function readBest() {
+    try { return +(localStorage.getItem('void-pulse-best') || 0); } catch { return 0; }
+  }
+  function writeBest(v) {
+    try { localStorage.setItem('void-pulse-best', String(v)); } catch {}
+  }
+
+  // ---------- Sfx ----------
+  const Sfx = {
+    ctx: null,
+    master: null,
+    init() {
+      if (this.ctx) return;
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 0.55;
+      this.master.connect(this.ctx.destination);
+    },
+    _env(type, freq, dur, vol, slideTo) {
+      if (!this.ctx) return;
+      const t0 = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t0);
+      if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+      g.gain.setValueAtTime(vol, t0);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+      osc.connect(g).connect(this.master);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.02);
+    },
+    click()  { this._env('square',   660, 0.05, 0.15); },
+    score(combo = 0) {
+      const f = 660 * Math.pow(1.06, Math.min(combo, 12));
+      this._env('triangle', f, 0.09, 0.18);
+    },
+    good(combo = 0) {
+      const f = 500 * Math.pow(1.04, Math.min(combo, 12));
+      this._env('sine', f, 0.08, 0.15);
+    },
+    miss() { this._env('sawtooth', 180, 0.22, 0.26, 70); },
+    gameover() {
+      this._env('sawtooth', 330, 0.5, 0.3, 60);
+      setTimeout(() => this._env('sawtooth', 220, 0.6, 0.25, 40), 120);
+    },
+    levelup() {
+      [523, 659, 784, 1047].forEach((f, i) => {
+        setTimeout(() => this._env('triangle', f, 0.09, 0.17), i * 65);
+      });
+    },
+    heartbeat() { this._env('sine', 110, 0.12, 0.22, 165); },
+  };
+
+  // ---------- CSS var helper (cached) ----------
+  const cssVar = {};
+  function getVar(name) {
+    if (cssVar[name]) return cssVar[name];
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    cssVar[name] = v || '#ffffff';
+    return cssVar[name];
+  }
+
+  // ---------- 4. Input ----------
+  function onPointerDown(e) {
+    const now = performance.now();
+    if (state.over) {
+      if (now - state.gameoverAtMs >= GAMEOVER_LOCKOUT_MS) {
+        Sfx.init(); Sfx.click();
+        start();
+      }
+      return;
+    }
+    if (!state.running) return;
+    if (now - state.lastTapMs < TAP_DEBOUNCE_MS) return;
+    state.lastTapMs = now;
+    judgeTap();
+  }
+  canvas.addEventListener('pointerdown', onPointerDown);
+  gameoverEl.addEventListener('pointerdown', onPointerDown);
+
+  btnStart.addEventListener('click', (e) => {
+    e.stopPropagation();
+    Sfx.init(); Sfx.click();
+    start();
+  });
+
+  function retriggerClass(el, cls) {
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+  }
+
+  // ---------- Judging ----------
+  function perfectWindow() {
+    return Math.min(PERFECT_WINDOW_MAX, PERFECT_WINDOW_BASE + Math.max(0, (state.t - GRACE_START_T) * 0.02));
+  }
+
+  function findOldestPulse() {
+    let chosen = null;
+    for (const p of pulses) {
+      if (!p.active) continue;
+      if (!chosen || p.bornT < chosen.bornT) chosen = p;
+    }
+    return chosen;
+  }
+
+  function comboMult() {
+    return Math.min(COMBO_MULT_MAX, 1 + Math.floor(state.combo / COMBO_STEP) * 0.5);
+  }
+
+  function judgeTap() {
+    const p = findOldestPulse();
+    if (!p) return; // lenient: tapping with no pulse costs nothing
+    const d = Math.abs(p.r - TARGET_R);
+    const pw = perfectWindow();
+    const heartbeatMul = p.heartbeat ? HEARTBEAT_BONUS : 1;
+
+    if (d <= pw) {
+      const mult = comboMult();
+      state.score += Math.round(100 * mult * heartbeatMul);
+      state.combo += 1;
+      spawnBurst(CENTER_X, CENTER_Y, p.heartbeat ? getVar('--danger') : getVar('--accent'), 12, 280);
+      state.targetPopT = 0.18;
+      Sfx.score(state.combo);
+      if (p.heartbeat) Sfx.heartbeat();
+      if (state.combo > 0 && state.combo % COMBO_STEP === 0) {
+        const m = comboMult();
+        state.comboMilestoneText = '×' + (m % 1 === 0 ? m : m.toFixed(1));
+        state.comboMilestoneFade = 0.9;
+        Sfx.levelup();
+      }
+      p.active = false;
+    } else if (d <= GOOD_WINDOW) {
+      const mult = comboMult();
+      state.score += Math.round(50 * mult * heartbeatMul);
+      state.combo += 1;
+      spawnBurst(CENTER_X, CENTER_Y, getVar('--accent'), 6, 210);
+      Sfx.good(state.combo);
+      if (p.heartbeat) Sfx.heartbeat();
+      p.active = false;
+    } else {
+      // tapped at wrong radius — consume the pulse so it can't also pass-through
+      p.active = false;
+      loseLife();
+      Sfx.miss();
+      state.shakeT = 0.2;
+      retriggerClass(app, 'shake');
+    }
+  }
+
+  function loseLife() {
+    state.combo = 0;
+    state.lives -= 1;
+    updateLivesUI();
+    if (state.lives <= 0) gameover();
+  }
+
+  function updateLivesUI() {
+    const glyphs = hudLives.querySelectorAll('.life');
+    for (let i = 0; i < glyphs.length; i++) {
+      const alive = i < state.lives;
+      glyphs[i].style.opacity = alive ? '1' : '0.25';
+      glyphs[i].style.color = alive ? 'var(--accent)' : 'var(--subtle)';
+    }
+  }
+
+  // ---------- Spawning ----------
+  function speedAt(t) {
+    if (t < 15) return 260 + (t / 15) * 80;
+    if (t < 45) return 340 + ((t - 15) / 30) * 120;
+    if (t < 90) return 460 + ((t - 45) / 45) * 140;
+    return Math.min(720, 600 + (t - 90) * 1.2);
+  }
+  function gapAt(t) {
+    if (t < 15) return 900 - (t / 15) * 200;
+    if (t < 45) return 700 - ((t - 15) / 30) * 200;
+    return Math.max(300, 500 - (t - 45) * 4.5);
+  }
+
+  function spawnPulse(heartbeat) {
+    for (const p of pulses) {
+      if (p.active) continue;
+      p.active = true;
+      p.r = 0;
+      p.speed = speedAt(state.t);
+      p.heartbeat = heartbeat;
+      p.bornT = state.t;
+      return p;
+    }
+    return null;
+  }
+
+  function scheduleNext() {
+    state.pulsesSpawned += 1;
+    state.nextSpawnAt = state.t + gapAt(state.t) / 1000;
+    const roll = Math.random();
+    if (state.t >= 90 && roll < 0.15) {
+      extraSpawns.push(state.t + 0.4, state.t + 0.8);
+    } else if (state.t >= 45 && roll < 0.30) {
+      extraSpawns.push(state.t + 0.5);
+    }
+  }
+
+  // ---------- Particles ----------
+  function spawnBurst(x, y, color, n, speed) {
+    let spawned = 0;
+    for (const p of particles) {
+      if (p.active) continue;
+      const a = Math.random() * Math.PI * 2;
+      const s = speed * (0.5 + Math.random() * 0.8);
+      p.active = true;
+      p.x = x; p.y = y;
+      p.vx = Math.cos(a) * s;
+      p.vy = Math.sin(a) * s;
+      p.life = p.max = 0.5 + Math.random() * 0.3;
+      p.color = color;
+      p.size = 3 + Math.random() * 3;
+      if (++spawned >= n) break;
+    }
+  }
+
+  function updateParticles(dt) {
+    for (const p of particles) {
+      if (!p.active) continue;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 450 * dt;   // light gravity
+      p.vx *= 0.98;
+      p.life -= dt;
+      if (p.life <= 0) p.active = false;
+    }
+  }
+
+  function renderParticles() {
+    for (const p of particles) {
+      if (!p.active) continue;
+      ctx.globalAlpha = Math.max(0, p.life / p.max);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ---------- 5. Update ----------
+  function update(dt) {
+    state.t += dt;
+
+    if (state.t >= state.nextSpawnAt) {
+      const heartbeat = ((state.pulsesSpawned + 1) % HEARTBEAT_INTERVAL) === 0;
+      spawnPulse(heartbeat);
+      scheduleNext();
+    }
+    for (let i = extraSpawns.length - 1; i >= 0; i--) {
+      if (state.t >= extraSpawns[i]) {
+        spawnPulse(false);
+        extraSpawns.splice(i, 1);
+      }
+    }
+
+    state.tensionFlash = false;
+    for (const p of pulses) {
+      if (!p.active) continue;
+      p.r += p.speed * dt;
+      if (p.r >= TARGET_R - 40 && p.r <= TARGET_R + GOOD_WINDOW) {
+        state.tensionFlash = true;
+      }
+      if (p.r > TARGET_R + GOOD_WINDOW) {
+        p.active = false;
+        loseLife();
+        state.shakeT = 0.15;
+        retriggerClass(app, 'shake');
+      }
+    }
+
+    if (state.targetPopT > 0) state.targetPopT = Math.max(0, state.targetPopT - dt);
+    if (state.comboMilestoneFade > 0) state.comboMilestoneFade = Math.max(0, state.comboMilestoneFade - dt);
+    if (state.shakeT > 0) state.shakeT = Math.max(0, state.shakeT - dt);
+
+    updateParticles(dt);
+  }
+
+  // ---------- 6. Render ----------
+  function render() {
+    ctx.clearRect(0, 0, W, H);
+
+    // background vignette (intensifies with combo)
+    const heat = Math.min(1, state.combo / 30);
+    const grad = ctx.createRadialGradient(CENTER_X, CENTER_Y, 80, CENTER_X, CENTER_Y, 640);
+    grad.addColorStop(0, `rgba(82, 92, 180, ${0.22 + 0.2 * heat})`);
+    grad.addColorStop(1, 'rgba(15, 18, 38, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // inner hint ring
+    ctx.save();
+    ctx.translate(CENTER_X, CENTER_Y);
+    const popScale = 1 + state.targetPopT * 1.4;
+    const tensionBoost = state.tensionFlash ? 0.18 : 0;
+    ctx.globalAlpha = 0.18;
+    ctx.strokeStyle = getVar('--accent');
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, TARGET_R - 40, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // target ring
+    ctx.scale(popScale, popScale);
+    ctx.globalAlpha = 0.85 + tensionBoost;
+    ctx.strokeStyle = getVar('--accent');
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.arc(0, 0, TARGET_R, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // glow
+    ctx.globalAlpha = 0.2 + tensionBoost * 1.5;
+    ctx.lineWidth = 14;
+    ctx.beginPath();
+    ctx.arc(0, 0, TARGET_R, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.restore();
+    ctx.globalAlpha = 1;
+
+    // pulses
+    const oldest = findOldestPulse();
+    for (const p of pulses) {
+      if (!p.active) continue;
+      const color = p.heartbeat ? getVar('--danger') : getVar('--fg');
+      ctx.strokeStyle = color;
+      ctx.lineWidth = p === oldest ? 4.5 : 3;
+      ctx.globalAlpha = Math.min(1, 0.35 + p.r / 200);
+      ctx.beginPath();
+      ctx.arc(CENTER_X, CENTER_Y, p.r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // particles
+    renderParticles();
+
+    // combo milestone text
+    if (state.comboMilestoneFade > 0) {
+      ctx.globalAlpha = state.comboMilestoneFade;
+      ctx.fillStyle = getVar('--accent');
+      const fontPx = Math.min(72, Math.floor(W * 0.1));
+      ctx.font = `700 ${fontPx}px system-ui, -apple-system, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(state.comboMilestoneText, CENTER_X, CENTER_Y);
+      ctx.globalAlpha = 1;
+    }
+
+    // HUD
+    hudScore.textContent = state.score;
+    const m = comboMult();
+    hudCombo.textContent = m > 1 ? ('×' + (m % 1 === 0 ? m : m.toFixed(1))) : '';
+  }
+
+  // ---------- 7. Loop ----------
+  let lastTime = 0;
+  let acc = 0;
+  function frame(now) {
+    if (!state.running) return;
+    const dt = Math.min((now - lastTime) / 1000, MAX_DT);
+    lastTime = now;
+    acc += dt;
+    while (acc >= FIXED_DT) {
+      update(FIXED_DT);
+      acc -= FIXED_DT;
+      if (state.over) break;
+    }
+    render();
+    if (!state.over) requestAnimationFrame(frame);
+  }
+
+  // ---------- 8. Flow ----------
+  function start() {
+    state.running = true;
+    state.over = false;
+    state.t = 0;
+    state.score = 0;
+    state.combo = 0;
+    state.lives = STARTING_LIVES;
+    state.pulsesSpawned = 0;
+    state.nextSpawnAt = 0;
+    state.lastTapMs = 0;
+    state.targetPopT = 0;
+    state.shakeT = 0;
+    state.comboMilestoneText = '';
+    state.comboMilestoneFade = 0;
+    state.tensionFlash = false;
+    for (const p of pulses) p.active = false;
+    for (const p of particles) p.active = false;
+    extraSpawns.length = 0;
+    updateLivesUI();
+
+    overlay.classList.remove('visible'); overlay.classList.add('hidden');
+    gameoverEl.classList.remove('visible'); gameoverEl.classList.add('hidden');
+
+    lastTime = performance.now();
+    acc = 0;
+    requestAnimationFrame((t) => { lastTime = t; frame(t); });
+  }
+
+  function gameover() {
+    state.over = true;
+    state.running = false;
+    state.gameoverAtMs = performance.now();
+    if (state.score > state.best) {
+      state.best = state.score;
+      writeBest(state.best);
+    }
+    Sfx.gameover();
+    finalScoreEl.textContent = state.score;
+    bestScoreEl.textContent = state.best;
+    retriggerClass(app, 'shake');
+    app.classList.add('flash');
+    setTimeout(() => app.classList.remove('flash'), 180);
+    setTimeout(() => {
+      gameoverEl.classList.remove('hidden');
+      gameoverEl.classList.add('visible');
+    }, 250);
+  }
+
+  updateLivesUI();
+
+  // Expose for debugging / console tweaks
+  window.__game = { state, pulses, particles, start, gameover };
+})();

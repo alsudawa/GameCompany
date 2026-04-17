@@ -1,0 +1,111 @@
+/* ============================================================
+   GameCompany template — style.css
+   Artist fills in palette & sprites; do not ship with placeholders.
+   ============================================================ */
+
+:root {
+  --bg:        #0f1226;
+  --fg:        #f4f5ff;
+  --accent:    #ffc857;
+  --danger:    #ff5d73;
+  --subtle:    #2a2f5c;
+  --shadow:    0 6px 24px rgba(0,0,0,.35);
+  --radius:    14px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: radial-gradient(ellipse at top, var(--subtle), var(--bg));
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overflow: hidden;
+}
+
+#app {
+  position: relative;
+  width: 100vw;
+  height: 100dvh;
+  display: grid;
+  place-items: center;
+}
+
+#stage {
+  display: block;
+  max-width: 100vw;
+  max-height: 100dvh;
+  aspect-ratio: 720 / 960;
+  background: transparent;
+  touch-action: none;
+  box-shadow: var(--shadow);
+  border-radius: var(--radius);
+}
+
+#hud {
+  position: absolute;
+  top: 16px;
+  left: 0; right: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 24px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  text-shadow: 0 2px 8px rgba(0,0,0,.5);
+  pointer-events: none;
+}
+
+#score { font-size: 28px; }
+#timer { font-size: 20px; opacity: .8; }
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 16px;
+  text-align: center;
+  background: rgba(15, 18, 38, .72);
+  backdrop-filter: blur(6px);
+  transition: opacity .2s ease;
+}
+.overlay.hidden  { opacity: 0; pointer-events: none; }
+.overlay.visible { opacity: 1; }
+
+.title { font-size: clamp(28px, 5vw, 48px); letter-spacing: -0.02em; }
+.hook  { opacity: .8; max-width: 32ch; margin: 0 auto; }
+.final-score { font-size: 22px; }
+
+.btn {
+  font: inherit;
+  font-weight: 700;
+  font-size: 18px;
+  padding: 14px 28px;
+  background: var(--accent);
+  color: #1b1740;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition: transform .08s ease;
+}
+.btn:active { transform: scale(.96); }
+
+/* Feedback animations (shared; specific games add more) */
+@keyframes shake {
+  0%, 100% { transform: translate(0,0); }
+  20%      { transform: translate(-6px, 2px); }
+  40%      { transform: translate(5px, -3px); }
+  60%      { transform: translate(-4px, 4px); }
+  80%      { transform: translate(3px, -2px); }
+}
+.shake { animation: shake .25s ease; }
+
+@keyframes pop {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+.pop { animation: pop .18s ease; }

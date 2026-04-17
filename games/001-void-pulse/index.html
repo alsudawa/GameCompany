@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>void-pulse — GameCompany</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main id="app">
+    <canvas id="stage" width="720" height="960" aria-label="void-pulse canvas"></canvas>
+
+    <div id="hud" aria-live="polite">
+      <div id="score">0</div>
+      <div id="combo"></div>
+      <div id="lives"><span class="life">◯</span><span class="life">◯</span><span class="life">◯</span></div>
+    </div>
+
+    <div id="overlay" class="overlay visible">
+      <h1 class="title">void-pulse</h1>
+      <p class="hook">Tap the ring when the void pulses through it.</p>
+      <button id="start" class="btn">Tap to start</button>
+    </div>
+
+    <div id="gameover" class="overlay hidden">
+      <h2 class="title">void silenced</h2>
+      <p class="final-score">Score: <span id="finalScore">0</span></p>
+      <p class="best-score">Best: <span id="bestScore">0</span></p>
+      <p class="retry-hint">Tap to retry</p>
+    </div>
+  </main>
+
+  <script src="game.js"></script>
+</body>
+</html>

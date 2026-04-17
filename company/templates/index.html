@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>GameCompany — __GAME_TITLE__</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main id="app">
+    <canvas id="stage" width="720" height="960" aria-label="game canvas"></canvas>
+
+    <div id="hud" aria-live="polite">
+      <div id="score">0</div>
+      <div id="timer"></div>
+    </div>
+
+    <div id="overlay" class="overlay visible">
+      <h1 class="title">__GAME_TITLE__</h1>
+      <p class="hook">__ONE_LINE_HOOK__</p>
+      <button id="start" class="btn">Tap to start</button>
+    </div>
+
+    <div id="gameover" class="overlay hidden">
+      <h2 class="title">Game over</h2>
+      <p class="final-score">Score: <span id="finalScore">0</span></p>
+      <button id="retry" class="btn">Retry</button>
+    </div>
+  </main>
+
+  <script src="game.js"></script>
+</body>
+</html>
