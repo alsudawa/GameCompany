@@ -175,3 +175,42 @@
 - [x] `prefers-reduced-motion`: score pop / beaten-pulse / haptics all disabled.
 - [x] Node syntax check: pass.
 
+---
+
+# Sprint 5 — Robustness + progression + trend (2026-04-17)
+
+## Issues addressed
+
+### Tab-switch kills the run (P1 — robustness)
+- **Symptom:** Alt-tab or phone notification during play = pulses keep advancing, player returns to near-certain death.
+- **Root cause:** `requestAnimationFrame` is throttled in hidden tabs, so `MAX_DT` clamps only partially help; spawns scheduled by absolute time also keep firing.
+- **Fix:** `document.visibilitychange` + `window.blur` → freeze sim (`state.paused = true`), render-only. On return, 3-2-1 countdown before resuming. `lastTime = now` every paused frame prevents a dt spike on unpause. Input is swallowed during pause/countdown so the first tap home doesn't consume a pulse.
+
+### Combo progress is invisible until it fires (P2 — readability)
+- **Symptom:** Players didn't notice the multiplier tiers ramping until `×1.5` / `×2` popped in; the 0→5 build felt passive.
+- **Fix:** Thin 72×3px meter under the combo number, fills left→right across each `COMBO_STEP`. Gradient cyan→gold so the goal-state is visually telegraphed. Hidden when combo==0.
+
+### No trend signal for returning players (P2 — retention)
+- **Symptom:** Gameover screen reported only "Score / Best". A player coming back after a few runs has no sense of whether they're improving.
+- **Fix:** Persist last 8 scores in `localStorage`; render as an SVG bar sparkline in gameover. Latest bar = accent, best-of-window = gold, normalized to max-in-window. Right-aligned so "now" sits at the right edge.
+
+## Regressions & edge cases covered
+
+- **Mid-countdown re-hide.** If the player tabs away during the 3-2-1 countdown, countdown resets — doesn't silently resume in the background.
+- **Pause during gameover.** `gameover()` now forces `state.paused = false` + clears the overlay so the pause screen can't stack on top of the game-over screen.
+- **First-time history.** When `void-pulse-history` doesn't exist yet, the `.history` block is hidden (not an empty bar row). Prime-render on boot gives a returning player their trend before the first retry.
+- **Best-ties-latest.** `lastIndexOf(max)` on the history array — if latest *is* the best, only "latest" color (accent) wins; no two bars lit simultaneously.
+- **localStorage failure.** All three new persisted values (history) wrapped in try/catch — Safari private mode remains functional.
+- **Diff-tracked meter updates.** `lastComboFillPct` sentinel means `style.width` is touched only on actual percentage changes; no per-frame recalc churn.
+
+## Retest
+
+- [x] Tab away mid-run → pause ring shows "paused"; tab back → "3 / 2 / 1" in the ring; run resumes cleanly, no dt spike.
+- [x] Tab away during countdown → resets to "paused"; on next return, fresh 3-2-1.
+- [x] Combo meter hidden at combo 0; fills smoothly 0→100% between multiplier tiers; stays at 100% at cap (`×4`).
+- [x] First run → no history block on gameover. Second run → history shows 2 bars, latest highlighted.
+- [x] After 9 runs → exactly 8 bars visible (cap enforced); oldest dropped.
+- [x] Latest bar = accent; best-of-window = gold; latest-ties-best = accent only.
+- [x] `prefers-reduced-motion`: pause countdown pulse animation disabled.
+- [x] Node syntax check: pass.
+

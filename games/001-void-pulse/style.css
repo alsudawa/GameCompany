@@ -81,11 +81,35 @@ html, body {
   50%      { transform: scale(1.08); }
 }
 
+#comboWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
 #combo {
   font-size: 22px;
   color: var(--accent);
   letter-spacing: -0.01em;
   transition: opacity .12s ease;
+  min-height: 22px;
+}
+#comboMeter {
+  width: 72px;
+  height: 3px;
+  background: rgba(232, 233, 255, .12);
+  border-radius: 2px;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity .18s ease;
+}
+#comboMeter.active { opacity: 1; }
+#comboMeterFill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent), #ffd24a);
+  border-radius: 2px;
+  transition: width .14s ease-out;
 }
 
 #lives {
@@ -173,7 +197,7 @@ html, body {
 .flash { animation: flash .4s ease; }
 
 @media (prefers-reduced-motion: reduce) {
-  .shake, .pop, .flash, .new-best, #score.beaten-best { animation: none !important; }
+  .shake, .pop, .flash, .new-best, #score.beaten-best, .pause-countdown { animation: none !important; }
 }
 
 /* Mute toggle (top-right) */
@@ -245,6 +269,68 @@ html, body {
 @keyframes newBestPulse {
   0%, 100% { transform: scale(1); }
   50%      { transform: scale(1.06); }
+}
+
+/* Run history sparkline */
+.history {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  opacity: .82;
+}
+.history-label {
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  opacity: .55;
+}
+#historySvg .hbar {
+  fill: var(--subtle);
+  transition: fill .12s ease;
+}
+#historySvg .hbar.latest { fill: var(--accent); }
+#historySvg .hbar.best   { fill: #ffd24a; }
+#historySvg .hline {
+  stroke: rgba(232, 233, 255, .18);
+  stroke-width: 1;
+}
+
+/* Pause overlay */
+#pause {
+  background: rgba(10, 14, 31, .72);
+  backdrop-filter: blur(4px);
+  z-index: 25;
+  gap: 18px;
+}
+.pause-ring {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  border: 3px solid var(--accent);
+  box-shadow: 0 0 40px rgba(0, 212, 255, .3);
+  display: grid;
+  place-content: center;
+  margin: 0 auto;
+}
+.pause-countdown {
+  font-size: 56px;
+  font-weight: 800;
+  color: var(--fg);
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  animation: pauseBreath 1.6s ease-in-out infinite;
+}
+.pause-countdown.number { font-size: 72px; color: var(--accent); }
+.pause-hint {
+  font-size: 13px;
+  opacity: .65;
+  letter-spacing: .04em;
+}
+@keyframes pauseBreath {
+  0%, 100% { opacity: .75; }
+  50%      { opacity: 1; }
 }
 
 .kbhint {

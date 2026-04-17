@@ -28,6 +28,8 @@
   const ONBOARDING_T = 5;               // seconds of softer ramp for first-timers
   const EARLY_TAP_LEAD_MS = 300;         // taps within 300ms of arrival are swallowed, not missed
   const MASTER_GAIN = 0.55;
+  const RESUME_COUNTDOWN_MS = 3000;     // 3-2-1 before play resumes after tab return
+  const RUN_HISTORY_CAP = 8;             // last-N runs kept for sparkline
 
   const PULSE_POOL_SIZE = 32;
   const PARTICLE_CAP = 256;
@@ -56,6 +58,9 @@
     perfectCount: 0,
     hitCount: 0,
     newBestThisRun: false,
+    // pause / resume
+    paused: false,
+    resumeAt: 0,     // performance.now() ms when countdown ends; 0 while paused-indefinitely
     // fx timers
     targetPopT: 0,
     shakeT: 0,
@@ -116,6 +121,12 @@
   const statPerfectEl = document.getElementById('statPerfect');
   const statHitsEl = document.getElementById('statHits');
   const newBestEl = document.getElementById('newBest');
+  const comboMeter = document.getElementById('comboMeter');
+  const comboMeterFill = document.getElementById('comboMeterFill');
+  const pauseEl = document.getElementById('pause');
+  const pauseCountdownEl = document.getElementById('pauseCountdown');
+  const historyEl = document.getElementById('history');
+  const historySvg = document.getElementById('historySvg');
   bestScoreEl.textContent = state.best;
 
   // DPR-aware canvas sizing — render at device pixels for crispness, keep
@@ -143,6 +154,16 @@
   }
   function writeMuted(v) {
     try { localStorage.setItem('void-pulse-muted', v ? '1' : '0'); } catch {}
+  }
+  function readHistory() {
+    try {
+      const raw = localStorage.getItem('void-pulse-history');
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter(n => typeof n === 'number').slice(-RUN_HISTORY_CAP) : [];
+    } catch { return []; }
+  }
+  function writeHistory(arr) {
+    try { localStorage.setItem('void-pulse-history', JSON.stringify(arr.slice(-RUN_HISTORY_CAP))); } catch {}
   }
 
   // ---------- Sfx ----------
@@ -220,6 +241,9 @@
       return;
     }
     if (!state.running) return;
+    // While paused or during resume-countdown, taps are swallowed so the
+    // first tap after tab-return doesn't accidentally consume a pulse.
+    if (state.paused) return;
     if (now - state.lastTapMs < TAP_DEBOUNCE_MS) return;
     state.lastTapMs = now;
     judgeTap();
@@ -270,6 +294,51 @@
     void el.offsetWidth;
     el.classList.add(cls);
   }
+
+  // Draw last-N runs as a sparkline of bars. Normalized to the best value
+  // shown so bar heights are meaningful relative to the player's ceiling.
+  // Latest run = accent; best-of-window = gold; others muted.
+  const SPARK_NS = 'http://www.w3.org/2000/svg';
+  function renderHistory(scores) {
+    while (historySvg.firstChild) historySvg.removeChild(historySvg.firstChild);
+    if (!scores || scores.length === 0) {
+      historyEl.style.display = 'none';
+      return;
+    }
+    historyEl.style.display = '';
+    const maxScore = Math.max(1, ...scores);
+    const bestIdx  = scores.lastIndexOf(maxScore); // pick rightmost tie so latest-tie lights gold
+    const latest   = scores.length - 1;
+    const W_SVG = 120, H_SVG = 28;
+    const SLOTS = RUN_HISTORY_CAP;
+    const slotW = W_SVG / SLOTS;
+    const barW  = Math.max(6, slotW - 4);
+    // baseline
+    const base = document.createElementNS(SPARK_NS, 'line');
+    base.setAttribute('class', 'hline');
+    base.setAttribute('x1', '0'); base.setAttribute('x2', String(W_SVG));
+    base.setAttribute('y1', String(H_SVG - 0.5)); base.setAttribute('y2', String(H_SVG - 0.5));
+    historySvg.appendChild(base);
+    // right-align bars so latest run sits on the right
+    const offset = SLOTS - scores.length;
+    for (let i = 0; i < scores.length; i++) {
+      const v = scores[i];
+      const h = Math.max(2, Math.round((v / maxScore) * (H_SVG - 4)));
+      const x = (offset + i) * slotW + (slotW - barW) / 2;
+      const y = H_SVG - h;
+      const rect = document.createElementNS(SPARK_NS, 'rect');
+      rect.setAttribute('class',
+        'hbar' + (i === latest ? ' latest' : '') + (i === bestIdx && i !== latest ? ' best' : ''));
+      rect.setAttribute('x', String(x));
+      rect.setAttribute('y', String(y));
+      rect.setAttribute('width',  String(barW));
+      rect.setAttribute('height', String(h));
+      rect.setAttribute('rx', '1');
+      historySvg.appendChild(rect);
+    }
+  }
+  // Prime gameover history on first paint so returning players see their trend.
+  renderHistory(readHistory());
 
   // ---------- Judging ----------
   function perfectWindowMs() {
@@ -490,6 +559,44 @@
   let lastDisplayedScore = 0;
   let hudScoreApproaching = false;
   let hudScoreBeaten = false;
+  let lastComboFillPct = -1;
+  let lastComboActive = false;
+
+  // ---------- Pause (visibility / blur) ----------
+  function pauseGame() {
+    if (!state.running || state.over || state.paused) return;
+    state.paused = true;
+    state.resumeAt = 0;
+    pauseCountdownEl.textContent = 'paused';
+    pauseCountdownEl.classList.remove('number');
+    pauseEl.classList.remove('hidden');
+    pauseEl.classList.add('visible');
+    pauseEl.setAttribute('aria-hidden', 'false');
+  }
+  function beginResumeCountdown() {
+    if (!state.paused) return;
+    state.resumeAt = performance.now() + RESUME_COUNTDOWN_MS;
+    pauseCountdownEl.classList.add('number');
+  }
+  function clearPauseOverlay() {
+    pauseEl.classList.remove('visible');
+    pauseEl.classList.add('hidden');
+    pauseEl.setAttribute('aria-hidden', 'true');
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      if (state.paused && state.resumeAt) {
+        // Tabbed away mid-countdown — cancel it; wait for return again.
+        state.resumeAt = 0;
+        pauseCountdownEl.textContent = 'paused';
+        pauseCountdownEl.classList.remove('number');
+      }
+      pauseGame();
+    } else if (state.paused) {
+      beginResumeCountdown();
+    }
+  });
+  window.addEventListener('blur', () => { pauseGame(); });
 
   // ---------- 6. Render ----------
   function render(alpha) {
@@ -601,6 +708,20 @@
     } else {
       hudCombo.textContent = '';
     }
+
+    // Combo progress meter — distance to next multiplier step (COMBO_STEP).
+    // At cap, stay full. Hide entirely when combo == 0 to reduce idle noise.
+    const meterActive = state.combo > 0;
+    if (meterActive !== lastComboActive) {
+      comboMeter.classList.toggle('active', meterActive);
+      lastComboActive = meterActive;
+    }
+    const capped = m >= COMBO_MULT_MAX;
+    const pct = capped ? 100 : Math.round((state.combo % COMBO_STEP) / COMBO_STEP * 100);
+    if (pct !== lastComboFillPct) {
+      comboMeterFill.style.width = pct + '%';
+      lastComboFillPct = pct;
+    }
   }
 
   // ---------- 7. Loop ----------
@@ -612,6 +733,28 @@
   let acc = 0;
   function frame(now) {
     if (!state.running) return;
+    if (state.paused) {
+      // Drive the countdown (if running), keep the scene drawn but frozen.
+      if (state.resumeAt) {
+        const remainMs = state.resumeAt - now;
+        if (remainMs <= 0) {
+          state.paused = false;
+          state.resumeAt = 0;
+          clearPauseOverlay();
+          lastTime = now;
+          acc = 0;
+        } else {
+          const secLeft = Math.max(1, Math.ceil(remainMs / 1000));
+          if (pauseCountdownEl.textContent !== String(secLeft)) {
+            pauseCountdownEl.textContent = String(secLeft);
+          }
+        }
+      }
+      lastTime = now;  // prevent a giant dt when we unpause
+      render(Math.min(1, acc / FIXED_DT));
+      if (!state.over) requestAnimationFrame(frame);
+      return;
+    }
     const dt = Math.min((now - lastTime) / 1000, MAX_DT);
     lastTime = now;
     acc += dt;
@@ -655,6 +798,14 @@
     lastDisplayedScore = 0;
     hudScoreApproaching = false;
     hudScoreBeaten = false;
+    lastComboFillPct = -1;
+    lastComboActive = false;
+    comboMeter.classList.remove('active');
+    comboMeterFill.style.width = '0%';
+    // clear any lingering pause state from a previous run
+    state.paused = false;
+    state.resumeAt = 0;
+    clearPauseOverlay();
 
     overlay.classList.remove('visible'); overlay.classList.add('hidden');
     gameoverEl.classList.remove('visible'); gameoverEl.classList.add('hidden');
@@ -667,6 +818,9 @@
   function gameover() {
     state.over = true;
     state.running = false;
+    state.paused = false;
+    state.resumeAt = 0;
+    clearPauseOverlay();
     state.gameoverAtMs = performance.now();
     const prevBest = state.best;
     if (state.score > state.best) {
@@ -674,6 +828,12 @@
       writeBest(state.best);
       state.newBestThisRun = state.score > 0 && prevBest > 0;
     }
+    // Persist run to local history, then redraw sparkline (latest on the right).
+    const history = readHistory();
+    history.push(state.score);
+    const trimmed = history.slice(-RUN_HISTORY_CAP);
+    writeHistory(trimmed);
+    renderHistory(trimmed);
     Sfx.gameover();
     finalScoreEl.textContent = state.score;
     bestScoreEl.textContent = state.best;

@@ -18,7 +18,10 @@
 
     <div id="hud" aria-live="polite">
       <div id="score">0</div>
-      <div id="combo"></div>
+      <div id="comboWrap">
+        <div id="combo"></div>
+        <div id="comboMeter"><div id="comboMeterFill"></div></div>
+      </div>
       <div id="lives"><span class="life">◯</span><span class="life">◯</span><span class="life">◯</span></div>
     </div>
 
@@ -46,7 +49,18 @@
         <div><span>Perfects</span><span id="statPerfect">0</span></div>
         <div><span>Hits</span><span id="statHits">0</span></div>
       </div>
+      <div id="history" class="history" aria-label="Last runs">
+        <span class="history-label">Last runs</span>
+        <svg id="historySvg" viewBox="0 0 120 28" width="120" height="28" aria-hidden="true"></svg>
+      </div>
       <p class="retry-hint">Tap to retry</p>
+    </div>
+
+    <div id="pause" class="overlay hidden" aria-hidden="true">
+      <div class="pause-ring">
+        <div id="pauseCountdown" class="pause-countdown">paused</div>
+      </div>
+      <p class="pause-hint">Return to the tab to resume</p>
     </div>
   </main>
 
