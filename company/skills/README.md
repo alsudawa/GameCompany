@@ -53,6 +53,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`ux/ghost-run-comparison.md`](ux/ghost-run-comparison.md) — per-seed best-run event timeline stored as `[t,kind]` tuples, shared-axis SVG strip, snapshot-before-write rule
 - [`ux/first-visit-hint.md`](ux/first-visit-hint.md) — one-shot localStorage bit + `.first-visit` parent class + reduced-motion fallback for the start-overlay onboarding hint and Start-button pulse
 - [`ux/mid-run-toast.md`](ux/mid-run-toast.md) — rare-tier achievement toast during play via `midRun: true` flag + frame-loop eval + serial queue + bank-on-unlock write discipline
+- [`ux/lifetime-stats.md`](ux/lifetime-stats.md) — cross-mode lifetime aggregate panel (single JSON blob + default-fill read, one bump per gameover, empty state, two-step reset, derived rates)
 
 ### QA
 - [`qa/casual-checklist.md`](qa/casual-checklist.md) — pre-ship checklist + multi-perspective sweep (player / mobile / onboarding / retention / distribution)

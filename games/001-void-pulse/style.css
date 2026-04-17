@@ -948,6 +948,170 @@ html, body {
   .ach-chip .ach-desc { display: none; }
 }
 
+/* ---------- Start overlay: lifetime stats entry (Sprint 26) ---------- */
+.ghost-link-btn {
+  display: inline-block;
+  background: transparent;
+  border: none;
+  color: rgba(232, 233, 255, .55);
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 4px 8px;
+  margin: 2px 0 4px;
+  border-radius: 6px;
+  transition: color .15s, background .15s;
+}
+.ghost-link-btn:hover,
+.ghost-link-btn:focus-visible {
+  color: var(--accent);
+  background: rgba(232, 233, 255, .05);
+  outline: none;
+}
+
+/* ---------- Lifetime stats overlay (Sprint 26) ---------- */
+.stats-overlay {
+  background: rgba(10, 14, 31, .82);
+  backdrop-filter: blur(6px);
+  z-index: 30;
+  align-items: center;
+  justify-items: center;
+  padding: 16px;
+}
+.stats-card {
+  max-width: 460px;
+  width: calc(100% - 32px);
+  background: linear-gradient(180deg, rgba(28, 34, 66, .92), rgba(15, 18, 38, .96));
+  border: 1px solid rgba(232, 233, 255, .14);
+  border-radius: 14px;
+  padding: 22px 22px 18px;
+  text-align: left;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, .5);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+.stats-title {
+  font-size: 18px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 14px;
+  text-align: center;
+}
+.stats-empty-msg {
+  display: none;
+  font-size: 13px;
+  text-align: center;
+  color: rgba(232, 233, 255, .6);
+  margin: 18px 0;
+}
+.stats-overlay.stats-empty .stats-empty-msg { display: block; }
+.stats-overlay.stats-empty .stats-grid { opacity: .35; }
+.stats-grid {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 16px;
+}
+.stat-row {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 13px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: rgba(232, 233, 255, .03);
+  border: 1px solid rgba(232, 233, 255, .06);
+}
+.stat-row-span { grid-template-columns: 132px 1fr; align-items: start; }
+.stat-k {
+  color: rgba(232, 233, 255, .65);
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.stat-v {
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 14px;
+}
+.stat-themes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.stat-theme {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: rgba(232, 233, 255, .7);
+}
+.stat-theme b {
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.stat-theme-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(232, 233, 255, .4);
+}
+.stat-theme-void   { background: #00d4ff; border-color: #7fe6ff; }
+.stat-theme-sunset { background: #ffb55a; border-color: #ffd68f; }
+.stat-theme-forest { background: #3ecf8e; border-color: #7fe6b8; }
+.stats-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+.stats-reset-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 61, 107, .35);
+  color: rgba(255, 61, 107, .75);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all .15s;
+}
+.stats-reset-btn:hover,
+.stats-reset-btn:focus-visible {
+  background: rgba(255, 61, 107, .1);
+  color: rgba(255, 61, 107, 1);
+  outline: none;
+}
+.stats-reset-btn.armed {
+  background: rgba(255, 61, 107, .22);
+  color: #fff;
+  border-color: rgba(255, 61, 107, .85);
+  animation: statsArmed 1s ease-out infinite;
+}
+@keyframes statsArmed {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 61, 107, .45); }
+  50%      { box-shadow: 0 0 0 5px rgba(255, 61, 107, 0); }
+}
+.stats-close { margin: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .stats-reset-btn.armed { animation: none; }
+}
+@media (max-width: 460px) {
+  .stat-row { grid-template-columns: 100px 1fr; font-size: 12px; }
+  .stat-k { font-size: 10px; }
+  .stat-v { font-size: 13px; }
+  .stats-title { font-size: 16px; }
+  .stat-themes { gap: 6px; font-size: 11px; }
+}
+
 /* ---------- Mid-run achievement toast (Sprint 25) ---------- */
 /* Anchored top-center beneath the HUD; slides from above to avoid colliding
    with the mute/help buttons pinned to the corners. Hidden by default (no

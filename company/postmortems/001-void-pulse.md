@@ -1145,6 +1145,69 @@ Mid-run feedback loop. Achievements currently reveal only on the gameover stats 
 
 ---
 
+## Sprint 26 — Data lens / lifetime progression (2026-04-17)
+
+### Lens
+
+Long-arc retention. Every existing UI surface is per-run: gameover shows *this run's* peak combo, the sparkline shows the *last 8 runs*, achievements are gating flags, the per-seed leaderboard is current-day. No surface answers "how invested am I in this game overall?" or "have I improved over weeks?" — the kind of data that makes a returning player feel like their time is accumulating into something.
+
+This sprint adds a **lifetime stats panel** — a cross-mode, cross-theme aggregate view that grows every session. It's deliberately not a leaderboard (that's the per-seed table) and not an achievement grid (that's the binary ladder). It's the *boring totals* — runs played, total time, lifetime perfects, accuracy rate — that casual players surprisingly love because they make effort visible.
+
+### Changes
+
+- **`LIFETIME_KEY = 'void-pulse-lifetime'`** — single JSON blob. Fields: `runs`, `totalScore`, `totalPerfects`, `totalHits`, `totalMisses`, `totalSeconds`, `peakComboEver`, `bestScoreEver`, `bestPerTheme: { void, sunset, forest }`, `firstPlayedAt`, `lastPlayedAt`.
+- **`readLifetime()` / `writeLifetime()`** — default-fill reader that merges stored keys over `lifetimeDefaults()`, so adding a field later is forward-compatible without migrations. Numeric coerce + negative clamp + nested-object merge protect against tampered data.
+- **`bumpLifetime(run)`** — called once per gameover with the run payload. Increments counters, maxes the peak fields, sets `firstPlayedAt` if unset, always updates `lastPlayedAt`. Pure function of its input (theme passed in, not read from outer scope).
+- **Gate on "real run"** — skip bumps for score=0 AND duration<3s. Accidental reloads don't pollute counters.
+- **Stats panel overlay** — `#statsPanel` with a `.stats-card` matching help-modal styling (backdrop-blur, gradient bg, border, centered). Grid of rows: volume → peaks → averages → totals → rates → segments (per-theme bests) → timestamps.
+- **"Lifetime stats →" button** on start overlay (between keyboard hints and daily link).
+- **Keyboard `S`** toggles the stats panel; Esc closes it.
+- **Two-step reset** — first click arms (`Tap again to confirm`, pulse animation), second within 4s fires, otherwise auto-disarms.
+- **Empty state** — first-time opener sees "No runs yet. Play one to start tracking." over a faded grid (35% opacity) so the shape is visible but not populated.
+- **Rate derivation** — perfect rate / accuracy computed at render time from totals (never stored as a rate). `—` dash fallback for zero denominators.
+- **`formatDuration` three-tier** — `3h 15m` / `15m 22s` / `22s` — elides smaller unit at higher tiers.
+
+### Patterns extracted → `company/skills/ux/lifetime-stats.md` (new)
+
+- **Single JSON blob with default-fill reads** — atomic, forward-compatible, no migration code.
+- **One bump per gameover** — never mid-run, never per-event; single commit point prevents double-count.
+- **Gate on "real run"** — min-score-or-duration prevents reload pollution.
+- **Derived rates, not stored rates** — perfect/accuracy computed from counts; impossible states prevented by construction.
+- **Empty state with actionable message + faded shape** — not a wall of zeros, not a blank panel.
+- **Two-step reset with auto-disarm** — armed state visible via class, 4s timeout prevents stuck-armed sessions.
+- **Per-theme nested object** — new themes zero-fill via default merge, no code change to support.
+- **Group rows by psych axis** — volume / peak / avg / totals / rates / segments / timestamps.
+- **Open/close parity with help modal** — same .hidden/.visible pattern, same auto-pause, same bus-duck.
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 26 | Data / lifetime progression | Cross-mode aggregate stats panel, two-step reset, empty state, S hotkey; new skill doc (~220 lines) |
+
+### Cost
+
+- game.js: +178 lines (lifetime reader/writer/bump/reset + formatters + render + open/close + reset wiring + keydown binds)
+- index.html: +31 lines (stats panel overlay + start-screen entry button + S kbhint)
+- style.css: +155 lines (.stats-overlay + .stats-card + .stat-row + .stat-theme-* + reset button + armed animation + mobile)
+- New `ux/lifetime-stats.md` (~220 lines); README index updated
+
+### Next candidates
+
+- **Tap-to-zoom ghost strip** — still open.
+- **Service worker for offline play** — still open.
+- **Per-theme heartbeat variant** — heartbeat ping through theme-conditional layer.
+- **Sweetener pulse on achievement unlock** — hint theme signature as part of the unlock cue.
+- **Ambient-density preference** — slider for drift particle count.
+- **Stats-panel sparkline** — overlay the last-N run scores as a mini sparkline inside the stats card, separate from the gameover sparkline.
+- **Accessibility sprint** — focus-ring visibility audit, high-contrast mode, keyboard-only flow from first tap to stats reset.
+- **Distribution sprint** — Open Graph image, Twitter card meta, dynamic per-seed title for shareable preview cards.
+- **Performance sprint** — battery/heat on long sessions, audio-context close on mute+hidden, ambient-drift cap on mobile.
+- **Milestone reveal** — add a "next milestone" line to the stats panel (e.g., "50 runs ▾ 14 to go").
+- **Stats export** — JSON copy-to-clipboard button for players who care to archive their numbers.
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

@@ -123,6 +123,11 @@
   // spawn sequence — otherwise "your pacing vs. best" is apples-to-oranges.
   const GHOST_KEY = SEED !== null ? 'void-pulse-ghost-seed-' + SEED : null;
   const GHOST_EVENT_CAP = 240;
+  // Lifetime stats — cross-mode, cross-theme aggregate. Tracks totals that
+  // no per-run UI surfaces (runs played, total play time, rate stats). Stored
+  // as a single JSON blob for atomic read/write; defaults fill in for any
+  // missing key so forward-adds don't need migrations.
+  const LIFETIME_KEY = 'void-pulse-lifetime';
 
   // ---------- 2. State ----------
   const state = {
@@ -386,6 +391,71 @@
   }
   function writeBoard(arr) {
     try { localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(arr.slice(0, LEADERBOARD_MAX))); } catch {}
+  }
+  // Lifetime stats: one JSON blob with aggregate counters. Defaults fill in
+  // missing keys on read, so adding a new field later doesn't need a migration.
+  // Writes happen once per gameover via `bumpLifetime(run)` — idempotent at
+  // the granularity of "one run = one bump", never re-incremented mid-run.
+  function lifetimeDefaults() {
+    return {
+      runs: 0,
+      totalScore: 0,
+      totalPerfects: 0,
+      totalHits: 0,
+      totalMisses: 0,
+      totalSeconds: 0,
+      peakComboEver: 0,
+      bestScoreEver: 0,
+      bestPerTheme: { void: 0, sunset: 0, forest: 0 },
+      firstPlayedAt: 0,
+      lastPlayedAt: 0,
+    };
+  }
+  function readLifetime() {
+    const def = lifetimeDefaults();
+    try {
+      const raw = localStorage.getItem(LIFETIME_KEY);
+      if (!raw) return def;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return def;
+      // Merge: trust numeric fields, clamp negatives to 0, keep defaults for
+      // any field not present. bestPerTheme is a nested object → merge keys.
+      const out = { ...def, ...parsed };
+      for (const k of ['runs','totalScore','totalPerfects','totalHits','totalMisses','totalSeconds','peakComboEver','bestScoreEver','firstPlayedAt','lastPlayedAt']) {
+        out[k] = Math.max(0, +out[k] || 0);
+      }
+      out.bestPerTheme = { ...def.bestPerTheme, ...(parsed.bestPerTheme || {}) };
+      for (const t of Object.keys(out.bestPerTheme)) {
+        out.bestPerTheme[t] = Math.max(0, +out.bestPerTheme[t] || 0);
+      }
+      return out;
+    } catch { return def; }
+  }
+  function writeLifetime(obj) {
+    try { localStorage.setItem(LIFETIME_KEY, JSON.stringify(obj)); } catch {}
+  }
+  function bumpLifetime(run) {
+    const l = readLifetime();
+    const now = Date.now();
+    l.runs += 1;
+    l.totalScore     += Math.max(0, +run.score || 0);
+    l.totalPerfects  += Math.max(0, +run.perfects || 0);
+    l.totalHits      += Math.max(0, +run.hits || 0);
+    l.totalMisses    += Math.max(0, +run.misses || 0);
+    l.totalSeconds   += Math.max(0, +run.seconds || 0);
+    l.peakComboEver  = Math.max(l.peakComboEver, +run.peakCombo || 0);
+    l.bestScoreEver  = Math.max(l.bestScoreEver, +run.score || 0);
+    const t = run.theme;
+    if (t && l.bestPerTheme[t] !== undefined) {
+      l.bestPerTheme[t] = Math.max(l.bestPerTheme[t], +run.score || 0);
+    }
+    if (!l.firstPlayedAt) l.firstPlayedAt = now;
+    l.lastPlayedAt = now;
+    writeLifetime(l);
+    return l;
+  }
+  function resetLifetime() {
+    try { localStorage.removeItem(LIFETIME_KEY); } catch {}
   }
   // Insert a score; returns { board, rank } where rank is the 1-indexed
   // position of the new entry, or 0 if it didn't make the cut.
@@ -936,6 +1006,20 @@
     if (e.key === 'Escape' && !helpEl.classList.contains('hidden')) {
       e.preventDefault();
       closeHelp();
+      return;
+    }
+    // Esc — close stats panel if open
+    const statsElLocal = document.getElementById('statsPanel');
+    if (e.key === 'Escape' && statsElLocal && !statsElLocal.classList.contains('hidden')) {
+      e.preventDefault();
+      closeStats();
+      return;
+    }
+    // S — toggle stats panel. Gated off text inputs; works on any overlay.
+    if (e.code === 'KeyS' && !inField && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      e.preventDefault();
+      if (statsElLocal && statsElLocal.classList.contains('hidden')) openStats();
+      else closeStats();
       return;
     }
 
@@ -1738,6 +1822,116 @@
     if (e.target === helpEl) closeHelp();   // click backdrop to close
   });
 
+  // ---------- Stats panel (lifetime aggregates) ----------
+  const statsEl = document.getElementById('statsPanel');
+  const statsBtn = document.getElementById('statsBtn');
+  const statsClose = document.getElementById('statsPanelClose');
+  const statsReset = document.getElementById('statsReset');
+  let statsOpenedDuringRun = false;
+  function formatDuration(seconds) {
+    seconds = Math.max(0, Math.floor(seconds));
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    if (h > 0) return h + 'h ' + m + 'm';
+    if (m > 0) return m + 'm ' + s + 's';
+    return s + 's';
+  }
+  function formatDate(ms) {
+    if (!ms) return '—';
+    const d = new Date(ms);
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+  function formatPercent(num, denom) {
+    if (!denom) return '—';
+    const p = (num / denom) * 100;
+    return p >= 99.95 ? '100%' : p.toFixed(1) + '%';
+  }
+  function renderStats() {
+    const l = readLifetime();
+    // Gate "no data" state so the first-time opener sees helpful text, not
+    // a wall of zeros that reads as broken.
+    const empty = l.runs === 0;
+    statsEl.classList.toggle('stats-empty', empty);
+    const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+    set('lsRuns',      l.runs.toLocaleString());
+    set('lsTime',      formatDuration(l.totalSeconds));
+    set('lsScore',     l.totalScore.toLocaleString());
+    set('lsAvg',       l.runs ? Math.round(l.totalScore / l.runs).toLocaleString() : '—');
+    set('lsBest',      l.bestScoreEver.toLocaleString());
+    set('lsPeakCombo', l.peakComboEver.toLocaleString());
+    set('lsPerfects',  l.totalPerfects.toLocaleString());
+    set('lsHits',      l.totalHits.toLocaleString());
+    set('lsMisses',    l.totalMisses.toLocaleString());
+    // Rates — perfect rate over all hits; accuracy over all taps (hits + misses).
+    set('lsPerfectRate', formatPercent(l.totalPerfects, l.totalHits));
+    set('lsAccuracy',    formatPercent(l.totalHits, l.totalHits + l.totalMisses));
+    set('lsBestVoid',    l.bestPerTheme.void.toLocaleString());
+    set('lsBestSunset',  l.bestPerTheme.sunset.toLocaleString());
+    set('lsBestForest',  l.bestPerTheme.forest.toLocaleString());
+    set('lsFirst',       formatDate(l.firstPlayedAt));
+    set('lsLast',        formatDate(l.lastPlayedAt));
+    // Reset affordance only makes sense once there's data to reset.
+    if (statsReset) statsReset.hidden = empty;
+  }
+  function openStats() {
+    if (!statsEl || !statsEl.classList.contains('hidden')) return;
+    statsOpenedDuringRun = state.running && !state.over && !state.paused;
+    if (statsOpenedDuringRun) pauseGame();
+    renderStats();
+    statsEl.classList.remove('hidden');
+    statsEl.classList.add('visible');
+    statsEl.setAttribute('aria-hidden', 'false');
+    if (statsClose) statsClose.focus();
+    Sfx.setBus('duck');
+  }
+  function closeStats() {
+    if (!statsEl || statsEl.classList.contains('hidden')) return;
+    statsEl.classList.remove('visible');
+    statsEl.classList.add('hidden');
+    statsEl.setAttribute('aria-hidden', 'true');
+    if (statsOpenedDuringRun && state.paused && !state.resumeAt) {
+      beginResumeCountdown();
+    } else if (!state.paused && state.running && !state.over) {
+      Sfx.setBus(hudScoreBeaten ? 'beaten' : 'normal');
+    } else if (state.over) {
+      Sfx.setBus('duck');
+    } else {
+      Sfx.setBus('normal');
+    }
+    statsOpenedDuringRun = false;
+  }
+  if (statsBtn)   statsBtn.addEventListener('click', (e) => { e.stopPropagation(); openStats(); });
+  if (statsClose) statsClose.addEventListener('click', (e) => { e.stopPropagation(); closeStats(); });
+  if (statsEl)    statsEl.addEventListener('click', (e) => { if (e.target === statsEl) closeStats(); });
+  // Reset is two-step: first click arms, second confirms. Auto-disarms after
+  // 4 seconds so an accidental arm doesn't stick around waiting for a stray tap.
+  if (statsReset) {
+    let armedAt = 0;
+    statsReset.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const now = performance.now();
+      if (armedAt && now - armedAt < 4000) {
+        resetLifetime();
+        armedAt = 0;
+        statsReset.classList.remove('armed');
+        statsReset.textContent = 'Reset stats';
+        renderStats();
+      } else {
+        armedAt = now;
+        statsReset.classList.add('armed');
+        statsReset.textContent = 'Tap again to confirm';
+        setTimeout(() => {
+          if (statsReset.classList.contains('armed')) {
+            statsReset.classList.remove('armed');
+            statsReset.textContent = 'Reset stats';
+            armedAt = 0;
+          }
+        }, 4000);
+      }
+    });
+  }
+
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       if (state.paused && state.resumeAt) {
@@ -2155,6 +2349,20 @@
     const rage = readRageDurations();
     rage.push(+state.t.toFixed(2));
     writeRageDurations(rage);
+    // Lifetime stats bump — cross-mode aggregate (daily + free both count).
+    // Skip 0-score ghost-runs (page reload before any tap) so totals reflect
+    // actual play, not accidental starts.
+    if (state.score > 0 || state.t >= 3) {
+      bumpLifetime({
+        score: state.score,
+        perfects: state.perfectCount,
+        hits: state.hitCount,
+        misses: state.missCount,
+        seconds: state.t,
+        peakCombo: state.peakCombo,
+        theme: currentTheme,
+      });
+    }
     // Share button visibility: show if the browser can actually do something
     // (native share OR clipboard write). Hide on 0-score runs — nothing to brag.
     const canSomething = canShare || canCopy;

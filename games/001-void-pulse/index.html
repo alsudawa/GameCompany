@@ -56,7 +56,8 @@
         <div class="demo-tap">TAP!</div>
       </div>
       <button id="start" class="btn">Tap to start</button>
-      <p class="kbhint">or press <kbd>Space</kbd> · <kbd>M</kbd> mute · <kbd>P</kbd> pause · <kbd>T</kbd> theme · <kbd>?</kbd> help</p>
+      <p class="kbhint">or press <kbd>Space</kbd> · <kbd>M</kbd> mute · <kbd>P</kbd> pause · <kbd>T</kbd> theme · <kbd>S</kbd> stats · <kbd>?</kbd> help</p>
+      <button id="statsBtn" class="ghost-link-btn" type="button" aria-label="Lifetime stats">Lifetime stats →</button>
       <a id="dailyLink" class="daily-link" href="?daily=1" hidden>Try today's daily →</a>
       <a id="freeLink"  class="daily-link" href="./" hidden>← Back to free play</a>
       <div id="themePicker" class="theme-picker" role="radiogroup" aria-label="Color theme">
@@ -134,9 +135,40 @@
           <li><span class="help-key">theme picker</span><span>void / sunset / forest — press <kbd>T</kbd> to cycle</span></li>
         </ul>
         <p class="help-keys">
-          <kbd>Space</kbd> tap · <kbd>M</kbd> mute · <kbd>P</kbd> pause · <kbd>T</kbd> theme · <kbd>?</kbd> this help · <kbd>Esc</kbd> close
+          <kbd>Space</kbd> tap · <kbd>M</kbd> mute · <kbd>P</kbd> pause · <kbd>T</kbd> theme · <kbd>S</kbd> stats · <kbd>?</kbd> this help · <kbd>Esc</kbd> close
         </p>
         <button id="helpClose" class="btn help-close" type="button">Got it</button>
+      </div>
+    </div>
+
+    <div id="statsPanel" class="overlay hidden stats-overlay" role="dialog" aria-modal="true" aria-labelledby="statsPanelTitle" aria-hidden="true">
+      <div class="stats-card">
+        <h2 id="statsPanelTitle" class="stats-title">Lifetime stats</h2>
+        <p class="stats-empty-msg">No runs yet. Play one to start tracking.</p>
+        <div class="stats-grid">
+          <div class="stat-row"><span class="stat-k">Runs</span><span class="stat-v" id="lsRuns">0</span></div>
+          <div class="stat-row"><span class="stat-k">Total play</span><span class="stat-v" id="lsTime">0s</span></div>
+          <div class="stat-row"><span class="stat-k">Best score</span><span class="stat-v" id="lsBest">0</span></div>
+          <div class="stat-row"><span class="stat-k">Peak combo</span><span class="stat-v" id="lsPeakCombo">0</span></div>
+          <div class="stat-row"><span class="stat-k">Avg / run</span><span class="stat-v" id="lsAvg">—</span></div>
+          <div class="stat-row"><span class="stat-k">Total score</span><span class="stat-v" id="lsScore">0</span></div>
+          <div class="stat-row"><span class="stat-k">Perfects</span><span class="stat-v" id="lsPerfects">0</span></div>
+          <div class="stat-row"><span class="stat-k">Hits</span><span class="stat-v" id="lsHits">0</span></div>
+          <div class="stat-row"><span class="stat-k">Misses</span><span class="stat-v" id="lsMisses">0</span></div>
+          <div class="stat-row"><span class="stat-k">Perfect rate</span><span class="stat-v" id="lsPerfectRate">—</span></div>
+          <div class="stat-row"><span class="stat-k">Accuracy</span><span class="stat-v" id="lsAccuracy">—</span></div>
+          <div class="stat-row stat-row-span"><span class="stat-k">Best by theme</span><span class="stat-v stat-themes">
+            <span class="stat-theme"><span class="stat-theme-dot stat-theme-void"></span>void <b id="lsBestVoid">0</b></span>
+            <span class="stat-theme"><span class="stat-theme-dot stat-theme-sunset"></span>sunset <b id="lsBestSunset">0</b></span>
+            <span class="stat-theme"><span class="stat-theme-dot stat-theme-forest"></span>forest <b id="lsBestForest">0</b></span>
+          </span></div>
+          <div class="stat-row"><span class="stat-k">First played</span><span class="stat-v" id="lsFirst">—</span></div>
+          <div class="stat-row"><span class="stat-k">Last played</span><span class="stat-v" id="lsLast">—</span></div>
+        </div>
+        <div class="stats-actions">
+          <button id="statsReset" class="stats-reset-btn" type="button" hidden>Reset stats</button>
+          <button id="statsPanelClose" class="btn stats-close" type="button">Close</button>
+        </div>
       </div>
     </div>
 

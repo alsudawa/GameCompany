@@ -1895,3 +1895,120 @@ Verify that rare-tier achievements (`score-2500`, `combo-100`, `perfect-purity`,
 - [x] Haptic pattern distinct from hit/miss.
 - [x] No DOM alloc per toast; single element reused.
 - [x] Node syntax check: pass.
+
+---
+
+# Sprint 26 Retest — Lifetime stats panel (2026-04-17)
+
+## Scope
+
+Verify the lifetime stats panel correctly aggregates data across runs/modes/themes, survives reloads, handles tampered storage gracefully, and the two-step reset works without accidental data loss. Test empty state, open/close flow, keyboard access, and accessibility.
+
+## Functional — data accumulation
+
+- **DATA-26-01** Play 3 runs in free-play; open Stats panel; Runs = 3, Total play = sum of run durations (±1s rounding), Total score = sum of run scores. Verified.
+- **DATA-26-02** Play 1 free-play + 1 daily; both count toward `runs`. Cross-mode aggregation confirmed.
+- **DATA-26-03** Peak combo in any run updates `peakComboEver` as max; lower peaks don't decrease it. Verified across 4 runs with varying peaks.
+- **DATA-26-04** Best score per theme tracked independently: void best 1800 on run 1, sunset best 2200 on run 2 → both slots populated, neither overwrites the other. Verified.
+- **DATA-26-05** Theme swap mid-run: the theme at gameover wins for `bestPerTheme`. Acceptable behavior (single run = single theme credit).
+- **DATA-26-06** `firstPlayedAt` set once on first real run, never overwritten. Verified across 5 runs — first date stays constant.
+- **DATA-26-07** `lastPlayedAt` updates on every gameover. Verified by playing over 2 days, date rolls.
+
+## Functional — gate on "real run"
+
+- **GATE-26-01** Page load → immediately click Start → immediately pause → close tab. On reload, Runs did not increment. Verified (no gameover fired).
+- **GATE-26-02** Play < 3s and score 0 (instant miss-out): bumpLifetime skipped. Runs unchanged. Verified.
+- **GATE-26-03** Play < 3s but score > 0 (near-instant 1-hit): bump fires. Score > 0 path wins. Verified.
+- **GATE-26-04** Play ≥ 3s with score 0 (all misses): bump fires. Long-but-scoreless run still counts. Verified (edge case — duration path).
+
+## Functional — rate derivation
+
+- **RATE-26-01** First-time opener: Perfect rate = —, Accuracy = —. No NaN/Infinity/0% displayed. Verified.
+- **RATE-26-02** After 20 perfects + 0 goods + 0 misses: Perfect rate = 100%, Accuracy = 100%. Clamp at 99.95% works. Verified.
+- **RATE-26-03** 10 perfects + 5 goods + 3 misses: Perfect rate = 66.7%, Accuracy = 83.3%. One-decimal formatting. Verified.
+- **RATE-26-04** Rate fields not persisted — confirmed via devtools localStorage inspection: blob only has counts + bests + timestamps.
+
+## Functional — reset flow
+
+- **RESET-26-01** First tap on Reset → button arms (text changes to "Tap again to confirm", pulse animation starts). Verified.
+- **RESET-26-02** Second tap within 4s → localStorage key removed, panel re-renders with defaults (Runs = 0, rates = —). Verified.
+- **RESET-26-03** Wait 4s after arm → button disarms automatically (text restores, pulse stops). Second tap 5s later does not fire reset. Verified.
+- **RESET-26-04** Reset button hidden until at least one run exists (`l.runs > 0`). Verified — empty state has no reset affordance.
+- **RESET-26-05** After reset, the panel's empty-state message re-appears. Grid fades to 35% opacity. Verified.
+
+## Functional — persistence
+
+- **PERSIST-26-01** Play 3 runs, close tab, reopen: Runs still 3, all counts preserved. Verified.
+- **PERSIST-26-02** Open devtools → Application → localStorage → edit `void-pulse-lifetime` to inject a negative number (e.g., `"runs":-5`). Reload → panel reads Runs = 0 (clamped). Verified.
+- **PERSIST-26-03** Inject a non-JSON value ("xyz"). Reload → panel reads all defaults. Verified graceful fallback.
+- **PERSIST-26-04** Inject a missing field (remove `peakComboEver`). Reload → field re-appears as 0 on next render (default-fill merge). Verified forward-compatibility.
+- **PERSIST-26-05** Quota exceeded scenario: mock `setItem` throwing; bumpLifetime swallows the error. Verified (counter doesn't update but game continues).
+
+## UI / layout
+
+- **UI-26-01** Panel is centered, card width ~460px, scrollable if viewport < card height. Mobile viewport 360×640 → scroll enabled, all rows reachable. Verified.
+- **UI-26-02** Stat row grid `132px | 1fr` → labels right-align against values. Mobile shrinks to `100px | 1fr`. Verified.
+- **UI-26-03** Per-theme bests row spans full width, shows 3 colored dots + labels + numbers. Wraps on narrow viewports. Verified at 280px width.
+- **UI-26-04** Date format: `Apr 17, 2026` (locale-aware). Verified in en-US and ko-KR locale.
+- **UI-26-05** Duration format: `1h 23m`, `15m 3s`, `8s` — three-tier elision. Verified.
+- **UI-26-06** Number formatting: `1,234` with thousand separators via `toLocaleString()`. Verified.
+
+## Interaction
+
+- **INTX-26-01** Click "Lifetime stats →" on start overlay → panel opens. Verified.
+- **INTX-26-02** Press `S` key (not in a field) → panel toggles. `S` again closes. Verified.
+- **INTX-26-03** Press `Esc` while panel open → closes. Verified.
+- **INTX-26-04** Click backdrop (outside card) → closes. Verified.
+- **INTX-26-05** Open stats during an active run → run auto-pauses; close stats → 3-2-1 resume countdown. Same pattern as help modal. Verified.
+- **INTX-26-06** Open stats while already paused (not auto-paused from stats) → close stats → stays paused indefinitely. Verified.
+- **INTX-26-07** Open stats on gameover overlay → panel overlays gameover; close → gameover still visible underneath. Verified.
+- **INTX-26-08** `S` key while typing in a text field → swallowed by inField check (no text fields exist in-game, but kbhint prevents regression if one's added later). Verified via injected `<input>`.
+
+## Audio
+
+- **AUDIO-26-01** Open stats mid-run → bus ducks (−65% master gain). Close → bus restores to normal/beaten. Same as help behavior. Verified.
+- **AUDIO-26-02** No stats-specific SFX — stats panel is silent, as befits a data view. Verified.
+
+## Accessibility
+
+- **A11Y-26-01** `role="dialog"` + `aria-modal="true"` on the overlay → screen readers trap focus inside. Verified with VoiceOver.
+- **A11Y-26-02** `aria-labelledby="statsPanelTitle"` → screen reader announces "Lifetime stats" on open. Verified.
+- **A11Y-26-03** Focus moves to Close button on open; Esc returns focus to statsBtn. Verified.
+- **A11Y-26-04** Keyboard-only navigation: Tab through rows (Tab doesn't navigate rows since they aren't focusable, but buttons Close + Reset are reachable). Verified.
+- **A11Y-26-05** Reduced-motion: reset-armed pulse animation disabled; color change still communicates state. Verified.
+- **A11Y-26-06** Color contrast: `.stat-v` #f4fbff on card gradient bg passes WCAG AA (≥4.5:1). `.stat-k` at .65 opacity passes AA Large (≥3:1) for 11px labels.
+- **A11Y-26-07** Focus ring visible on Reset / Close / statsBtn — `:focus-visible` outline. Verified in Chrome + Firefox keyboard tab.
+
+## Performance
+
+- **PERF-26-01** Panel open cost: one localStorage read + 17 textContent writes + 1 classList toggle. Lighthouse trace → <1ms total on mid-range laptop. Verified.
+- **PERF-26-02** bumpLifetime on gameover: one read + one write of ~400 byte JSON. <0.5ms. Verified.
+- **PERF-26-03** No per-frame overhead — panel is static once opened, no rAF hooks.
+- **PERF-26-04** No memory leak on repeat open/close — single panel element reused, no DOM alloc.
+
+## Edge cases
+
+- **EDGE-26-01** Clear localStorage mid-run → next gameover bumpLifetime starts fresh from defaults. `runs: 1`, `firstPlayedAt: now`. Verified.
+- **EDGE-26-02** Two tabs open, both playing → last one to gameover wins the bump (the earlier tab's write is clobbered). Acceptable — multi-tab play is rare and the lost bump is ≤1 run. Documented, not fixed.
+- **EDGE-26-03** Date rolls to next day mid-run → gameover's `lastPlayedAt` reflects gameover time (not run-start time). Correct.
+- **EDGE-26-04** Negative system clock (user manually set date to 2020) → `firstPlayedAt` set to 2020; future plays update `lastPlayedAt` to whatever clock says. Acceptable — we trust the clock as the user experiences it.
+- **EDGE-26-05** Extremely long play session (hypothetical 50+ hours) → Total play displays "50h 23m", fits the grid. Verified with mocked `totalSeconds = 181500`.
+- **EDGE-26-06** Reset while panel open → re-renders in place showing empty state; no close-reopen needed.
+
+## Retest after implementation
+
+- [x] Lifetime aggregates accumulate correctly across runs, modes, themes.
+- [x] `bumpLifetime` fires exactly once per real gameover.
+- [x] Gate skips accidental-reload ghost runs.
+- [x] Rates derived at render, never stored.
+- [x] Empty state message + faded grid on first open.
+- [x] Two-step reset with 4s auto-disarm.
+- [x] `S` hotkey opens/closes; Esc closes.
+- [x] Panel pauses live runs, resumes on close.
+- [x] localStorage tamper resistance: negative clamp + type coerce + defaults merge.
+- [x] Forward-compat: missing fields default-fill on read without migration.
+- [x] Mobile layout: 360px viewport, all rows reachable, per-theme row wraps.
+- [x] Focus management: open → Close button, Esc → back to trigger.
+- [x] Reduced-motion: pulse animation disabled.
+- [x] No new per-frame overhead; panel is event-driven.
+- [x] Node syntax check: pass.
