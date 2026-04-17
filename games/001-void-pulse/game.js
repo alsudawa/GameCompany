@@ -672,6 +672,29 @@
         setTimeout(() => this._env('triangle', f, 0.09, 0.17), i * 65);
       });
     },
+    // Theme-conditional overtone layered on top of levelup at high-multiplier
+    // milestones (combo >= 20 → mult >= 3x). Void is a no-op (preserves the
+    // pure-synth character); sunset gets a bright high bell; forest gets a
+    // deep warm fifth. Reads currentTheme at call-time so mid-run theme swaps
+    // take effect on the next milestone.
+    //
+    // Additive, not replacive — the base levelup cascade still plays. This
+    // layer is a spice, not a substitute.
+    themeSweeten() {
+      if (currentTheme === 'void') return;
+      if (currentTheme === 'sunset') {
+        // High shimmer: long sine sustain an octave above the cascade peak,
+        // plus a sibling third for harmonic warmth. Volume stays soft so it
+        // sits as texture, not lead.
+        this._env('sine', 2093, 0.45, 0.08);        // C7
+        setTimeout(() => this._env('sine', 2637, 0.38, 0.06), 40);  // E7
+      } else if (currentTheme === 'forest') {
+        // Deep warm fifth under the cascade — adds body, feels grounded.
+        // Lower triangle sustains with a gentle slide for organic motion.
+        this._env('triangle', 196, 0.55, 0.10, 147);  // G3 -> D3
+        setTimeout(() => this._env('triangle', 294, 0.40, 0.07, 220), 70); // D4 -> A3
+      }
+    },
     heartbeat() { this._env('sine', 110, 0.12, 0.22, 165); },
     // Achievement unlock — bright major-6th ping, distinct from levelup's
     // cascade (levelup = new-best, achievement = milestone-claimed).
@@ -1270,6 +1293,10 @@
         state.comboMilestoneText = '×' + (m % 1 === 0 ? m : m.toFixed(1));
         state.comboMilestoneFade = 0.9;
         Sfx.levelup();
+        // Peak-tier sweetener: ≥3x multiplier (combo ≥ 20) earns a theme
+        // overtone layered on top of levelup. Sparse by design — gated on
+        // the tier so it's "you arrived at the top", not "you hit another 5".
+        if (m >= 3) Sfx.themeSweeten();
       }
       p.active = false;
     } else if (dMs <= GOOD_WINDOW_MS) {

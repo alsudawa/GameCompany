@@ -1044,6 +1044,54 @@ Deliberately along five different axes: a combo-grinder, a marathon runner, a da
 
 ---
 
+## Sprint 24 — Per-theme score sweetener (2026-04-17)
+
+### Lens
+
+**Sprint 16 gave themes an audible signature on the *punish* side (miss/gameover accents); Sprint 24 gives them a signature on the *peak* side.** At combo milestones of ×3 multiplier or higher (combo ≥ 20), a theme-conditional overtone layers on top of the base levelup cascade. Void stays as-is — its synth minimalism is preserved, and the *absence* of sweetener becomes its signature. Sunset gets a bright high-register bell shimmer (C7+E7 sine sustains); forest gets a deep warm fifth (G3+D4 triangle with pitch slide). Additive, not replacive — the base cascade still plays, and the sweetener is a halo.
+
+### Changes
+
+- **New `Sfx.themeSweeten()` method** — reads `currentTheme` at call-time, early-returns on void, plays two-note sustain per theme via the existing `_env` helper.
+- **Milestone trigger gated on `comboMult() >= 3`** — fires only when the player has climbed to 3x tier (combo ≥ 20), not on every ×1.5/×2/×2.5 step. Keeps the sweetener rare and rewarding.
+- **Fires *after* `Sfx.levelup()`** — base cascade's attack establishes the celebration moment, sweetener sustains underneath (40–70ms delays on the second note of each theme).
+- **No new state, no HUD changes, no CSS** — pure audio layer.
+- **Sunset sweetener spec**: sine C7 (2093Hz) 0.45s @ 0.08 vol, then sine E7 (2637Hz) 0.38s @ 0.06 vol after 40ms.
+- **Forest sweetener spec**: triangle G3 (196Hz) sliding to D3 (147Hz) 0.55s @ 0.10 vol, then triangle D4 (294Hz) sliding to A3 (220Hz) 0.40s @ 0.07 vol after 70ms.
+
+### Patterns extracted → `company/skills/audio/theme-conditional-sfx.md` (extended section)
+
+- **Peak-tier gating by multiplier tier** — sparse firing preserves the "peak moment" read. Cap tier and above earn the sweetener; climbing tiers don't.
+- **Void-is-no-op for peak moments too** — the absence becomes void's signature; a "neutral" sweetener for void adds mental bandwidth without feel.
+- **Theme picks its register** — sunset owns high/bright, forest owns low/warm, void owns mid. Sweetener lives where the theme has room, not where the base cascade already is.
+- **Longer sustain for halo, shorter attack for punctuation** — same `_env` helper, different envelope discipline per role (punch vs. sustain).
+- **Volume math against base layer** — sweetener at 0.06–0.10 vs. cascade peak at 0.17 → ~50% ratio: audible texture, not competing lead.
+- **Read `currentTheme` at call-time** — mid-run theme swaps take effect on the next milestone (same as Sprint 16's punish accents).
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 24 | Audio theme-signature on peaks | `themeSweeten()` overtone at ≥3x combo tier, extended theme-conditional-sfx skill doc |
+
+### Cost
+
+- game.js: +27 lines (themeSweeten method + single milestone-hook line)
+- style.css / index.html: 0
+- Extended `audio/theme-conditional-sfx.md` with "Peak-tier sweetener" section
+
+### Next candidates
+
+- **Tap-to-zoom ghost strip** — still open.
+- **Service worker for offline play** — still open.
+- **Achievement unlock toast during gameplay** — mid-run chip flash for rare-tier unlocks.
+- **Stats page** — lifetime perfect count, miss count, longest streak.
+- **Per-theme heartbeat variant** — the current heartbeat ping could also go through a theme-conditional layer.
+- **Sweetener pulse on achievement unlock** — when an achievement fires, hint the theme signature as part of the cue.
+- **Ambient-density preference** — slider for drift particle count.
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

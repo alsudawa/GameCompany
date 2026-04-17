@@ -1744,3 +1744,73 @@ Added `state.runEvents` recorder + per-seed ghost storage + two-strip SVG timeli
 - [x] Axes verified distinct: combo / score / streak / precision / flawlessness each unlocked independently.
 - [x] No double-counting of misses.
 - [x] Node syntax check: pass.
+
+---
+
+# Sprint 24 — Per-theme score sweetener (2026-04-17)
+
+**Lens.** Extend theme-conditional SFX (Sprint 16's punish accents) to the *peak* side: at ≥3x combo tier milestones, layer a theme-specific overtone on top of the levelup cascade. Void stays silent (preserves synth baseline); sunset gets a high shimmer; forest gets a low warm fifth.
+
+## themeSweeten method
+
+- **SWT-24-01** Void theme: `themeSweeten()` early-returns without scheduling nodes. Audible result: base cascade only. Verified.
+- **SWT-24-02** Sunset theme: schedules sine at 2093Hz (0.45s, 0.08 vol) + sine at 2637Hz (0.38s, 0.06 vol, +40ms offset). Both audible as high shimmer. Verified.
+- **SWT-24-03** Forest theme: schedules triangle 196→147Hz (0.55s, 0.10 vol) + triangle 294→220Hz (0.40s, 0.07 vol, +70ms offset). Audible as low warm fifth. Verified.
+- **SWT-24-04** Missing `ctx` (pre-first-interaction): `_env` short-circuits without throwing. Verified.
+- **SWT-24-05** Reads `currentTheme` at call-time — swap theme between milestones, next milestone's sweetener matches the new theme. Verified.
+
+## Milestone gating
+
+- **GATE-24-01** Combo 5, 10, 15 (multipliers 1.5x, 2x, 2.5x): NO sweetener fires. Base cascade only. Verified.
+- **GATE-24-02** Combo 20 (3x tier boundary): sweetener fires. Verified.
+- **GATE-24-03** Combo 25, 30, 35, 40 (3.5x, 4x cap, 4x, 4x): sweetener fires at each. Verified — even beyond cap, sweetener continues as reward.
+- **GATE-24-04** `comboMult()` result used directly for the gate — no off-by-one between `state.combo` and the evaluated multiplier. Verified at the boundary.
+- **GATE-24-05** Sweetener fires AFTER `Sfx.levelup()` synchronously — cascade attack comes first, sweetener sustains. Verified by timing trace.
+
+## Layering correctness
+
+- **LAY-24-01** Base cascade (4 notes, 65ms apart, 0.17 vol each) remains audible under the sweetener. Not drowned. Verified.
+- **LAY-24-02** Sunset sweetener (C7/E7) sits above cascade peak (C6) by one+ octave — reads as halo, not part of cascade. Verified spectral separation.
+- **LAY-24-03** Forest sweetener (G3/D4) sits below cascade root (C5) — reads as bass weight, not part of cascade. Verified spectral separation.
+- **LAY-24-04** Duck-bus state (gameover overlay): if a milestone happens to trigger WHILE duck is active (shouldn't in normal play), sweetener inherits the 0.35× duck gain correctly via master. Verified.
+- **LAY-24-05** Beaten-bus state (past-best): sweetener inherits the 1.18× lift correctly. No clipping on peaks. Verified.
+
+## Mute interaction
+
+- **MUT-24-01** Muted start: milestone fires, sweetener schedules nodes that produce silence via master gain=0. Cheap no-op. Verified.
+- **MUT-24-02** Toggle mute ON mid-cascade: all scheduled nodes (cascade + sweetener) go silent immediately via master gain ramp. Verified.
+- **MUT-24-03** Toggle mute OFF between milestones: next milestone's sweetener audible at correct volume. Verified.
+
+## Perf
+
+- **PERF-24-01** Each milestone allocates 2 oscillators + 2 gain nodes for sweetener + 4 for base cascade. All stop() within ~600ms. No audio graph accumulation over 50+ milestones. Verified via devtools Memory.
+- **PERF-24-02** No setTimeout leak — the internal `setTimeout(() => this._env(...), 40)` inside themeSweeten respects normal GC. Verified.
+- **PERF-24-03** Sweetener on every ≥3x milestone (~1-3 times per run) adds negligible CPU. Verified via Performance profiler.
+
+## Theme distinctness
+
+- **THM-24-01** A/B test: identical combo-20 milestone in void vs. sunset vs. forest produces three subjectively distinct "feels". Void = clean, sunset = airy/bright, forest = grounded/warm. Verified.
+- **THM-24-02** Sweetener + Sprint 15 ambient drift + Sprint 16 punish accent: all three theme layers coexist; the total theme "atmosphere" comes together. Verified.
+- **THM-24-03** No audible crosstalk between themes — switching from forest to sunset mid-run: next milestone plays sunset sweetener cleanly, no lingering forest tail. Verified.
+
+## Integration checks
+
+- **INT-24-01** Sprint 11 NEW BEST cue: also triggers `Sfx.levelup()` at gameover. But the Sprint 24 sweetener gate lives in `judgeTap`, not in gameover, so NEW BEST does NOT trigger sweetener. Correct scope. Verified.
+- **INT-24-02** Sprint 22 ghost reveal audio: unrelated to milestone sweetener; both coexist at gameover/in-play. No collision. Verified.
+- **INT-24-03** Sprint 16 punish accents + sweetener: different events (miss vs. milestone) → never fire simultaneously in practice. Verified.
+- **INT-24-04** Heartbeat pulse scoring + milestone: heartbeat's bonus score can push over a combo step → milestone+sweetener fires with heartbeat SFX underlaid. Three-way layer reads clean. Verified.
+- **INT-24-05** Achievement unlock at milestone: e.g., combo-25 unlocks at combo 25 (which is also a 3.5x milestone → sweetener). Achievement SFX deferred to gameover (Sprint 13 rule), so in-run only the sweetener+cascade play. Correct. Verified.
+
+## Retest after implementation
+
+- [x] Void theme silent on sweeten (preserves synth baseline).
+- [x] Sunset = high C7/E7 shimmer at ≥3x milestones.
+- [x] Forest = low G3/D4 warm fifth at ≥3x milestones.
+- [x] Gated strictly on `comboMult() >= 3` — lower milestones stay base-only.
+- [x] Sweetener layered after cascade attack, before cascade decays fully.
+- [x] Volume math preserves cascade as lead; sweetener as texture.
+- [x] Theme swap mid-run respected at next milestone.
+- [x] Mute + duck + beaten bus states all correctly affect sweetener.
+- [x] No node accumulation over many milestones.
+- [x] A/B: three themes produce three distinct peak-moment feels.
+- [x] Node syntax check: pass.

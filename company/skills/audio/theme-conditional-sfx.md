@@ -129,3 +129,70 @@ Don't layer the accent on the attack — the attack needs to read clean as "game
 - **One-shot `createBufferSource()` stored as singleton** — BufferSource is single-use by spec; you must `createBufferSource()` each call. The reusable part is the `AudioBuffer`, not the Source node.
 
 <!-- added: 2026-04-17 (001-void-pulse sprint 16) -->
+
+## Peak-tier sweetener (Sprint 24)
+
+The Sprint 16 pattern covers *negative* / *punish* moments (miss, gameover) — where additive theme atmosphere colors the consequence. The inverse use-case is *peak* / *reward* moments — the top-tier combo milestone, a rare achievement, a streak threshold. Same shape, opposite polarity: the base success tone still plays (everyone hears the celebration), but the theme-conditional layer adds a *signature* that makes "I maxed my combo in void" feel different from "I maxed my combo in forest".
+
+### Pattern — peak-tier gating
+
+```js
+if (state.combo > 0 && state.combo % COMBO_STEP === 0) {
+  Sfx.levelup();                        // base cascade, all themes
+  if (comboMult() >= 3) Sfx.themeSweeten();   // sweetener gated at ≥3x tier
+}
+```
+
+Gating on the multiplier *tier* rather than on every milestone keeps the sweetener rare. The base cascade fires 5–8 times per run; the sweetener fires 1–3 times, only at the top. That rarity is what makes it feel special — if it played every 5 hits it would blur into the base cascade and lose the "peak moment" read.
+
+Rules of thumb:
+- **First-tier milestone** — base only. The player is still climbing; don't spend your reward.
+- **Mid-tier** — base only. Still climbing.
+- **Penultimate tier** — base only. The cap is the reward.
+- **Cap tier and above** — base + sweetener. This is *the moment*.
+
+For void-pulse's 4-tier ladder (1x → 1.5x → 2x → 2.5x → 3x → 3.5x → 4x), sweetener kicks at 3x and fires for every milestone from there up. Three-tier ladders might want to gate even tighter (cap only).
+
+### Pattern — sweetener shape per theme
+
+```js
+themeSweeten() {
+  if (currentTheme === 'void') return;
+  if (currentTheme === 'sunset') {
+    this._env('sine', 2093, 0.45, 0.08);     // high shimmer C7
+    setTimeout(() => this._env('sine', 2637, 0.38, 0.06), 40);  // E7
+  } else if (currentTheme === 'forest') {
+    this._env('triangle', 196, 0.55, 0.10, 147);  // low warm G3 -> D3
+    setTimeout(() => this._env('triangle', 294, 0.40, 0.07, 220), 70);
+  }
+}
+```
+
+Per-theme design rationale:
+- **Void = no-op.** The baseline feel is clean, synthy, minimalist; adding a sustain dilutes that. The *absence* of sweetener becomes void's signature when A/B'd against sunset/forest.
+- **Sunset = high bell shimmer.** Sunset already has ember-crackle in its miss/gameover accents; the sweetener is its *positive* counterpart — bright, high, airy. Pitch way above the base cascade (C7/E7 vs. cascade top of C6) creates separation — reads as "halo" not "part of the cascade".
+- **Forest = low warm fifth.** Forest has leaf-rustle lowpass in its negative accents; the positive sweetener mirrors with low-register warmth (G3/D4). Slight pitch slide (`147Hz slideTo`) gives organic life — a straight tone would feel synthetic against the forest theme.
+
+The pattern across themes: pick a register the theme *owns* that's far from the base cascade's register. Sunset owns high/bright (C7+); forest owns low/warm (<300Hz); void owns the mid-register (where the cascade lives) and so has nothing left to add.
+
+### Pattern — longer envelopes for sustain, not attack
+
+Sprint 16's accents were *short* (60–200ms) because they punctuated attacks. Sprint 24's sweeteners are *longer* (380–550ms) because they sustain under the base cascade. Two different use cases of the same `_env` helper:
+
+| Use | Length | Volume | Role |
+|---|---|---|---|
+| Punish accent (miss/over) | 60–200 ms | 0.10–0.18 | punctuation |
+| Peak sweetener | 380–550 ms | 0.06–0.10 | sustain/halo |
+
+The sweetener's volume is *lower* than the punish accent's because it rides on top of a louder base (levelup cascade is 0.17/note) vs. the miss accent riding on a single 0.26 sawtooth. Headroom math: base cascade peak ≈ 0.17, sweetener at 0.08 is ~47% of base, comfortably audible as texture but not competing with lead.
+
+### Common mistakes (peak-tier variant)
+
+- **Firing sweetener at every milestone** — it loses the "peak" read, becomes indistinguishable from the base cascade. Gate by multiplier tier.
+- **Layering sweetener on the attack of the cascade** — cascade needs its attack clean to communicate "level up". Layer under the *sustain* (40–70ms delay lets the cascade's first 1–2 notes establish).
+- **Making void's sweetener a "neutral" tone rather than a no-op** — adds nothing, occupies mental bandwidth ("was that a sweetener?"). Void's signature IS the absence.
+- **Using the same register as the base cascade** — the sweetener disappears into the cascade instead of adding. Use a register the theme owns.
+- **Forgetting mid-run theme swap honors** — read `currentTheme` at call-time, not at module init. Otherwise swapping theme mid-run gives the wrong sweetener at the next milestone.
+
+<!-- added: 2026-04-17 (001-void-pulse sprint 24) -->
+
