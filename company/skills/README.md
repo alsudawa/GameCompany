@@ -17,6 +17,8 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`gameplay/pause-visibility.md`](gameplay/pause-visibility.md) — tab-hide pause + 3-2-1 countdown resume
 - [`gameplay/anti-frustration.md`](gameplay/anti-frustration.md) — pity life on rage-retry, forgiveness levers
 - [`gameplay/seeded-daily.md`](gameplay/seeded-daily.md) — deterministic daily challenge via `?seed=` + per-seed best
+- [`gameplay/rhythm-chart.md`](gameplay/rhythm-chart.md) — fixed-BPM deterministic chart (templates × band schedule + exact-max simulation + schema versioning)
+- [`gameplay/reactive-hazard.md`](gameplay/reactive-hazard.md) — don't-tap hazard events woven into a chart (visual triple-redundancy + bonus/penalty + placement heuristics)
 
 ### Graphics
 - [`graphics/svg-sprites.md`](graphics/svg-sprites.md) — inline SVG sprite patterns, no image files
@@ -34,6 +36,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`audio/audio-dynamics.md`](audio/audio-dynamics.md) — three-state master bus (normal / beaten / duck) with smooth ramps
 - [`audio/theme-conditional-sfx.md`](audio/theme-conditional-sfx.md) — additive theme accent layer (lazy noise buffer + filter branch for crackle/rustle, void = no-op)
 - [`audio/web-audio-scheduling.md`](audio/web-audio-scheduling.md) — `ctx.currentTime + delay` pre-scheduling for tight rhythmic audio (vs. setTimeout drift), gate-on-reduced-motion for visual-synced audio
+- [`audio/synced-bgm.md`](audio/synced-bgm.md) — beat-synced generative BGM module (band-conditional pattern table + 60ms tick / 250ms lookahead scheduler + anchor-shift pause/resume via performance.now)
 
 ### Mobile
 - [`mobile/dpr-canvas.md`](mobile/dpr-canvas.md) — DPR-aware canvas for crisp rendering on retina

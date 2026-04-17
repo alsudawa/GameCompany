@@ -1324,6 +1324,138 @@ Runtime power. Void-pulse's `requestAnimationFrame` loop and its `AudioContext` 
 
 ---
 
+## Sprint 29 — Rhythm pivot (game-design lens) (2026-04-17)
+
+### Lens
+
+Player feedback, unfiltered: *"패턴이 너무 단순해서 재미가 없네 눈감고도 하겠어. 일정하게 빨라지는게 아니라 뭔가 보고 반응 하게 해야 긴장감이 생기지 않을까? 매번 느리게 시작하니 아무런 긴장감이 없어. 이펙트도 좀 더 화려하게 쾅쾅 터져야할 것 같고. 결국 보면 예전에 있던 리듬게임하고 컨셉은 비슷한데 적당한 음악의 박자에 맞춰서 하는게 더 낫지 않을까. 계속 빨라지는게 아니라 일정한 패턴으로 high score를 노리게..."* That's not a bug report; it's a mandate to pivot the genre. The game had drifted into "pace-up tapper" territory where a tuned rhythm could carry an eyes-closed run. This sprint converts it to a fixed-chart rhythm game with reactive hazards — score becomes a function of chart mastery and sight-reading, not endurance.
+
+### Changes
+
+- **120 BPM deterministic chart**: 30 bars × 8 eighth-note slots. `BAR_TEMPLATES` per band (warm/easy/mid/hard/climax/out) + `BAND_SCHEDULE` maps bars to bands. Seeded RNG picks one template per bar → same seed = same chart.
+- **Hazard pulses (kind = 'h')** — red, dashed, throbbing. Must NOT be tapped. Tap = -100 score + life loss; pass = +50 bonus.
+- **Spawn-from-arrival back-calculation** — chart declares `arriveT` (when the ring should judge), spawner computes `spawnT = arriveT - TARGET_R/speed` per-pulse so ring-cross lands exactly on beat regardless of band speed.
+- **`CHART_LEAD_IN_S = 1.0s`** — first pulse arrives 1s into the run so the opener has clean travel animation from r=0, not a frame-one pop.
+- **Exact-max simulation for `maxPossibleScore`** — walks the chart applying the real combo-multiplier ramp. 100% is literally achievable (not a theoretical upper bound).
+- **% of max display on gameover** — `score + ' · ' + pct + '%'` replaces the raw number. The retention hook for a fixed-chart game.
+- **Victory vs death audio split** — `if (chartDone && lives > 0) levelup() + themeSweeten()` else `gameover()`. Completion feels like completion.
+- **Juice pass** — chromatic aberration ring redraw on perfect (triple RGB-offset ring), combo bloom radial fill, hazard-hit red radial wash, hazard-pass subtle burst. All `if (reducedMotion) return;` guarded.
+- **Schema v2 wipe** — bumped `SCHEMA_VERSION` from 1 → 2 and nuked all `*-best-*`, `*-history-*`, `*-board-*`, `*-ghost-*` localStorage keys on load if stored version is older. Old scores from the pace-up model would be unreachable highs under the new scoring.
+
+### Patterns extracted → `company/skills/gameplay/rhythm-chart.md` + `reactive-hazard.md`
+
+- **Templates × band schedule** — 3–5 one-bar variants per band + a `BAND_SCHEDULE` array length = BARS. Seeded RNG picks per bar. Compositional expressiveness without growing the chart-data size.
+- **Spawn-from-arrival** — the chart expresses *when the note should be acted on*, the spawner derives spawn time from travel speed. Separation of concerns: chart = rhythm, spawner = physics.
+- **Exact-max via simulation** — don't use `notes × 100 × max_multiplier` as a placeholder for maxPossibleScore; simulate the combo ramp to get a reachable 100%.
+- **Reactive hazard** — visual triple-redundancy (color + dash + throb), telegraph (rest slot before), bonus for passing (not just penalty for tapping), placement on weak subdivisions.
+- **Schema versioning for scoring-model changes** — bump + wipe pattern.
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 29 | Game-design pivot | Rhythm-chart rewrite — 30-bar BPM chart, hazard mechanic, juice, fixed-chart scoring, schema v2 wipe |
+
+### Cost
+
+- game.js: +390/-70 lines (chart system, hazard handling, juice pass, schema migration)
+- index.html: hook line + first-visit hint + help modal reflect new mechanics
+- 2 new skill docs (`rhythm-chart.md`, `reactive-hazard.md`) — written next-sprint
+
+### Next candidates
+
+- Beat-synced background music (chart feels naked without it).
+- Tune the difficulty ramp — initial feel was "chaotic" past the opening bars.
+- Add more band templates to reduce chart repetition across runs.
+- Ghost-strip annotations for hazard events.
+
+---
+
+## Sprint 30 — Beat-synced BGM + ramp softening (audio lens) (2026-04-17)
+
+### Lens
+
+Player feedback after Sprint 29: *"조금만 지나면 너무 정신없이 패턴이 나오네 배경음악을 패턴에 맞춰서 만들순 없나?"* Two asks — (a) the pattern is too chaotic shortly after the opening, (b) the chart needs a musical anchor so players can parse the grid. Delegated BGM composition to the `@sound-designer` subagent; handled ramp tuning in-house.
+
+### Changes
+
+- **BGM module** (~200 lines, `const BGM = { ... }` block below `Sfx`) — 5 voices (kick / snare / hat / bass / motif), `BGM_PATTERN` table indexed by band, pre-scheduled via `setInterval(60ms)` + `ctx.currentTime + 0.25s` lookahead horizon. Stale-slot guard skips past events on resume.
+- **A natural minor harmony** — motif arpeggio `[0, 3, 7, 10]` semitones (A-C-E-G), bass root at A1 (55 Hz), hard-phase bass walk `[0, -2, -5, 0]` across 4 bars.
+- **Anchor rule** — `runAnchorCtxT = Sfx.ctx.currentTime + CHART_LEAD_IN_S` captured at run start; each slot `i` plays at `anchor + i × 0.25s`. First BGM downbeat = first chart-pulse arrival.
+- **BGM.gain → Sfx.master routing** — dedicated submix (0.26 gain) feeds the existing three-state bus (normal/beaten/duck) + mute suspend. No duplicated audio-dynamics logic.
+- **Pause/resume with wall-clock anchor shift** — `BGM.pause()` captures `performance.now()` (not `ctx.currentTime`, which freezes during mute-suspend). `BGM.resume()` shifts anchor by `(perf.now() - pauseStart)/1000`. Wired to `pauseGame()`, the countdown-complete resume branch, AND mute-during-run (via `BGM.setMuted()` calling pause/resume internally).
+- **Softer ramp** — `BAND_SCHEDULE` stretched (warm 2→3, easy 4→6, hard 8→6, climax 6→4, out 2→3 — still 30 bars total). `BAR_TEMPLATES` rewritten: +1 variant per band, no back-to-back hazards in mid/hard, climax bars guarantee ≥1 rest slot for visual re-sync. `BAND_SPEED.climax` dropped 540→495. Net: ~140 notes/run vs Sprint 29's 171, hazard rate ~25% vs 29%.
+
+### Patterns extracted → `company/skills/audio/synced-bgm.md`
+
+- **Pre-schedule with setInterval + lookahead**, not per-note setTimeout — one timer per scheduler tick, not per note; survives tab throttling.
+- **Band-conditional pattern table** — `BGM_PATTERN[band][voice][slot]` bitmap. Thickness follows difficulty without rewriting the dispatcher.
+- **Route through own gain → master** — inherits bus-state + mute logic from the existing Sfx chain for free.
+- **Anchor-shift pause/resume via `performance.now()`** — critical: `ctx.currentTime` freezes during mute-suspend, so using it for pause tracking causes desync. Wall-clock is the right reference.
+- **Mute-during-run must pause the scheduler too** — not just ramp gain to 0. Otherwise state.t (wall-clock) and ctx.currentTime (frozen) drift, and the chart unpauses ahead of the music.
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 30 | Audio composition + tuning | Beat-synced BGM (5 voices, band-conditional, pre-scheduled), ramp softened; BGM spec + new skill doc (`audio/synced-bgm.md`) |
+
+### Cost
+
+- game.js: +302 lines total (~200 for BGM module, ~40 for wiring at 5 call sites, ~60 for revised BAR_TEMPLATES + BAND_SCHEDULE + BAND_SPEED).
+- `docs/sound-spec-30.md`: ~485 lines (sound-designer agent output, reference for Lead Dev).
+- 1 new skill doc (`audio/synced-bgm.md`).
+- README index updated.
+
+### Agent delegation note
+
+Sprint 30 was the first sprint to use a subagent (`@sound-designer`, haiku model) for substantive creative work beyond QA. The composition spec came back ready-to-paste; Lead Dev integration was pure wiring. Multi-agent workflow proved out — a good proof-of-concept for using specialist subagents for non-QA deliverables in future sprints.
+
+### Next candidates
+
+- QA pass on the post-rewrite + BGM build (much has changed since the last QA, Sprint 28).
+- Audio mix pass — BGM may compete with SFX at climax density; consider ducking bgm under hazard-hit.
+- Visual: BGM pattern indicator (e.g., beat pulse on the HUD) for additional sight-reading scaffold.
+- Localization pass (still open from Sprint 28).
+- Service worker for offline play (still open).
+
+---
+
+## Sprint 31 — QA retest + knowledge capture (2026-04-17)
+
+### Lens
+
+Two major reworks (Sprint 29 rewrite + Sprint 30 BGM) landed back-to-back without a QA sweep in between. Deferred docs piled up. This sprint closes both gaps: `@qa-tester` audit of the new build, three new skill docs (`gameplay/rhythm-chart.md`, `gameplay/reactive-hazard.md`, `audio/synced-bgm.md`), and the deferred Sprint 29 + 30 postmortem sections.
+
+### Changes
+
+- **QA pass** — dedicated `@qa-tester` subagent audit of BGM ↔ chart sync, lifecycle edge cases, ramp tuning math, score balance, schema, accessibility, perf budget, and regression on existing features. Outcome: no P0/P1 bugs. Three findings (1 PASS, 1 PASS, 1 ACCEPTABLE). "Tested & OK" list covers 15+ subsystems. Appended as Sprint 31 section in `qa-report.md` (~194 lines).
+- **`company/skills/gameplay/rhythm-chart.md`** (~170 lines) — templates × band schedule, spawn-from-arrival, exact-max simulation, schema-version discipline, tuning heuristics.
+- **`company/skills/gameplay/reactive-hazard.md`** (~140 lines) — visual triple-redundancy, dual-layer SFX, placement heuristics in a chart, accessibility notes.
+- **`company/skills/audio/synced-bgm.md`** (~190 lines) — anchor rule, scheduler skeleton, pattern-table shape, 5 pitfalls table, cost model, when-not-to-use.
+- Postmortem Sprint 29 + 30 sections appended.
+- `company/skills/README.md` index updated.
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 31 | QA + knowledge capture | Post-rewrite QA pass (no P0/P1), three new skill docs, deferred postmortems written |
+
+### Cost
+
+- 0 game.js changes (this was a docs-only sprint).
+- 3 new skill docs + QA section + postmortem sections.
+
+### Next candidates
+
+- Audio mix polish — SFX vs BGM balance check at climax density.
+- Visual beat indicator — persistent HUD "pulse dot" that lights on every BGM downbeat, doubling as a sight-read aid.
+- Ghost-strip hazard annotations.
+- Localization pass / service worker (long-open).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |
