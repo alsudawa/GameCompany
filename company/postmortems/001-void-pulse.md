@@ -1456,6 +1456,54 @@ Two major reworks (Sprint 29 rewrite + Sprint 30 BGM) landed back-to-back withou
 
 ---
 
+## Sprint 32 — HUD beat indicator (artist lens) (2026-04-17)
+
+### Lens
+
+Sprint 30 added beat-synced BGM, Sprint 31 verified it. But the musical anchor vanishes the moment a player mutes — and muted-play is the default for a lot of casual players (commutes, late-night, shared workspaces). The chart grid is still the same 120 BPM; what's missing is a *non-audio* beat anchor that reinforces bar structure visually so mute-players get the same sight-reading scaffold.
+
+### Changes
+
+- **`<div id="beat">` in HUD** between score (left) and lives (right), inside `#comboWrap` above the combo value. A tiny 9×9 dot in a 14×14 envelope — anchor, not feature.
+- **Two pulse variants** — `.pulse` (neutral, quarter-note) and `.pulse-accent` (brighter+larger, bar downbeat every 4 quarters). Accent color from `--accent` so it picks up the active theme.
+- **Class-retrigger via reflow** — `remove('pulse') → void offsetWidth → add('pulse')` in the same tick. Without the reflow read the browser batches the changes and the animation never restarts.
+- **Driven from `state.t`, not BGM.** `Math.floor((state.t - CHART_LEAD_IN_S) / BEAT_S)` computes current quarter-beat index; crossing it fires the flash. So the indicator works identically muted or not.
+- **Reset on start + gameover** — clears `.active / .pulse / .pulse-accent` and `lastBeatIdx = -1` so retries start clean.
+- **Reduced-motion fallback** — animation disabled, dim static ring remains visible while a run is active. Still communicates "run in progress" without any motion.
+
+### Patterns extracted → `company/skills/graphics/beat-indicator.md` (new, ~140 lines)
+
+- Class-retrigger via reflow (`void el.offsetWidth`) — the canonical way to restart a CSS animation within a single tick.
+- Accent the downbeat with **size + color**, not color alone — primary cue is pre-attentive, color-blind-safe.
+- Drive from sim-time, not audio-time — indicator survives mute, context suspend, page-visibility events.
+- Reduced-motion keeps static ring (active-state) rather than hiding entirely — communicates state without the flash.
+- Pulse duration ~80% of beat interval for discrete-but-not-empty feel.
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 32 | Artist / visual anchor | HUD quarter-note pulse ring with downbeat accent, state.t-driven so mute-safe; new skill doc `graphics/beat-indicator.md` |
+
+### Cost
+
+- index.html: +1 element (3 new lines in HUD block)
+- style.css: +42 lines (beat + keyframes + reduced-motion guard)
+- game.js: +33 lines (element ref, 2 helpers, 2 wire-ups, 1 update-loop hook)
+- 1 new skill doc (`graphics/beat-indicator.md`, ~140 lines)
+- README index: 1 new entry
+
+### Next candidates
+
+- **Audio mix polish** — BGM ducking under hazard-hit moments still open.
+- **Per-band BGM intensity hint in HUD** — could color the beat ring by current band.
+- **Beat indicator as onboarding cue** — demo overlay could show the ring pulsing pre-start to teach "this is the beat."
+- **Localization pass** / **service worker** (still open).
+- **Focus-visible outline audit** / **keyboard-only flow audit** (still open).
+- **Stats-panel sparkline** / **stats export** (still open).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

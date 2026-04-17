@@ -143,6 +143,46 @@ html, body {
   transition: width .14s ease-out;
 }
 
+/* Beat indicator — small ring that flashes every quarter-note beat while a
+   run is active. Accents the downbeat (every 4th quarter, i.e. bar start)
+   with a brighter/larger pulse. Driven from state.t (not BGM) so the visual
+   anchor works even when audio is muted. Sits inside #comboWrap above combo. */
+#beat {
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity .2s ease;
+}
+#beat.active { opacity: 1; }
+#beat .beat-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--fg) 28%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg) 22%, transparent);
+  transform: scale(1);
+  transition: background .12s ease, box-shadow .12s ease;
+}
+#beat.pulse .beat-dot {
+  animation: beatPulse 420ms ease-out;
+}
+#beat.pulse-accent .beat-dot {
+  animation: beatPulseAccent 520ms ease-out;
+}
+@keyframes beatPulse {
+  0%   { transform: scale(0.95); background: color-mix(in srgb, var(--fg) 28%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg) 22%, transparent); }
+  18%  { transform: scale(1.35); background: var(--fg); box-shadow: 0 0 12px color-mix(in srgb, var(--fg) 65%, transparent), 0 0 0 1px var(--fg); }
+  100% { transform: scale(1); background: color-mix(in srgb, var(--fg) 28%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg) 22%, transparent); }
+}
+@keyframes beatPulseAccent {
+  0%   { transform: scale(0.95); background: color-mix(in srgb, var(--accent) 35%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent); }
+  14%  { transform: scale(1.6); background: var(--accent); box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 75%, transparent), 0 0 0 2px color-mix(in srgb, var(--accent) 70%, transparent); }
+  100% { transform: scale(1); background: color-mix(in srgb, var(--fg) 28%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg) 22%, transparent); }
+}
+
 #lives {
   display: flex;
   gap: 6px;
@@ -293,6 +333,11 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   .shake, .pop, .flash, .new-best, #score.beaten-best, .pause-countdown { animation: none !important; }
   #app.deathcam::before { animation: none !important; opacity: .5; }
+  /* Reduced-motion: beat indicator stays static (dim ring visible while
+     active) — no pulse scale, just a steady anchor. Still communicates
+     "a run is in progress" without the flash. */
+  #beat.pulse .beat-dot,
+  #beat.pulse-accent .beat-dot { animation: none !important; }
 }
 
 /* Mute toggle (top-right) */

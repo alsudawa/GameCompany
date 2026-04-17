@@ -404,6 +404,7 @@
   const newBestEl = document.getElementById('newBest');
   const comboMeter = document.getElementById('comboMeter');
   const comboMeterFill = document.getElementById('comboMeterFill');
+  const beatEl = document.getElementById('beat');
   const pauseEl = document.getElementById('pause');
   const pauseCountdownEl = document.getElementById('pauseCountdown');
   const historyEl = document.getElementById('history');
@@ -2061,6 +2062,36 @@
     }
   }
 
+  // ---------- Beat indicator (Sprint 32) ----------
+  // Small HUD ring that flashes on every quarter-note (500ms at 120 BPM).
+  // Downbeats (every 4th quarter = bar start) get an accent pulse in the
+  // accent color. Driven off state.t so it keeps its anchor role even when
+  // the BGM is muted or the AudioContext has yet to initialize.
+  const BEAT_S = BEAT_MS / 1000;    // 0.5s at 120 BPM
+  let lastBeatIdx = -1;
+  let beatPulseTimer = null;
+  function resetBeatIndicator() {
+    lastBeatIdx = -1;
+    if (beatPulseTimer) { clearTimeout(beatPulseTimer); beatPulseTimer = null; }
+    if (beatEl) {
+      beatEl.classList.remove('active', 'pulse', 'pulse-accent');
+    }
+  }
+  function tickBeatIndicator() {
+    if (!beatEl) return;
+    const offsetS = state.t - CHART_LEAD_IN_S;
+    if (offsetS < 0) return;
+    const beatIdx = Math.floor(offsetS / BEAT_S);
+    if (beatIdx === lastBeatIdx) return;
+    lastBeatIdx = beatIdx;
+    if (!beatEl.classList.contains('active')) beatEl.classList.add('active');
+    // Retrigger the animation by removing + reflowing + adding class.
+    beatEl.classList.remove('pulse', 'pulse-accent');
+    void beatEl.offsetWidth;   // force reflow so animation restarts
+    const isDownbeat = (beatIdx % 4) === 0;   // 4 quarters per bar
+    beatEl.classList.add(isDownbeat ? 'pulse-accent' : 'pulse');
+  }
+
   // ---------- Spawning (chart-driven, Sprint 29) ----------
   // Build the full 60-second chart at start-of-run from the seeded RNG.
   // The chart is a flat array of `{arriveT, kind, speed, accent}` entries
@@ -2264,6 +2295,12 @@
         state.chartDone = true;
       }
     }
+
+    // Beat indicator tick — visual metronome locked to the chart's quarter-
+    // note grid (500ms at 120 BPM). Driven from state.t so it anchors the
+    // player even when BGM is muted. Accent (brighter/larger pulse) every 4
+    // quarters = bar downbeat. First beat is at CHART_LEAD_IN_S.
+    tickBeatIndicator();
 
     state.tensionFlash = false;
     let anyActive = false;
@@ -2889,6 +2926,7 @@
     state.chartIdx = 0;
     state.chartDone = false;
     state.maxPossibleScore = built.maxScore;
+    resetBeatIndicator();
     // Kick off the beat-synced BGM. Anchor to Sfx.ctx time + lead-in so the
     // first downbeat lines up with the first chart pulse arriving at ring-R.
     if (Sfx.ctx) {
@@ -2947,6 +2985,7 @@
     state.resumeAt = 0;
     clearPauseOverlay();
     BGM.stop();
+    resetBeatIndicator();
     state.gameoverAtMs = performance.now();
     const prevBest = state.best;
     if (state.score > state.best) {
