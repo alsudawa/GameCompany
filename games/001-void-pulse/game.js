@@ -2469,6 +2469,7 @@
   const statsBtn = document.getElementById('statsBtn');
   const statsClose = document.getElementById('statsPanelClose');
   const statsReset = document.getElementById('statsReset');
+  const statsExport = document.getElementById('statsExport');
   let statsOpenedDuringRun = false;
   function formatDuration(seconds) {
     seconds = Math.max(0, Math.floor(seconds));
@@ -2513,8 +2514,30 @@
     set('lsBestForest',  l.bestPerTheme.forest.toLocaleString());
     set('lsFirst',       formatDate(l.firstPlayedAt));
     set('lsLast',        formatDate(l.lastPlayedAt));
-    // Reset affordance only makes sense once there's data to reset.
-    if (statsReset) statsReset.hidden = empty;
+    // Reset + Export affordances only make sense once there's data behind them.
+    if (statsReset)  statsReset.hidden  = empty;
+    if (statsExport) statsExport.hidden = empty;
+  }
+  // Compose a plain-text snapshot of the lifetime stats, suitable for pasting
+  // into a DM, tweet, or backup note. One line per semantic group, mirroring
+  // how the stats card is laid out visually. No raw JSON — the target audience
+  // is players who want to brag / archive, not developers importing data.
+  function formatStatsAsText(l) {
+    const lines = [];
+    lines.push('void-pulse — lifetime stats');
+    lines.push('Runs: ' + l.runs.toLocaleString() + ' · Total play: ' + formatDuration(l.totalSeconds));
+    lines.push('Best score: ' + l.bestScoreEver.toLocaleString() + ' · Peak combo: ' + l.peakComboEver.toLocaleString());
+    if (l.runs > 0) {
+      lines.push('Avg / run: ' + Math.round(l.totalScore / l.runs).toLocaleString() + ' · Total score: ' + l.totalScore.toLocaleString());
+    }
+    lines.push('Perfects: ' + l.totalPerfects.toLocaleString() + ' · Hits: ' + l.totalHits.toLocaleString() + ' · Misses: ' + l.totalMisses.toLocaleString());
+    lines.push('Perfect rate: ' + formatPercent(l.totalPerfects, l.totalHits) +
+               ' · Accuracy: ' + formatPercent(l.totalHits, l.totalHits + l.totalMisses));
+    lines.push('Best by theme: void ' + l.bestPerTheme.void.toLocaleString() +
+               ' · sunset ' + l.bestPerTheme.sunset.toLocaleString() +
+               ' · forest ' + l.bestPerTheme.forest.toLocaleString());
+    lines.push('First played: ' + formatDate(l.firstPlayedAt) + ' · Last played: ' + formatDate(l.lastPlayedAt));
+    return lines.join('\n');
   }
   function openStats() {
     if (!statsEl || !statsEl.classList.contains('hidden')) return;
@@ -2570,6 +2593,28 @@
             armedAt = 0;
           }
         }, 4000);
+      }
+    });
+  }
+  // Stats export — single-button copy of the plain-text summary. Mirrors the
+  // share-btn copy flow (add `.copied` class + swap label for 1.6s) so the
+  // UX pattern stays consistent across the whole app's clipboard actions.
+  // Not feature-gated on `canCopy` here because the button is hidden until
+  // runs>0 anyway; if clipboard is unavailable we fall through silently.
+  if (statsExport) {
+    statsExport.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const text = formatStatsAsText(readLifetime());
+      if (canCopy) {
+        navigator.clipboard.writeText(text).then(() => {
+          const prev = statsExport.textContent;
+          statsExport.classList.add('copied');
+          statsExport.textContent = 'Copied!';
+          setTimeout(() => {
+            statsExport.classList.remove('copied');
+            statsExport.textContent = prev;
+          }, 1600);
+        }).catch(() => {});
       }
     });
   }

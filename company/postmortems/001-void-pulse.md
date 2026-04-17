@@ -1653,6 +1653,54 @@ Earlier accessibility work covered screen-reader announcements (sprint 21-ish) a
 
 ---
 
+## Sprint 36 — Stats export (data lens) (2026-04-17)
+
+### Lens
+
+The lifetime stats panel accumulates rich data — runs, perfects, accuracy, peak combo, per-theme bests, first/last played — but had no way to get the numbers out. Players wanting to brag to a friend or archive a snapshot had to manually transcribe from the panel into a text field. The fix is a single "Copy as text" button that serializes the panel into a human-readable multi-line block, ready for DM/tweet/notes-app paste.
+
+### Changes
+
+- **New button** `#statsExport` ("Copy as text") in the `.stats-actions` row, positioned *before* Reset so the positive/safe action is on the left where eye-flow starts. Hidden until `runs > 0` (same rule as Reset).
+- **Plain-text format** that mirrors the panel's visual row grouping — runs+playtime on one line, best+peak-combo on another, hits/misses/perfects together, rates together, per-theme bests together, dates at the bottom.
+- **Middle-dot `·`** as inline separator; newline between semantic groups. Tight but scannable.
+- **No JSON by default.** Players don't paste JSON into DMs — target audience is bragging and archival, not developer import.
+- **`.copied` feedback mirrors the share-btn pattern exactly** — label swaps to "Copied!" for 1.6s, accent-colored fill, then reverts. Consistency across the app's two clipboard actions.
+- **Accent-palette styling** (vs Reset's danger palette) — the buttons share shape so color is the *only* affordance cue for which is the positive vs destructive action.
+
+### Patterns extracted → `company/skills/ux/stats-export.md` (new, ~150 lines)
+
+- Copy-as-text > download-file for mobile-first audiences; clipboard is universal, file downloads aren't.
+- Format tracks the visual layout — players recognize their own card in text form.
+- Positive action on the left, destructive action adjacent, exit on the right.
+- Hidden-until-data rule applies to Export the same as Reset.
+- JSON export only if there's a concrete import flow or developer audience; text is the default.
+- Anti-patterns: JSON as primary, download-file-only, separate-copy-per-section, empty-state-visible button, copy-with-URL.
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 36 | Data / UX polish | Stats export button + plain-text snapshot format; new skill doc `ux/stats-export.md` |
+
+### Cost
+
+- index.html: +1 line (new button)
+- style.css: ~25 lines (shared selector refactor + Export palette fork + hover/focus/copied states)
+- game.js: +30 lines (1 element ref, 1 format function, 1 click handler, 1 hidden-toggle in renderStats)
+- 1 new skill doc (`ux/stats-export.md`, ~150 lines)
+- README index: 1 new entry
+
+### Next candidates
+
+- **Stats-panel sparkline** — last-N runs trend visualization inside the stats panel (deferred from earlier sprints, fits with the data lens).
+- **JSON export extension** — `<details>` disclosure for power users who want raw `JSON.stringify(readLifetime(), null, 2)`.
+- **Per-band BGM intensity hint in HUD** — color the beat ring by current band.
+- **Overlay focus-trap audit** (still open from Sprint 35).
+- **Localization pass** / **service worker** (still open).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

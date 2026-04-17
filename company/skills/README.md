@@ -62,6 +62,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`ux/first-visit-hint.md`](ux/first-visit-hint.md) — one-shot localStorage bit + `.first-visit` parent class + reduced-motion fallback for the start-overlay onboarding hint and Start-button pulse
 - [`ux/mid-run-toast.md`](ux/mid-run-toast.md) — rare-tier achievement toast during play via `midRun: true` flag + frame-loop eval + serial queue + bank-on-unlock write discipline
 - [`ux/lifetime-stats.md`](ux/lifetime-stats.md) — cross-mode lifetime aggregate panel (single JSON blob + default-fill read, one bump per gameover, empty state, two-step reset, derived rates)
+- [`ux/stats-export.md`](ux/stats-export.md) — copy-as-text lifetime-stats export (human-readable multi-line snapshot + mirrors share-btn clipboard-flow UX + hidden-until-data + positive-action-left positioning vs destructive Reset)
 - [`ux/screen-reader-announcements.md`](ux/screen-reader-announcements.md) — single polite live region + tier-change gating + `aria-atomic` composed gameover line + `prefers-contrast` pass + `sr-only` clip utility
 
 ### QA
