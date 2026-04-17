@@ -987,6 +987,11 @@
   // draws from the ghost read off storage.
   const GHOST_W = 220, GHOST_H = 10, GHOST_R = 2.3;
   const GHOST_COLOR = { p: '#5de4b4', g: '#ffd24a', m: '#ff3d6b' };
+  // Total window for the left-to-right reveal animation. A shared axis means
+  // both strips' dots stagger against the same timeline, so the reveal itself
+  // reproduces the pacing of the run — the "Best" strip keeps going after
+  // "This run" finishes when the current run died early.
+  const GHOST_REVEAL_MS = 900;
   function renderGhostOne(svg, events, duration) {
     while (svg.firstChild) svg.removeChild(svg.firstChild);
     // baseline track — thin line through the middle gives the dots a spine
@@ -1007,6 +1012,12 @@
       dot.setAttribute('cy', String(GHOST_H / 2));
       dot.setAttribute('r', String(GHOST_R));
       dot.setAttribute('fill', GHOST_COLOR[kind] || '#888');
+      // Per-dot animation-delay drives the left-to-right stagger. Expressed
+      // as an inline style so CSS doesn't need to know the event count; the
+      // @keyframes + base animation live in style.css. Reduced-motion users
+      // get animation:none there, so this delay is inert (harmless) for them.
+      const delay = (t / duration) * GHOST_REVEAL_MS;
+      dot.setAttribute('style', 'animation-delay:' + delay.toFixed(0) + 'ms');
       svg.appendChild(dot);
     }
   }

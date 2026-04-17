@@ -423,10 +423,31 @@ html, body {
 #ghostSvgNow .gdot, #ghostSvgBest .gdot {
   /* fill set inline per outcome — keeps JS simple and overrides theme-safe
      because these are gameplay-semantic (perfect/good/miss) not theme-colored */
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ghostDotIn 260ms cubic-bezier(.2, .9, .3, 1.2) both;
+}
+@keyframes ghostDotIn {
+  0%   { opacity: 0; transform: scale(.3); }
+  60%  { opacity: 1; transform: scale(1.25); }
+  100% { opacity: 1; transform: scale(1); }
 }
 #ghostSvgNow .gtrack, #ghostSvgBest .gtrack {
   stroke: rgba(232, 233, 255, .14);
   stroke-width: 1;
+  animation: ghostTrackIn 220ms ease-out both;
+}
+@keyframes ghostTrackIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Players who opt out of motion get the dots instantly; the comparison
+     data is the same, only the left-to-right pacing replay is skipped. */
+  #ghostSvgNow .gdot, #ghostSvgBest .gdot,
+  #ghostSvgNow .gtrack, #ghostSvgBest .gtrack {
+    animation: none;
+  }
 }
 .tomorrow {
   margin-top: 10px;

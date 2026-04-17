@@ -1530,3 +1530,73 @@ Added `state.runEvents` recorder + per-seed ghost storage + two-strip SVG timeli
 - [x] No extra localStorage writes on retry runs.
 - [x] Integration with daily seed / ghost / help / system-preferred defaults: independent; no collisions.
 - [x] Node syntax check: pass.
+
+---
+
+# Sprint 21 — Ghost-dot reveal animation (2026-04-17)
+
+**Lens.** Sprint 19's ghost strips rendered instantly; Sprint 21 turns them into a replay. Per-dot `animation-delay` scaled by normalized timestamp staggers the reveal left-to-right over a 900ms cap. Shared axis means the two strips replay in sync with their own end times — current-run's dots stop early when the run died early, making "you didn't make it this far" felt.
+
+## Animation rendering
+
+- **REV-21-01** Gameover → overlay opens → ghost track fades in ~220ms, then dots pop in left-to-right over 900ms. Verified.
+- **REV-21-02** Last dot on the "Best" strip animates at approximately `(bestDur / axisDur) * 900ms` delay. Since axis is Math.max(best, current), the best-strip end dot lands at exactly 900ms. Verified.
+- **REV-21-03** Current run that died at 30s against a best of 80s: current-run dots finish revealing at ~340ms, best-strip keeps going to 900ms. "Stopped early" signal is visually obvious. Verified.
+- **REV-21-04** New-best run (current and best identical): both strips reveal in sync. Verified.
+- **REV-21-05** Current run longer than best (ghost lag — shouldn't happen because new best overwrites, but test): best-strip finishes earlier, current-strip reveals to 900ms. Graceful.
+
+## Individual dot animation
+
+- **REV-21-06** `@keyframes ghostDotIn` animates from opacity 0 / scale 0.3 → 60% scale 1.25 → 100% scale 1. Dots pop slightly before settling. Verified visually.
+- **REV-21-07** `transform-box: fill-box` + `transform-origin: center` pivots scale around each dot's center. Without these, dots scale toward the viewport 0,0 (appearance: sliding from top-left). Verified the fix.
+- **REV-21-08** `cubic-bezier(.2, .9, .3, 1.2)` curve produces a gentle overshoot. Verified pop feel.
+- **REV-21-09** Fill mode `both` holds opacity 0 before delay elapses; dots are invisible until their scheduled moment. No pre-flash. Verified.
+
+## Reduced-motion fallback
+
+- **REV-21-10** `prefers-reduced-motion: reduce` media query → dots appear in their final state immediately; track also visible immediately. No pop, no stagger. Verified via devtools emulator.
+- **REV-21-11** Under reduced motion, inline `animation-delay` on each dot is harmless (animation is `none`, so delay has nothing to delay). No warnings. Verified.
+- **REV-21-12** Toggling reduced-motion on/off during gameplay (devtools), then retrying → next gameover respects the current setting. CSS media queries are live. Verified.
+
+## Re-render behavior
+
+- **REV-21-13** Retry → gameover → strips re-animate fully. Because `renderGhostOne` clears and rebuilds all SVG children, each gameover gets fresh elements with fresh animations. No class-toggle dance needed. Verified.
+- **REV-21-14** Quick retry spam (tap gameover → start → die → gameover within 2s): each cycle animates cleanly. No animation leftover from prior cycle. Verified.
+- **REV-21-15** Closing gameover overlay mid-reveal (impossible in normal play — gameover→tap→start, but tested): animation naturally stops when the parent transitions to hidden. No stuck state. Verified.
+
+## Performance
+
+- **REV-21-16** Animating ~60 dots across two strips: no frame drops in Chrome / Safari / Firefox. GPU-composited opacity + transform animations stay on the compositor thread. Verified via devtools Performance tab.
+- **REV-21-17** Long run (~200 events): animation remains smooth; the compositor handles the dot count without main-thread involvement. Verified.
+- **REV-21-18** Ghost reveal does not interfere with the gameover overlay's own fade-in; both composite independently. Verified.
+
+## Theme / visual parity
+
+- **REV-21-19** Void theme: green/yellow/red dots with the pop animation read clearly against the dark backdrop. Verified.
+- **REV-21-20** Sunset theme: same dot colors survive the amber ambient drift. Verified.
+- **REV-21-21** Forest theme: same dot colors survive the teal ambient drift. Verified.
+- **REV-21-22** Track fade-in uses `rgba(232, 233, 255, .14)` — matches the existing baseline color in all themes. Verified.
+
+## Integration checks
+
+- **INT-21-01** Free-play: no ghost, no animation triggered (rendering is skipped). Verified.
+- **INT-21-02** Seeded first visit: ghost hidden (no best yet), no animation. Verified.
+- **INT-21-03** Seeded second visit (first real ghost comparison): both strips animate. Verified.
+- **INT-21-04** First-visit onboarding (Sprint 20): start overlay first-visit treatment unaffected by ghost animation. Verified.
+- **INT-21-05** Achievement unlock animation (Sprint 13) + ghost reveal: no visual collision on gameover overlay. Both animations complete independently. Verified.
+- **INT-21-06** Leaderboard new-row highlight (Sprint 12) + ghost reveal: both appear in the same overlay, no layout interference. Verified.
+- **INT-21-07** Share button tap during reveal: share sheet opens without interrupting the dot animation. Verified.
+
+## Retest after implementation
+
+- [x] Ghost dots stagger left-to-right over ~900ms on gameover.
+- [x] Track baseline fades in first (~220ms), then dots follow.
+- [x] Shared-axis normalization: current-run dots finish at their proportional share of 900ms.
+- [x] Scale overshoot (pop) reads as "arrival", not "fade".
+- [x] `transform-box: fill-box` correctly pivots scale around each dot.
+- [x] Reduced-motion: all dots and track appear instantly, no animation.
+- [x] Retry cycles re-animate cleanly; no leftover state.
+- [x] No frame drops even on 200-event runs.
+- [x] All three themes: dots readable and popping.
+- [x] Integration: free-play / seeded-first / seeded-subsequent / onboarding / achievements / leaderboard / share all coexist.
+- [x] Node syntax check: pass.

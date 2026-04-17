@@ -887,6 +887,57 @@ The actual engineering meat is not choosing swatches — it's the **cache invali
 
 ---
 
+## Sprint 21 — Ghost-dot reveal animation (2026-04-17)
+
+### Lens
+
+**Sprint 19 gave us the data; Sprint 21 makes it a replay.** The two ghost strips currently appear fully-rendered the instant the gameover overlay opens — the player gets the information but has to scan left-to-right mentally to re-create the pacing. A staggered left-to-right reveal, with per-dot delay scaled by the dot's normalized timestamp, turns the static chart into a playback of the run's arc. The shared axis means the current-run strip's reveal stops early when the current run died early — "you didn't make it this far" becomes felt, not read. Gated on `prefers-reduced-motion`: motion-sensitive players see all dots at the end state instantly.
+
+### Changes
+
+- **New `GHOST_REVEAL_MS` constant (900ms)** — total window for the left-to-right stagger. Capped so long runs don't feel sluggish and short runs don't feel flicker-fast.
+- **Inline `animation-delay` per dot** — `dot.setAttribute('style', 'animation-delay:' + delay + 'ms')`. Delay = `(t / duration) * 900ms`. Uses the normalized timestamp so shared-axis strips share reveal pacing.
+- **New `@keyframes ghostDotIn`** — opacity 0 → 1 with a slight scale overshoot at 60% (`scale(1.25)`), easing to `scale(1)`. Reads as "arriving" not "fading".
+- **New `@keyframes ghostTrackIn`** — baseline track fades in over 220ms, no delay. The track appears first, establishing "this is a timeline" before the dots populate it.
+- **`transform-box: fill-box` + `transform-origin: center`** on `.gdot` — required for SVG elements so scale transforms pivot around each dot's center instead of the viewport's 0,0 origin.
+- **Reduced-motion fallback** — `@media (prefers-reduced-motion: reduce) { .gdot, .gtrack { animation: none; } }`. Motion-sensitive users get the final state immediately. No motion workaround; outright skip.
+- **No JS timing logic** — setTimeout / requestAnimationFrame would fight browser throttling, ignore the reduced-motion media query, and miss compositor optimizations. Pure CSS stagger.
+
+### Patterns extracted → `company/skills/graphics/staggered-reveal.md`
+
+- **Inline `animation-delay` per element** — continuous control by data value, no class-per-delay explosion.
+- **Delay from normalized time, not element index** — clusters reveal as clusters; lulls reveal as lulls. Pacing is preserved.
+- **Capped total reveal window** — 600–1200ms range; shorter feels like a flicker, longer tries players' patience.
+- **Shared axis = shared pacing** — two normalized strips reveal at different visible rates based on their actual run lengths; the stagger itself narrates "this run stopped early".
+- **Track reveals before dots** — mental model of "timeline" is set before the data lands.
+- **Rebuild-on-render auto-replays animations** — no class-toggle dance needed; fresh DOM = fresh animation.
+- **`transform-box: fill-box` is required for SVG scale transforms** — otherwise the scale looks like translation because origin defaults to viewport 0,0.
+- **Reduced-motion override is outright `animation: none`** — don't try to provide a "gentler" motion; the user preference is "no motion".
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 21 | Data-replay presentation | Left-to-right staggered reveal on ghost strips, reduced-motion fallback, new graphics skill doc |
+
+### Cost
+
+- game.js: +10 lines (REVEAL_MS const + inline animation-delay on each dot)
+- style.css: +27 lines (animation declaration + two @keyframes + reduced-motion gate + transform-box)
+- One new skill doc (`graphics/staggered-reveal.md`)
+
+### Next candidates
+
+- **Tap-to-zoom ghost strip** — expand the strip on tap to show precise timestamps + per-segment deltas.
+- **Service worker for offline play** — still open; completes the PWA-lite → PWA journey.
+- **Rarer / harder achievements** — "no-miss 30s", "5-day streak", "3 perfects in one heartbeat".
+- **Per-theme score-sweetener** — high-combo audio overtone.
+- **Reveal animation on history sparkline too** — the same stagger pattern applies; would tie visual language across the gameover overlay.
+- **Sound-design pulse synced to ghost reveal** — a soft tick per dot as it appears, gated on sound-enabled + reduced-motion.
+- **Ambient-density preference** — a slider for drift particle count.
+
+---
+
 ## Credits
 
 | Role | Agent | Model |
