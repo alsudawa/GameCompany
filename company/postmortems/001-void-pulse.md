@@ -938,6 +938,55 @@ The actual engineering meat is not choosing swatches — it's the **cache invali
 
 ---
 
+## Sprint 22 — Ghost-reveal audio chord (2026-04-17)
+
+### Lens
+
+**Sprint 21 made the ghost strip a visual replay; Sprint 22 gives it an audible peer.** A soft high-register tick per *perfect* in the player's own current run, each scheduled on the Web Audio clock with the same normalized delay as the visual pop, produces an audiovisual chord on gameover. The player hears their perfects as a little trill as they fade into view — a small dopamine hit layered on the chart they already had. Gated on `prefers-reduced-motion`: if the visual stagger is skipped, the audio is skipped too, because ticks over an already-rendered chart would be confusing.
+
+### Changes
+
+- **New `Sfx.ghostTick(delaySec)` method** — schedules a sine tone at `ctx.currentTime + delay`, envelope `0.04 vol` → `0.001` over 60ms, freq 1800Hz. Pre-scheduling means the audio rides the sample-accurate audio clock, not the main thread's setTimeout queue that drifts under load.
+- **`renderGhost` schedules one tick per perfect** — filtered on `e[1] === 'p'` (goods and misses are already audible in-play; this layer celebrates the peaks). Uses the same `(t / axisDur) * 900ms` normalization as the visual delay — guaranteed lockstep with the Sprint 21 animation.
+- **Current-run strip only, not best** — ticking both would double-up. The current run is the player's own achievement; that's what the audio celebrates.
+- **Gate on `!reducedMotion && Sfx.ctx && currentRun.events`** — motion-sensitive users skip both visual and audio; missing audio context is tolerated (pre-first-interaction); missing events is safe.
+- **No mute-state check** — the master-bus gain already silences when `state.muted`, so the ticks generate silent nodes (cheap, GC'd on `.stop()`). Keeps gating to a single source of truth.
+- **Sparse, textural envelope** — 0.04 vol + 60ms + 1800Hz sine keeps the ticks from stepping on the gameover thud while sitting above the ambient drift texture.
+
+### Patterns extracted → `company/skills/audio/web-audio-scheduling.md`
+
+- **`ctx.currentTime + delay` vs. setTimeout** — Web Audio clock is sample-accurate and independent of main-thread throttling; setTimeout drifts under load and fights tab-throttling. Critical for tight rhythmic audio.
+- **Pre-schedule the whole sequence synchronously** — one burst of `.start()` calls; playback becomes clock-driven and unaffected by subsequent main-thread activity.
+- **Gate visual-synced audio on `prefers-reduced-motion`** — the audio layer inherits the visual's timing contract; if visual is skipped, audio should be too.
+- **Don't gate on mute-state in per-event schedulers** — the master gain is the single source of truth for muting; duplicating the check duplicates potential bugs.
+- **Sparse over dense audio reveals** — pick a semantic subset (perfects only) rather than ticking every event. Density creates wash; sparseness creates melody.
+- **Fire-and-forget is fine for one-shot sequences** — no cancellation plumbing needed; let overlapping runs coexist briefly.
+- **Short, quiet envelopes + high register** — audio textures that layer with gameplay SFX without competing. Reserve louder/lower for in-play events.
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 22 | Audiovisual chord on gameover | Per-perfect audio tick scheduled via Web Audio clock in sync with Sprint 21 visual reveal, reduced-motion gated, new audio skill doc |
+
+### Cost
+
+- game.js: +32 lines (Sfx.ghostTick method + per-perfect schedule loop in renderGhost)
+- style.css: 0 (pure audio layer)
+- One new skill doc (`audio/web-audio-scheduling.md`)
+
+### Next candidates
+
+- **Tap-to-zoom ghost strip** — expand for precise timestamps, still open.
+- **Service worker for offline play** — still open.
+- **Sound-design pulse on track fade-in** — a single soft "ready" sustain when the baseline track appears (before the ticks). Would bookend the audio reveal.
+- **Rarer / harder achievements** — "no-miss 30s", "5-day streak", "3 perfects in one heartbeat".
+- **Per-theme score-sweetener** — high-combo audio overtone.
+- **Ghost strip at mid-run** — a tiny always-on preview in the corner during play?
+- **Ambient-density preference** — a slider for drift particle count.
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

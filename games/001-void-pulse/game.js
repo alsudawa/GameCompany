@@ -672,6 +672,27 @@
     spawnTick(isHeartbeat) {
       this._env('sine', isHeartbeat ? 740 : 520, 0.035, 0.055);
     },
+    // Tiny per-dot tick scheduled on the audio clock for the ghost reveal
+    // (Sprint 21's staggered animation). Called once per perfect in the
+    // player's own current run, each offset by the matching animation delay.
+    // Pre-scheduling on ctx.currentTime + delay (instead of setTimeout) keeps
+    // the audio locked to the visual even if the main thread hiccups.
+    // Callers are responsible for gating on muted + reduced-motion.
+    ghostTick(delaySec) {
+      if (!this.ctx) return;
+      const t0 = this.ctx.currentTime + Math.max(0, delaySec);
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1800, t0);
+      // Quick exponential decay — softer than score-hit ticks so a cluster of
+      // perfects reads as a satisfying trill, not a machine-gun of beeps.
+      g.gain.setValueAtTime(0.04, t0);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.06);
+      osc.connect(g).connect(this.master);
+      osc.start(t0);
+      osc.stop(t0 + 0.08);
+    },
   };
 
   // ---------- CSS var helper (cached) ----------
@@ -1033,6 +1054,20 @@
     const axisDur = Math.max(bestGhost.duration || 0, currentRun.duration || 0) || 1;
     renderGhostOne(ghostSvgNow, currentRun.events, axisDur);
     renderGhostOne(ghostSvgBest, bestGhost.events, axisDur);
+    // Audio-visual chord: one soft tick per perfect in the player's CURRENT
+    // run, scheduled in lockstep with the visual reveal (Sprint 21). Gated on
+    // reduced-motion so motion-sensitive players — who skip the reveal — don't
+    // hear ticks against an already-rendered strip. Muting is handled by the
+    // master-bus gain, so no explicit state.muted check needed here.
+    if (!reducedMotion && Sfx.ctx && currentRun.events) {
+      for (const e of currentRun.events) {
+        const t = e[0], kind = e[1];
+        if (kind !== 'p') continue;
+        if (t < 0 || t > axisDur) continue;
+        const delaySec = (t / axisDur) * GHOST_REVEAL_MS / 1000;
+        Sfx.ghostTick(delaySec);
+      }
+    }
     // "Best · 1234 · 3d ago". Omit relative time if `at` is missing (old
     // schema or corruption) rather than rendering a misleading "55+y ago".
     const score = (typeof bestGhost.score === 'number') ? bestGhost.score : '—';

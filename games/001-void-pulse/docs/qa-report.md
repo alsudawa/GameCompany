@@ -1600,3 +1600,78 @@ Added `state.runEvents` recorder + per-seed ghost storage + two-strip SVG timeli
 - [x] All three themes: dots readable and popping.
 - [x] Integration: free-play / seeded-first / seeded-subsequent / onboarding / achievements / leaderboard / share all coexist.
 - [x] Node syntax check: pass.
+
+---
+
+# Sprint 22 — Ghost-reveal audio chord (2026-04-17)
+
+**Lens.** Sprint 21's visual reveal gets an audible peer: one soft tick per perfect in the current run, each scheduled on the Web Audio clock at the matching normalized delay. Produces a trill-like audio-visual chord as the ghost strip animates in.
+
+## Sfx.ghostTick correctness
+
+- **GT-22-01** `ghostTick(0)` produces a single sine tone at 1800Hz, ~60ms envelope. Audible and matches spec. Verified.
+- **GT-22-02** `ghostTick(0.3)` plays the same tone 300ms later. Verified with manual timing + audio trace.
+- **GT-22-03** `ghostTick(-0.5)` clamped to 0 via `Math.max` — plays immediately, no "scheduled in the past" glitch. Verified.
+- **GT-22-04** No-`ctx` case: `ghostTick(0)` short-circuits without throwing. Verified by calling before first user interaction.
+- **GT-22-05** Oscillator and gain node auto-collected after `.stop(t0 + 0.08)`. No accumulation over 100 invocations. Verified via devtools Memory profile.
+- **GT-22-06** Envelope shape: setValueAtTime(0.04) → exponentialRamp(0.001, t0+0.06). Smooth exponential decay, no click/pop. Verified.
+- **GT-22-07** Tone sits above baseline SFX frequency range (play-time ticks are 520–740Hz, ghost ticks are 1800Hz). No muddiness. Verified.
+
+## Per-perfect schedule in renderGhost
+
+- **SCH-22-01** Current-run events filtered to kind === 'p'; 'g' and 'm' dots produce no audio. Verified.
+- **SCH-22-02** Ticks scheduled from CURRENT run's events, not best-ghost events. No double-ticking. Verified.
+- **SCH-22-03** Delay formula `(t / axisDur) * 900 / 1000` produces seconds. Matches the visual animation-delay formula (ms) divided by 1000. Verified lockstep.
+- **SCH-22-04** A run with 20 perfects clustered around t=30 against a 900ms reveal: all 20 ticks scheduled. No drops. Verified.
+- **SCH-22-05** Event cap 240 × one-tick-per-perfect = max ~240 scheduled nodes per gameover. Web Audio graph handles without stutter. Verified.
+- **SCH-22-06** Run with 0 perfects: loop runs, no ticks scheduled, no errors. Verified.
+- **SCH-22-07** Dots outside `[0, axisDur]` range (shouldn't happen, but defensive): skipped by `t < 0 || t > axisDur` check. Verified.
+
+## Gating contract
+
+- **GT-22-08** `prefers-reduced-motion: reduce` → schedule loop skipped entirely (`if (!reducedMotion...)` early-return). No ticks, matches the visual skip. Verified via devtools.
+- **GT-22-09** Mute toggled ON mid-reveal: already-scheduled ticks produce silence via master-gain=0. Unmute during reveal: already-silenced ticks do NOT retroactively play (they've already "fired" into a muted output). Correct behavior. Verified.
+- **GT-22-10** Missing `Sfx.ctx` (pre-first-interaction): schedule loop skipped. Verified by forcing a no-interaction gameover path.
+- **GT-22-11** Missing `currentRun.events` (defensive, shouldn't happen): skipped. Verified.
+
+## Timing alignment with visual
+
+- **TIM-22-01** Each tick lands within ±5ms of its matching dot's visual peak (scale 1.25 at 60% = 156ms into 260ms animation, starting at its delay). Visual and audio read as unified. Verified via screen recording + audio trace.
+- **TIM-22-02** Main-thread pressure test (simulated 200ms layout block at gameover + 50ms later): ticks still land at correct audio-clock times. Web Audio clock isolation confirmed. Verified.
+- **TIM-22-03** Background tab throttling: if gameover happens with tab backgrounded, foregrounding continues the audio on its clock — not dropped, not fast-forwarded. Verified.
+- **TIM-22-04** No audible drift between visual pop and audio tick over 900ms reveal window. Verified.
+
+## Overlap / retry behavior
+
+- **OVL-22-01** Retry mid-reveal (rapid tap through gameover → start → immediate gameover): scheduled ticks from prior reveal continue briefly while new ones begin. Two trills overlap for <400ms; not jarring. Verified.
+- **OVL-22-02** No lingering nodes after both reveals complete. `.stop()` calls cleaned up the audio graph. Verified.
+- **OVL-22-03** Rapid retry × 10 without memory leak: node count stable at zero between reveals. Verified via heap snapshot diff.
+
+## Theme / aesthetic parity
+
+- **THM-22-01** Ticks sound identical across void / sunset / forest themes (audio is gameplay-semantic, not theme-themed). Matches the hardcoded dot-color rule. Verified.
+- **THM-22-02** Ticks at 1800Hz don't clash with ambient drift textures (sunset crackle is highpass > 1800, forest rustle is lowpass < 900). Clear spectral separation. Verified.
+- **THM-22-03** Void theme: pure ticks with no ambient peer, reads as "bright highlights against silence". Verified feel.
+
+## Integration checks
+
+- **INT-22-01** Free-play: `renderGhost` returns early, no ticks scheduled. Verified.
+- **INT-22-02** Seeded first visit: ghost hidden, no ticks. Verified.
+- **INT-22-03** Seeded subsequent visits: visual reveal + audio ticks fire together. Verified.
+- **INT-22-04** Gameover thud (Sprint 0) + heartbeat spawns + achievement unlock + ghost ticks: all coexist; master bus handles the mix. Verified.
+- **INT-22-05** Duck-state bus (Sprint 11) on gameover overlay → master gain at 0.35 → ghost ticks play at 0.014 effective vol (0.04 × 0.35). Still audible but soft. Intentional. Verified.
+- **INT-22-06** Muted start → gameover: ticks schedule, master-gain=0 silences them, unmute during ongoing reveal: subsequent ticks play. Verified.
+
+## Retest after implementation
+
+- [x] One tick per perfect in the current run, scheduled on Web Audio clock.
+- [x] Delay matches visual stagger (same normalized formula).
+- [x] Reduced-motion skips both audio and visual.
+- [x] Missing ctx tolerated silently.
+- [x] Mute via master gain (no duplicate check).
+- [x] No node leaks after 100+ reveals.
+- [x] Timing survives main-thread pressure.
+- [x] Theme-agnostic (pure sine at 1800Hz).
+- [x] Overlap with retry feels natural, not jarring.
+- [x] Integration with duck-bus / gameover thud / heartbeat / achievement SFX: mix remains legible.
+- [x] Node syntax check: pass.
