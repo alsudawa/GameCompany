@@ -1826,6 +1826,77 @@ None new — the audit validated existing pattern docs (`audio/sidechain-duck.md
 
 ---
 
+## Sprint 39 — Per-band beat-ring tint (visual × audio crossover)
+
+**Lens:** the beat indicator (Sprint 32) visually anchors rhythm, but its color is the same from bar 1 to bar 30. Meanwhile the BGM (Sprint 10, expanded through Sprint 30) ramps through 5 dynamics bands (warm / easy / mid / hard / climax / out). Players who are muted or ignoring the music don't feel the intensity arc — it's encoded in audio only. **Can the HUD reflect that arc visually, so the muted player still senses the build?**
+
+### Design
+
+Tint the downbeat pulse by current BGM band:
+
+| Band | Semantic | Tint | Rationale |
+|---|---|---|---|
+| warm | Intro calm | `var(--fg)` (white / neutral) | Music is thin; match with understated visual |
+| easy | Calm ramp | `var(--fg)` | Extend the calm intro visually |
+| mid | Tense mid-run | `var(--accent)` (themed cyan) | Default — the "game is on" color |
+| hard | Tension peak | `var(--accent)` | Same as mid; don't frontload the climax reveal |
+| climax | Peak intensity | `var(--highlight)` (gold) | Unique color = visual spike to match audio spike |
+| out | Resolution | `var(--accent)` | Back to themed, signals wind-down |
+
+5 bands collapsed into 3 distinct visual states (neutral → accent → highlight). Clear intensity arc without visual churn every bar.
+
+### Implementation — state-reactive CSS
+
+Instead of branching on band in JS and hardcoding colors:
+
+1. JS computes current band from `state.t` (decoupled from BGM playhead — works muted) and sets `beatEl.dataset.band = band` only when it changes.
+2. CSS declares a `--beat-tint` custom property on `#beat`, defaulting to `var(--accent)`.
+3. Per-band overrides via attribute selectors: `#beat[data-band="climax"] { --beat-tint: var(--highlight); }`.
+4. The existing `beatPulseAccent` keyframe is rewritten to reference `var(--beat-tint)` instead of `var(--accent)`. One keyframe, N tints.
+
+This means:
+- JS stays out of the color pipeline entirely. No color strings, no inline styles, no color-classes.
+- Theme swap still works (theme changes `--accent`/`--highlight` at `:root` → `--beat-tint` re-resolves automatically on next pulse).
+- Adding a 6th band is a CSS one-liner, zero JS change.
+
+### Why only the accent (downbeat) pulse?
+
+The off-beat quarter-note pulse stays neutral (`var(--fg)` white). Only the 1-of-4 downbeat gets tinted. Reason: if every pulse is colored, the signal is always-on and the band change loses its "something shifted" moment. Keeping the off-beats neutral makes each bar-start a mini visual punctuation, and the tint-change across bar boundaries is crisper.
+
+### What the audit caught that I'd have missed
+
+During implementation I almost used `classList.add('band-' + band)` instead of `dataset.band = band`. Classes are combinatorial — I'd need to remove the old class before adding the new, or CSS cascade order would pick arbitrarily. `data-band` is single-valued by construction: one write replaces the prior. Simpler, more semantic, harder to get wrong.
+
+### Patterns extracted
+
+New skill: [`graphics/state-tint.md`](../skills/graphics/state-tint.md) — generalized pattern for state-reactive animation color via `data-*` attribute + CSS custom property. Applies beyond music bands (combo tiers, health bands, power-up tiers, day/night cycles). Documents the `data-*` vs class split, why one keyframe beats N keyframes, the theme-swap cascade behavior, and the `lastState` guard.
+
+### Wrap-up
+
+- Beat indicator no longer looks identical bar-1 vs bar-25.
+- Muted players now get a muted-safe dynamics cue.
+- Theme-swap still works correctly (tints inherit through `:root` cascade).
+- Reduced-motion: animation disabled → tint has nowhere to show → static dot stays neutral (intended: motion-sensitive users already opted out).
+- The `state-tint` skill is immediately reusable — the pattern applies to at least 4 other surfaces in a hypothetical future game.
+
+### Cost
+
+- game.js: +10 lines (lastBeatBand var, band compute in `tickBeatIndicator`, reset in `resetBeatIndicator`)
+- style.css: +11 lines (default `--beat-tint` + 4 band-group overrides)
+- 1 keyframe edit: `var(--accent)` → `var(--beat-tint)` in `beatPulseAccent`
+- 1 new skill doc (`graphics/state-tint.md`, ~150 lines)
+- README index: 1 new entry
+
+### Next candidates
+
+- **Overlay focus-trap audit (live-replay lens)** — tab inside Help/Stats modals: does focus escape to the HUD underneath?
+- **Keyboard-only full-flow** — run + share + theme-change + stats review, no mouse.
+- **Localization scaffolding** — i18n key→string table; prep for non-English builds.
+- **Chromatic-aberration band reactivity** — climax band could subtly pulse the post-FX intensity for another crossover cue.
+- **Service worker** / **gamepad input** (still open).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

@@ -2102,11 +2102,14 @@
   const BEAT_S = BEAT_MS / 1000;    // 0.5s at 120 BPM
   let lastBeatIdx = -1;
   let beatPulseTimer = null;
+  let lastBeatBand = null;
   function resetBeatIndicator() {
     lastBeatIdx = -1;
+    lastBeatBand = null;
     if (beatPulseTimer) { clearTimeout(beatPulseTimer); beatPulseTimer = null; }
     if (beatEl) {
       beatEl.classList.remove('active', 'pulse', 'pulse-accent');
+      beatEl.removeAttribute('data-band');
     }
   }
   function tickBeatIndicator() {
@@ -2117,6 +2120,15 @@
     if (beatIdx === lastBeatIdx) return;
     lastBeatIdx = beatIdx;
     if (!beatEl.classList.contains('active')) beatEl.classList.add('active');
+    // Tint by current band so the beat ring mirrors BGM dynamics (calm/tense/
+    // peak/resolve). Only updates the attribute when the band changes, so CSS
+    // can key off [data-band=...] without per-beat churn.
+    const barIdx = Math.min(BARS - 1, Math.max(0, Math.floor(beatIdx / 4)));
+    const band = BAND_SCHEDULE[barIdx];
+    if (band !== lastBeatBand) {
+      beatEl.dataset.band = band;
+      lastBeatBand = band;
+    }
     // Retrigger the animation by removing + reflowing + adding class.
     beatEl.classList.remove('pulse', 'pulse-accent');
     void beatEl.offsetWidth;   // force reflow so animation restarts

@@ -31,6 +31,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`graphics/staggered-reveal.md`](graphics/staggered-reveal.md) — inline `animation-delay` for time-indexed element reveals (replay-as-animation, reduced-motion fallback, shared-axis pacing)
 - [`graphics/power-lifecycle.md`](graphics/power-lifecycle.md) — AudioContext suspend on mute+visibility-hidden + rAF render-skip when `document.hidden` + `prefers-reduced-data`/`saveData` ambient halving
 - [`graphics/beat-indicator.md`](graphics/beat-indicator.md) — HUD quarter-note pulse ring with downbeat accent (CSS class-retrigger via reflow + state.t-driven so mute doesn't kill the anchor + reduced-motion fallback)
+- [`graphics/state-tint.md`](graphics/state-tint.md) — state-reactive animation color via `data-*` attribute + CSS custom property (one keyframe, N palettes, theme-aware by construction, JS only touches attribute)
 
 ### Audio
 - [`audio/web-audio-sfx.md`](audio/web-audio-sfx.md) — oscillator + envelope SFX recipes; spawn-tick anchor

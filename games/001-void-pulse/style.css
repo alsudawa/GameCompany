@@ -155,7 +155,21 @@ html, body {
   justify-content: center;
   opacity: 0;
   transition: opacity .2s ease;
+  /* Band-tinted downbeat color — overridden per [data-band] below so the
+     beat ring reinforces the BGM dynamics arc (calm/tense/peak/resolve).
+     Default matches the pre-Sprint-39 behavior (accent cyan downbeat). */
+  --beat-tint: var(--accent);
 }
+/* Calm intro — white/neutral downbeat, understated */
+#beat[data-band="warm"],
+#beat[data-band="easy"] { --beat-tint: var(--fg); }
+/* Tense mid-run — themed accent (default) */
+#beat[data-band="mid"],
+#beat[data-band="hard"] { --beat-tint: var(--accent); }
+/* Climax peak — highlight (gold in most themes) for the intensity spike */
+#beat[data-band="climax"] { --beat-tint: var(--highlight); }
+/* Out — back to themed accent for the resolution bars */
+#beat[data-band="out"] { --beat-tint: var(--accent); }
 #beat.active { opacity: 1; }
 #beat .beat-dot {
   width: 9px;
@@ -178,8 +192,8 @@ html, body {
   100% { transform: scale(1); background: color-mix(in srgb, var(--fg) 28%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg) 22%, transparent); }
 }
 @keyframes beatPulseAccent {
-  0%   { transform: scale(0.95); background: color-mix(in srgb, var(--accent) 35%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent); }
-  14%  { transform: scale(1.6); background: var(--accent); box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 75%, transparent), 0 0 0 2px color-mix(in srgb, var(--accent) 70%, transparent); }
+  0%   { transform: scale(0.95); background: color-mix(in srgb, var(--beat-tint) 35%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--beat-tint) 30%, transparent); }
+  14%  { transform: scale(1.6); background: var(--beat-tint); box-shadow: 0 0 18px color-mix(in srgb, var(--beat-tint) 75%, transparent), 0 0 0 2px color-mix(in srgb, var(--beat-tint) 70%, transparent); }
   100% { transform: scale(1); background: color-mix(in srgb, var(--fg) 28%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg) 22%, transparent); }
 }
 
