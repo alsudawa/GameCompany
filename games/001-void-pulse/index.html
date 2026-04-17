@@ -37,6 +37,11 @@
     <div id="overlay" class="overlay visible">
       <h1 class="title">void-pulse</h1>
       <p id="startSubtitle" class="seed-subtitle" hidden>Daily · <span id="seedDateStart"></span></p>
+      <div id="streakStart" class="streak-badge" hidden aria-label="Daily streak">
+        <span class="streak-flame" aria-hidden="true">▲</span>
+        <span class="streak-count"><span id="streakStartNum">0</span>-day streak</span>
+        <span class="streak-best" id="streakStartBest" hidden>best <span id="streakStartBestNum">0</span></span>
+      </div>
       <p class="hook">Tap the ring when the void pulses through it.</p>
       <div class="demo" aria-hidden="true">
         <div class="demo-target"></div>
@@ -58,6 +63,15 @@
         <div><span>Peak combo</span><span id="statPeak">0</span></div>
         <div><span>Perfects</span><span id="statPerfect">0</span></div>
         <div><span>Hits</span><span id="statHits">0</span></div>
+      </div>
+      <div id="gameoverStreak" class="streak-badge streak-gameover" hidden aria-label="Daily streak">
+        <span class="streak-flame" aria-hidden="true">▲</span>
+        <span class="streak-count"><span id="gameoverStreakNum">0</span>-day streak</span>
+        <span class="streak-best" id="gameoverStreakBest" hidden>best <span id="gameoverStreakBestNum">0</span></span>
+      </div>
+      <div id="achievements" class="ach-grid" aria-label="Achievements" hidden>
+        <div class="ach-head"><span class="ach-head-label">Achievements</span><span id="achProgress" class="ach-progress">0 / 6</span></div>
+        <ul id="achList" class="ach-list"></ul>
       </div>
       <div id="history" class="history" aria-label="Last runs">
         <span id="historyLabel" class="history-label">Last runs</span>

@@ -573,3 +573,168 @@
 - [x] localStorage cleared → board hides, no errors.
 - [x] Lighthouse a11y still 100. Leaderboard list is a semantic `<ol>`.
 - [x] Node syntax check: pass.
+
+---
+
+# Sprint 13 — Daily streak + achievements (2026-04-17)
+
+## Scope
+
+Sprint 13 adds:
+- **Global daily-streak counter** (`void-pulse-streak`) — bumped on first scoring run of the day when seed = today's canonical YYYYMMDD.
+- **Global achievements** (`void-pulse-ach`) — 6 unlock-once milestones (first-pulse, combo-25, combo-50, score-500, score-1000, streak-3).
+- **Streak badge** on start overlay + gameover overlay with active/dormant rule.
+- **Achievement grid** on gameover — 6 chips with locked / unlocked / just-unlocked states + progress header.
+- **New `Sfx.achievement()` cue** with NEW-BEST collision guard.
+
+## Findings — data correctness
+
+### DATA-13-01 · Streak bump idempotency [HIGH → FIXED]
+
+**Repro idea:** play the daily 3 times in one day, expect streak = 1 not 3.
+**Implementation:** `bumpStreakForToday()` early-returns with `changed: false` when `lastYyyymmdd === today`.
+**Verdict:** correct. First scoring run stamps today; subsequent runs no-op. Tested by forcing `localStorage.setItem('void-pulse-streak', JSON.stringify({streak:1, best:1, lastYyyymmdd: 20260417}))` and replaying — no double-bump.
+
+### DATA-13-02 · Score-0 runs must not bump [HIGH → FIXED]
+
+**Repro idea:** open today's daily, instantly misstap 3 times to game-over at score 0. Expect: no streak bump.
+**Implementation:** `if (isTodayDaily && state.score > 0)` gate in `gameover()`.
+**Verdict:** correct.
+
+### DATA-13-03 · Arbitrary `?seed=` links don't touch the streak [HIGH → FIXED]
+
+**Repro idea:** load `?seed=20260101` (not today). Complete a scoring run. Expect: no streak bump.
+**Implementation:** `const isTodayDaily = SEED !== null && SEED === todayYyyymmdd();`.
+**Verdict:** correct. Linked-seed play enjoys leaderboard per-seed but streak is preserved for the actual calendar daily.
+
+### DATA-13-04 · Calendar-day equality, not 24h rolling [MEDIUM → FIXED]
+
+**Repro idea:** play daily at 11pm local Monday, then 1am Tuesday (only 2h elapsed). Expect streak = 2, not broken.
+**Implementation:** compare `yyyymmddOf(Date)` — today is the local calendar date, not `Date.now() - 86400000`.
+**Verdict:** correct.
+
+### DATA-13-05 · Streak-gap reset [HIGH → FIXED]
+
+**Repro idea:** `lastYyyymmdd = 20260414`, today = 20260417. Expect: streak resets to 1, not incremented.
+**Implementation:** `isYesterday` check — if not yesterday and not today, start fresh at 1.
+**Verdict:** correct.
+
+### DATA-13-06 · Best is monotonic [MEDIUM → FIXED]
+
+**Repro idea:** get a 5-day streak (best=5), miss a day (streak=1), expect best=5 still.
+**Implementation:** `best: Math.max(s.best, newStreak)` on every bump.
+**Verdict:** correct. `best` is set-once-highest, survives resets.
+
+### DATA-13-07 · Achievement unlocks are monotonic [HIGH → FIXED]
+
+**Repro idea:** unlock `combo-50` with a run that hit peak 55; next run only hits peak 30. Expect: still unlocked.
+**Implementation:** `if (!unlocked[a.id] && a.test(ctx))` — only *adds* to the map, never removes.
+**Verdict:** correct. No re-locking.
+
+### DATA-13-08 · `justNow` is per-run, not persisted [MEDIUM → FIXED]
+
+**Repro idea:** unlock `combo-25` run 1. Start run 2, die. Expect: no `.just` highlight on `combo-25` (already known).
+**Implementation:** `justNow` is the array returned from `evaluateAchievements` for *this call* only. Not stored.
+**Verdict:** correct.
+
+### DATA-13-09 · `streak-3` resolves against post-bump value [MEDIUM → FIXED]
+
+**Repro idea:** end-of-run on 3rd consecutive day. Expect: bump first (streak goes 2→3), THEN evaluate achievements (so streak-3 unlocks).
+**Implementation:** order in `gameover()` — bump happens first, `streakAfter.streak` fed into the context.
+**Verdict:** correct.
+
+## Findings — UI correctness
+
+### UI-13-01 · Dormant-streak does not show as active [HIGH → FIXED]
+
+**Repro idea:** last played 5 days ago (streak=3). Reload page. Expect: start-overlay badge hidden (not "3-day streak" lying to the player).
+**Implementation:** `active = lastYyyymmdd === today || lastYyyymmdd === yesterday` — strict two-day window.
+**Verdict:** correct. `best N` line is also not shown when streak is 0.
+
+### UI-13-02 · Best sub-label only when best > current [LOW → FIXED]
+
+**Repro idea:** current streak = 7, best = 7. Expect: no "best 7" sub-label (redundant).
+**Implementation:** `if (s.best > s.streak)` gate on both start + gameover renders.
+**Verdict:** correct.
+
+### UI-13-03 · Streak bump animation triggers once [LOW → FIXED]
+
+**Repro idea:** daily bump → scale-pulse. Reload page, start screen: no scale-pulse (not a fresh bump).
+**Implementation:** `.streak-bumped` class only added in `renderStreakGameover` when `bumped === true`. Not on start-overlay render.
+**Verdict:** correct.
+
+### UI-13-04 · Achievement grid stays visible even with 0 unlocks [MEDIUM → FIXED]
+
+**Repro idea:** first-ever gameover at score 0. Expect: grid visible, all 6 chips locked, progress "0 / 6".
+**Implementation:** `achievementsEl.hidden = false` unconditional in `renderAchievements`.
+**Verdict:** correct — the grid is a roadmap, not a trophy case.
+
+### UI-13-05 · Mobile ach-chip readability [MEDIUM → FIXED]
+
+**Repro idea:** 360px viewport. 3 chips × 2 rows. Expect: labels readable, description fades out at narrow width.
+**Implementation:** `@media (max-width: 460px) { .ach-chip .ach-desc { display: none; } }` — descriptions hide, labels tighten.
+**Verdict:** correct. Tooltip (`title` attribute) preserves the description on hover/long-press.
+
+### UI-13-06 · `.just` class highlight is one-shot [LOW → FIXED]
+
+**Repro idea:** unlock `first-pulse` run 1 → pulse. Close + reopen gameover overlay via retry → pulse on same chip again?
+**Implementation:** `.just` only applied when id is in `justNow`, which is empty on subsequent runs if already unlocked.
+**Verdict:** correct.
+
+## Findings — audio
+
+### AUD-13-01 · Achievement SFX doesn't collide with NEW BEST [HIGH → FIXED]
+
+**Repro idea:** score a new best that also unlocks `score-1000`. Without guard both cascades play together and mix muddies.
+**Implementation:** `if (justNow.length && !state.newBestThisRun)` — NEW BEST wins.
+**Verdict:** correct. Achievement cue plays only when it's the standalone celebration.
+
+### AUD-13-02 · Achievement SFX lands after gameover thud [LOW → FIXED]
+
+**Repro idea:** unlock `combo-25` on a non-best run. Expect: gameover thud plays; 420ms later the triangle triad punctuates.
+**Implementation:** `setTimeout(() => Sfx.achievement(), 420)`.
+**Verdict:** correct.
+
+### AUD-13-03 · Muted player hears nothing [LOW → FIXED]
+
+**Repro idea:** mute, unlock achievement. Expect: no sound.
+**Implementation:** `_env` writes to `this.master`, which is 0-gain when muted. Haptic still fires (intentional).
+**Verdict:** correct.
+
+## Findings — accessibility
+
+### A11Y-13-01 · `aria-label` on badges and grid [MEDIUM → FIXED]
+
+**Repro idea:** screenreader pass.
+**Implementation:** `aria-label="Daily streak"` on both streak badges; `aria-label="Achievements"` on grid.
+**Verdict:** correct.
+
+### A11Y-13-02 · `prefers-reduced-motion` gates all new animations [MEDIUM → FIXED]
+
+**Implementation:** CSS `@media (prefers-reduced-motion: reduce)` clauses disable `streakBump` and `achJust`.
+**Verdict:** correct. Static layout remains fully readable.
+
+### A11Y-13-03 · Locked chips still have `title` attribute [LOW → FIXED]
+
+**Repro idea:** tooltip on hover for locked achievements → "Chain 25 hits in a run (locked)".
+**Implementation:** `li.title = a.desc + (isUnlocked ? '' : ' (locked)');`.
+**Verdict:** correct.
+
+## Retest
+
+- [x] Fresh player, score 0 → achievements grid visible all-locked, "0 / 6". No streak badge.
+- [x] Fresh player, score 150 → `first-pulse` unlocks with pulse. "1 / 6". Triangle chime 420ms after thud.
+- [x] Score 500 run → unlocks `first-pulse` + `score-500`. Two `.just` chips pulse. Single chime (not two).
+- [x] Score 1200 new best → unlocks multiple achievements. NEW BEST wins SFX, no achievement chime. Correct.
+- [x] Daily mode, first run score 200 → streak badge appears "1-day streak" with scale-pulse.
+- [x] Daily mode, replay same day → streak stays at 1, badge no-pulse (idempotent).
+- [x] Simulate next day by editing `lastYyyymmdd` to yesterday's YYYYMMDD → streak bumps to 2, `.streak-bumped` class fires.
+- [x] Simulate 3-day chain → unlocks `streak-3` achievement, badge + chip both celebrate.
+- [x] Simulate gap (lastYyyymmdd = 5 days ago) → streak resets to 1 on next play. `best` preserved.
+- [x] Arbitrary `?seed=20260101` → no streak bump even on scoring run. Correct.
+- [x] Tab-return to start overlay after streak bump → badge shown with updated count, no animation.
+- [x] Mobile 360px → chips fit 3×2, descriptions hidden, labels readable.
+- [x] `prefers-reduced-motion` on → no bump / just animations, layout still informative.
+- [x] Mute → no achievement chime, haptic still fires.
+- [x] localStorage cleared mid-session → streak resets to fresh state, no errors.
+- [x] Node syntax check: pass.

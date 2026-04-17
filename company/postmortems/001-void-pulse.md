@@ -479,6 +479,54 @@ Net effect: a 360px-wide phone now sees the rule of the game without reading, an
 
 ---
 
+## Sprint 13 — Daily streak + first-run achievements (2026-04-17)
+
+### Lens
+
+**Multi-horizon retention.** The daily mode (Sprint 7) builds the ritual, top-5 (Sprint 12) builds within-session micro-goals. Missing: cross-day ritual reinforcement (streak), and cross-session milestones (achievements). Wordle's whole moat is the 3-day-streak dopamine loop — and we already have all the plumbing for it.
+
+### Changes
+
+- **Global streak counter** — `localStorage: void-pulse-streak = { streak, best, lastYyyymmdd }`. Bumped on the first score-0+ run of the day *when* the seed is today's canonical daily (not arbitrary `?seed=` links).
+- **Active-vs-dormant rule** — streak badge visible only if `lastYyyymmdd` is today or yesterday. Older → hide (but `best N` is preserved for the next time a streak becomes active).
+- **Idempotent within-day bump** — playing the daily 5x does not give you a 5-day streak; first-of-day wins, remaining runs pass through.
+- **Calendar-day rollover, not 24h** — uses `yyyymmddOf(Date)` equality, so timezone/DST don't corner-case the player.
+- **Achievements flat-map** — `localStorage: void-pulse-ach = { [id]: 1 }`. 6 achievements shipped:
+  - `first-pulse` (score ≥ 1), `combo-25`, `combo-50`, `score-500`, `score-1000`, `streak-3`
+- **Unlock pulse** — a newly-unlocked chip gets `.just` class with a one-shot scale-pulse keyframe so the player can find what's new in the grid. Progress header `N / 6`.
+- **New `Sfx.achievement()` cue** — triangle-wave major-6th triad (880 / 1175 / 1568 Hz), 90ms stagger, played 420ms after gameover thud — *and only if NEW BEST didn't also fire*. Two cascading chimes muddy the mix; NEW BEST wins.
+- **Badge placement: two screens, one rule** — the same active-streak check drives both the start-overlay greeting and the gameover acknowledgement. No inconsistent states across entry points.
+
+### Patterns extracted → `company/skills/ux/streak-and-achievements.md`
+
+- **Scoping matrix** table (per-seed vs. global vs. per-day) — answers the "where does this signal live?" question for every retention signal in one glance.
+- **Bump rule with calendar-day comparison** — avoids timezone-edge bugs that break a player's 30-day streak because they played in a different timezone.
+- **Active vs. dormant streak display** — graceful degradation to "best N" line when streak is broken, preserving the honor without lying about current state.
+- **`justNow` set for new unlocks** — the one piece of data the UI actually needs but the data layer forgets to return; named out explicitly.
+- **SFX collision rule** — NEW BEST wins over achievement when both would fire. Simple, but easy to miss until playtesting reveals the muddy mix.
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 13 | Multi-horizon retention | Global daily-streak + 6 achievements + scoped-unlock skill doc |
+
+### Cost
+
+- game.js: +110 lines (streak read/write/bump + achievements eval + two render fns + Sfx.achievement + gameover hook)
+- index.html: +11 lines (streak badges × 2 overlays, achievements grid container)
+- style.css: +130 lines (streak badge + streakBump keyframe + ach-grid + ach-chip states + achJust keyframe)
+- One new skill doc (`ux/streak-and-achievements.md`)
+
+### Next candidates
+
+- **Theme picker** — player personalization lens, 3 CSS-variable palettes selectable from start overlay; persists in localStorage.
+- **Ghost replay scrubber** — record last run's pulse positions, replay as low-alpha ghost overlay on the gameover screen.
+- **Rarer / harder achievements** — "no-miss 60s", "5-day streak", "3 perfects in one heartbeat" — needs additional run-stat tracking but plumbing is ready.
+- **Share-card upgrade** — bake streak + achievement progress into the share payload so "3-day streak · Combo 50 ✓" shows up on social.
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

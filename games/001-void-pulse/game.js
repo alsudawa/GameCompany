@@ -225,6 +225,17 @@
   const leaderboardEl = document.getElementById('leaderboard');
   const leaderboardLabel = document.getElementById('leaderboardLabel');
   const leaderboardListEl = document.getElementById('leaderboardList');
+  const streakStartEl = document.getElementById('streakStart');
+  const streakStartNum = document.getElementById('streakStartNum');
+  const streakStartBest = document.getElementById('streakStartBest');
+  const streakStartBestNum = document.getElementById('streakStartBestNum');
+  const gameoverStreakEl = document.getElementById('gameoverStreak');
+  const gameoverStreakNum = document.getElementById('gameoverStreakNum');
+  const gameoverStreakBest = document.getElementById('gameoverStreakBest');
+  const gameoverStreakBestNum = document.getElementById('gameoverStreakBestNum');
+  const achievementsEl = document.getElementById('achievements');
+  const achListEl = document.getElementById('achList');
+  const achProgressEl = document.getElementById('achProgress');
   bestScoreEl.textContent = state.best;
   if (SEED !== null) {
     historyLabel.textContent = 'Daily progress';
@@ -336,6 +347,92 @@
     try { localStorage.setItem('void-pulse-rage', JSON.stringify(a.slice(-RAGE_REQUIRED))); } catch {}
   }
 
+  // ---------- Streak + Achievements (global, cross-seed) ----------
+  // Streak tracks consecutive daily-mode completions. Keys live OUTSIDE the
+  // per-seed namespace on purpose — a "3-day streak" is a cross-day concept,
+  // not a property of any single day's seed.
+  const STREAK_KEY = 'void-pulse-streak';
+  function yyyymmddOf(d) {
+    return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+  }
+  function dateFromYyyymmdd(n) {
+    const y = Math.floor(n / 10000);
+    const m = Math.floor((n % 10000) / 100) - 1;
+    const dd = n % 100;
+    return new Date(y, m, dd);
+  }
+  function readStreak() {
+    try {
+      const raw = localStorage.getItem(STREAK_KEY);
+      const o = raw ? JSON.parse(raw) : null;
+      if (o && typeof o.streak === 'number' && typeof o.best === 'number'
+          && typeof o.lastYyyymmdd === 'number') return o;
+    } catch {}
+    return { streak: 0, best: 0, lastYyyymmdd: 0 };
+  }
+  function writeStreak(o) {
+    try { localStorage.setItem(STREAK_KEY, JSON.stringify(o)); } catch {}
+  }
+  // Bump the streak because the player just completed today's daily.
+  // Only callable from daily mode. Idempotent within a single day.
+  function bumpStreakForToday() {
+    const today = todayYyyymmdd();
+    const s = readStreak();
+    if (s.lastYyyymmdd === today) return { ...s, changed: false };
+    let newStreak;
+    if (s.lastYyyymmdd > 0) {
+      const lastDate = dateFromYyyymmdd(s.lastYyyymmdd);
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const isYesterday = yyyymmddOf(lastDate) === yyyymmddOf(yesterday);
+      newStreak = isYesterday ? s.streak + 1 : 1;
+    } else {
+      newStreak = 1;
+    }
+    const out = {
+      streak: newStreak,
+      best: Math.max(s.best, newStreak),
+      lastYyyymmdd: today,
+    };
+    writeStreak(out);
+    return { ...out, changed: true, wasBest: newStreak > s.best };
+  }
+
+  // Achievements — a flat set of ids persisted as a map. Once unlocked, stays
+  // unlocked forever. Checked at gameover; the "just" highlight surfaces which
+  // ones the player earned in *this* run.
+  const ACH_KEY = 'void-pulse-ach';
+  const ACHIEVEMENTS = [
+    { id: 'first-pulse', label: 'First Pulse', desc: 'Score your first point',      test: c => c.score >= 1 },
+    { id: 'combo-25',    label: 'Combo 25',    desc: 'Chain 25 hits in a run',      test: c => c.peakCombo >= 25 },
+    { id: 'combo-50',    label: 'Combo 50',    desc: 'Chain 50 hits in a run',      test: c => c.peakCombo >= 50 },
+    { id: 'score-500',   label: '500 Points',  desc: 'Reach 500 in a single run',   test: c => c.score >= 500 },
+    { id: 'score-1000',  label: '1000 Points', desc: 'Reach 1000 in a single run',  test: c => c.score >= 1000 },
+    { id: 'streak-3',    label: '3-Day Ritual',desc: 'Finish the daily 3 days in a row', test: c => c.streak >= 3 },
+  ];
+  function readAchievements() {
+    try {
+      const raw = localStorage.getItem(ACH_KEY);
+      const o = raw ? JSON.parse(raw) : null;
+      return (o && typeof o === 'object') ? o : {};
+    } catch { return {}; }
+  }
+  function writeAchievements(o) {
+    try { localStorage.setItem(ACH_KEY, JSON.stringify(o)); } catch {}
+  }
+  function evaluateAchievements(ctx) {
+    const unlocked = readAchievements();
+    const justNow = [];
+    for (const a of ACHIEVEMENTS) {
+      if (!unlocked[a.id] && a.test(ctx)) {
+        unlocked[a.id] = 1;
+        justNow.push(a.id);
+      }
+    }
+    if (justNow.length) writeAchievements(unlocked);
+    return { unlocked, justNow };
+  }
+
   // ---------- Sfx ----------
   // The master bus has 3 dynamic states beyond mute:
   //   normal  — baseline (MASTER_GAIN)
@@ -409,6 +506,13 @@
       });
     },
     heartbeat() { this._env('sine', 110, 0.12, 0.22, 165); },
+    // Achievement unlock — bright major-6th ping, distinct from levelup's
+    // cascade (levelup = new-best, achievement = milestone-claimed).
+    achievement() {
+      [880, 1175, 1568].forEach((f, i) => {
+        setTimeout(() => this._env('triangle', f, 0.12, 0.14), i * 90);
+      });
+    },
     // Brief high-register blip at spawn — gives the player a rhythm anchor
     // so tap timing isn't purely visual. Quiet enough to not dominate the mix.
     spawnTick(isHeartbeat) {
@@ -681,6 +785,76 @@
   // Prime once so the leaderboard is visible if the player has prior runs even
   // before they finish today's first run.
   renderLeaderboard(readBoard(), 0);
+
+  // ---------- Streak + achievement renderers ----------
+  function renderStreakStart() {
+    const s = readStreak();
+    // Start-overlay badge is only meaningful if the player has an *active*
+    // streak — today or yesterday. If neither, we show nothing (otherwise a
+    // 1-month-old streak of 4 sits there forever mocking the player).
+    if (s.streak <= 0) { streakStartEl.hidden = true; return; }
+    const today = todayYyyymmdd();
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yYyyymmdd = yyyymmddOf(yesterday);
+    const active = s.lastYyyymmdd === today || s.lastYyyymmdd === yYyyymmdd;
+    if (!active) { streakStartEl.hidden = true; return; }
+    streakStartEl.hidden = false;
+    streakStartNum.textContent = s.streak;
+    if (s.best > s.streak) {
+      streakStartBest.hidden = false;
+      streakStartBestNum.textContent = s.best;
+    } else {
+      streakStartBest.hidden = true;
+    }
+  }
+  function renderStreakGameover(streakData, bumped) {
+    if (!streakData) { gameoverStreakEl.hidden = true; return; }
+    gameoverStreakEl.hidden = false;
+    gameoverStreakNum.textContent = streakData.streak;
+    if (streakData.best > streakData.streak) {
+      gameoverStreakBest.hidden = false;
+      gameoverStreakBestNum.textContent = streakData.best;
+    } else {
+      gameoverStreakBest.hidden = true;
+    }
+    gameoverStreakEl.classList.remove('streak-bumped');
+    if (bumped) {
+      // force reflow so the animation restarts if re-rendered fast
+      void gameoverStreakEl.offsetWidth;
+      gameoverStreakEl.classList.add('streak-bumped');
+    }
+  }
+  function renderAchievements(unlocked, justNow) {
+    while (achListEl.firstChild) achListEl.removeChild(achListEl.firstChild);
+    const justSet = new Set(justNow || []);
+    let total = 0;
+    for (const a of ACHIEVEMENTS) {
+      const li = document.createElement('li');
+      li.className = 'ach-chip';
+      const isUnlocked = !!unlocked[a.id];
+      if (isUnlocked) { li.classList.add('unlocked'); total++; }
+      if (justSet.has(a.id)) li.classList.add('just');
+      const dot = document.createElement('span');
+      dot.className = 'ach-dot';
+      dot.setAttribute('aria-hidden', 'true');
+      const label = document.createElement('span');
+      label.className = 'ach-label';
+      label.textContent = a.label;
+      const desc = document.createElement('span');
+      desc.className = 'ach-desc';
+      desc.textContent = a.desc;
+      li.title = a.desc + (isUnlocked ? '' : ' (locked)');
+      li.appendChild(dot);
+      li.appendChild(label);
+      li.appendChild(desc);
+      achListEl.appendChild(li);
+    }
+    achProgressEl.textContent = total + ' / ' + ACHIEVEMENTS.length;
+    achievementsEl.hidden = false;
+  }
+  // Prime the start overlay streak badge on load.
+  renderStreakStart();
 
   // ---------- Judging ----------
   function perfectWindowMs() {
@@ -1369,6 +1543,43 @@
     const runAtMs = Date.now();
     const { board, rank } = insertScore(state.score, runAtMs);
     renderLeaderboard(board, rank > 0 ? runAtMs : 0);
+    // Daily streak: bump once per day when the player completes today's run.
+    // `isTodayDaily` filters out arbitrary-seed links — only the canonical
+    // daily YYYYMMDD for *today's* date counts toward the streak.
+    let streakBumped = false;
+    let streakAfter = readStreak();
+    const isTodayDaily = SEED !== null && SEED === todayYyyymmdd();
+    if (isTodayDaily && state.score > 0) {
+      const s = bumpStreakForToday();
+      streakBumped = !!s.changed;
+      streakAfter = s;
+    }
+    // Show the streak badge on gameover whenever the player has an active
+    // streak — today or yesterday. Same rule as the start overlay, so the
+    // badge is self-consistent across both entry points.
+    const today = todayYyyymmdd();
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const streakActive = streakAfter.streak > 0 &&
+      (streakAfter.lastYyyymmdd === today || streakAfter.lastYyyymmdd === yyyymmddOf(yesterday));
+    renderStreakGameover(streakActive ? streakAfter : null, streakBumped);
+    // Achievements — evaluate against this run's stats + current streak.
+    const { unlocked, justNow } = evaluateAchievements({
+      score: state.score,
+      peakCombo: state.peakCombo,
+      perfectCount: state.perfectCount,
+      hitCount: state.hitCount,
+      streak: streakAfter.streak,
+    });
+    renderAchievements(unlocked, justNow);
+    // Play the achievement cue only if something new unlocked AND we aren't
+    // already about to play the NEW BEST levelup cue — otherwise the two
+    // cascade on top of each other and the mix muddies. NEW BEST wins.
+    if (justNow.length && !state.newBestThisRun) {
+      // Small delay so it lands after the gameover thud, not *under* it.
+      setTimeout(() => Sfx.achievement(), 420);
+      haptic([20, 30, 60]);
+    }
     // Track rage-retry window: push this run's duration.
     const rage = readRageDurations();
     rage.push(+state.t.toFixed(2));
