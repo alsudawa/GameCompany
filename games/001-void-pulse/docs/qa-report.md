@@ -1471,3 +1471,62 @@ Added `state.runEvents` recorder + per-seed ghost storage + two-strip SVG timeli
 - [x] Early-tap swallow: no ghost record.
 - [x] Integration with streak / achievements / leaderboard: no layout collision.
 - [x] Node syntax check: pass.
+
+---
+
+# Sprint 20 — First-visit onboarding hint (2026-04-17)
+
+**Lens.** First-page-load welcome: converts "what is this?" into "oh, tap" with one literal sentence + a Start-button pulse. One-shot localStorage flag, CSS-driven reveal via `.first-visit` parent class, cleared atomically on the first `start()`.
+
+## First-visit detection
+
+- **FV-20-01** `localStorage.getItem('void-pulse-seen')` returns `null` → `readSeen()` returns `false` → `overlay.classList.add('first-visit')` fires on boot. Verified.
+- **FV-20-02** `localStorage.setItem('void-pulse-seen', '1')` → reload → hint banner hidden, Start button has no pulse. Verified.
+- **FV-20-03** `localStorage.setItem('void-pulse-seen', 'false')` (hand-edited to a falsy non-`'1'`) → hint re-appears (strict `=== '1'` check). Verified.
+- **FV-20-04** localStorage throws (Safari incognito under quota) → `readSeen` catch returns `false` → hint shows. Fail-safe direction confirmed.
+- **FV-20-05** `localStorage.removeItem('void-pulse-seen')` + reload restores the first-visit treatment cleanly. Verified.
+
+## Reveal & teardown
+
+- **FV-20-06** Static HTML `hidden` attribute default keeps the hint invisible for non-first-visit; CSS `.overlay.first-visit #firstVisitHint { display: block; }` overrides `hidden` only under the parent class. Verified.
+- **FV-20-07** Tap-to-start → overlay hides → `contains('first-visit')` true → class removed + `writeSeen()`. Subsequent reload: hint absent. Verified.
+- **FV-20-08** Mute/theme/help interactions before Start tap do NOT trigger `writeSeen()` (only commit counts). Verified by toggling mute + theme swatches, then reload — hint still present.
+- **FV-20-09** Second start within the same session (retry): already removed, second call's `contains` check is false, no redundant localStorage write. Verified.
+- **FV-20-10** Only ONE localStorage write per profile lifetime. Confirmed via DevTools → Application → Storage watcher.
+
+## CSS pulse
+
+- **FV-20-11** `@keyframes firstVisitPulse` uses `box-shadow` only (paint-only, no layout). Button hit-target unchanged size/position. Verified.
+- **FV-20-12** Pulse color uses `color-mix(in srgb, var(--accent) 45%, transparent)` — void cyan, sunset amber, forest teal as expected. Verified across all three themes.
+- **FV-20-13** `prefers-reduced-motion: reduce` → animation replaced by a static `box-shadow: 0 0 0 3px color-mix(..., 40%, transparent)` ring. Verified via devtools emulator.
+- **FV-20-14** Pulse runs infinitely WHILE `.first-visit` present on overlay. Stops atomically when class removed (animation ends mid-cycle; no residual shadow). Verified.
+- **FV-20-15** Pulse inherits `border-radius` from the existing `.btn` style → the shadow hugs the pill shape. No squared corners leak. Verified.
+
+## Visual integration
+
+- **FV-20-16** Hint text (`var(--highlight)` with warm text-shadow) reads clearly on the dark overlay backdrop in all three themes. Verified.
+- **FV-20-17** Hint fits between the `.hook` line and the `.demo` block in the existing start-overlay flow; no rearrangement of other elements. Verified.
+- **FV-20-18** No jank on overlay fade-in — the hint is present in the DOM before the overlay becomes visible (`.first-visit` class added at boot, before any visibility transition). Verified.
+- **FV-20-19** On an already-seen profile, DOM size is unchanged vs. pre-Sprint 20 (the hint element is `hidden` by attribute, still rendered to the accessibility tree as skipped). Lighthouse baseline unaffected.
+
+## Integration checks
+
+- **INT-20-01** Daily mode (`?daily=1`): first visit shows hint + pulse; tap-to-start clears. Seed pill still renders. Verified.
+- **INT-20-02** Sprint 17 system-preferred defaults: on a fresh profile with `prefers-color-scheme: light`, sunset theme applies AND first-visit hint appears. Both features coexist on first boot. Verified.
+- **INT-20-03** Sprint 19 ghost comparison: first-visit + seeded mode → hint appears on start overlay, ghost hidden on gameover (no peer yet). Second run: no hint, ghost appears. Correct sequence. Verified.
+- **INT-20-04** Help modal (`?`): opening the help modal on first visit does NOT dismiss the first-visit treatment. Closing help, then tapping Start, writes the flag. Verified.
+- **INT-20-05** Keyboard Space tap on start overlay: same code path as pointer tap → `start()` → class removed + flag written. Verified.
+
+## Retest after implementation
+
+- [x] Boot: `localStorage.getItem('void-pulse-seen')` absent → hint + pulse visible.
+- [x] Click Start → overlay hides, flag written, next reload shows no hint.
+- [x] Hand-clearing the flag restores first-visit treatment.
+- [x] Non-`'1'` values treated as not-seen (strict comparison).
+- [x] Interactions before commit (mute, theme, help) do NOT dismiss.
+- [x] Reduced-motion fallback: static ring replaces pulse.
+- [x] Theme swap preserves hint color as `var(--highlight)` + pulse as `var(--accent)`.
+- [x] No layout shift when overlay transitions.
+- [x] No extra localStorage writes on retry runs.
+- [x] Integration with daily seed / ghost / help / system-preferred defaults: independent; no collisions.
+- [x] Node syntax check: pass.

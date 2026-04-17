@@ -837,6 +837,56 @@ The actual engineering meat is not choosing swatches — it's the **cache invali
 
 ---
 
+## Sprint 20 — First-visit onboarding hint (2026-04-17)
+
+### Lens
+
+**The start overlay is obvious on the 2nd run and opaque on the 1st.** Sprint 9 added the looping CSS demo (ring + pulse + "TAP!"), and Sprint 11 added the help modal behind `?`. Both help — but the first-run player still has to *recognize* the demo as a demo, and discover the help key. This sprint closes the final gap with a literal one-line hint ("New here? Tap at the moment the pulse meets the ring.") and a subtle pulse on the Start button. Shown only on the very first page load; after the first Start tap the flag is written and the treatment is never rendered again for that profile. Clearing the flag in devtools restores the first-visit treatment — correct behavior for a fresh profile.
+
+### Changes
+
+- **New `SEEN_KEY` + `readSeen()` + `writeSeen()` helpers** — single-bit localStorage (`'1'` sentinel), try/catch on both sides, returns `false` on read error (fail-safe toward re-showing the hint rather than silently suppressing).
+- **Boot-time class decision** — `if (!readSeen()) overlay.classList.add('first-visit');` right after the streak-badge priming. One-line JS; CSS selectors do the rest.
+- **Teardown at the commit moment** — inside `start()`, after the overlay is hidden: check `contains('first-visit')`, then `remove` + `writeSeen()` in a single guarded block. Ensures exactly one Storage API write per profile ever.
+- **New `#firstVisitHint` element in the start overlay** — static HTML + `hidden` attribute by default, CSS-revealed via `.overlay.first-visit #firstVisitHint { display: block; }`.
+- **New CSS rules** — `.first-visit-hint` base style (uses `var(--highlight)` so it theme-swaps), `.overlay.first-visit #start` pulse via `box-shadow` + `@keyframes firstVisitPulse`, reduced-motion fallback to a static ring of equivalent meaning.
+- **No changes to gameplay, audio, or scoring paths** — pure chrome-layer addition.
+
+### Patterns extracted → `company/skills/ux/first-visit-hint.md`
+
+- **One-shot localStorage bit** — single-string `'1'` sentinel, cheapest possible payload. No versioning envelope.
+- **Write on commit, not on view** — bounce visitors keep the hint for next session; only actual play dismisses it.
+- **Parent-class CSS reveal** — `.first-visit` on the overlay propagates via selectors to every element that cares. Adding another first-visit-only element is a pure-CSS change.
+- **Atomic reveal/teardown** — one `classList.add` / `.remove` pair. No risk of half-applied state.
+- **Reduced-motion fallback as equivalent-meaning static pose** — not "no animation", but "static ring of the same color". Preserves the "look here" cue for users who opt out of motion.
+- **Semantic token for theme-sensitive color + hardcoded value for decorative polish** — hint text uses `var(--highlight)`, text-shadow glow is fixed warm amber.
+- **Fail-safe read returns `false`** — storage error → show the hint (mild redundancy) beats silent suppression of onboarding.
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 20 | First-run onboarding softness | One-shot hint banner + Start-button pulse, CSS-driven, new ux skill doc |
+
+### Cost
+
+- game.js: +19 lines (SEEN_KEY const + readSeen/writeSeen + boot class + start-teardown block)
+- index.html: +1 line (`#firstVisitHint` paragraph with `hidden` default)
+- style.css: +25 lines (`.first-visit-hint` + `.overlay.first-visit` scoped selectors + `@keyframes firstVisitPulse` + reduced-motion override)
+- One new skill doc (`ux/first-visit-hint.md`)
+
+### Next candidates
+
+- **Service worker for offline play** — still open; would complete the PWA-lite → PWA journey.
+- **Animated ghost dots** — fade in left-to-right when the gameover overlay appears, replaying run pacing. Gated on `prefers-reduced-motion`.
+- **Tap-to-zoom ghost strip** — expand the strip on tap to show precise timestamps.
+- **Rarer / harder achievements** — "no-miss 30s", "5-day streak", "3 perfects in one heartbeat".
+- **Per-theme score-sweetener** — high-combo audio overtone.
+- **Second-visit graduation** — on the second visit, show a *different* hint ("Try `?` for keyboard controls") that auto-expires after a few visits. A multi-step hint queue would need a different skill doc than this one-shot pattern.
+- **Ambient-density preference** — a slider for the drift particle count on underpowered devices.
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

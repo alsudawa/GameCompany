@@ -359,6 +359,17 @@
     if (GHOST_KEY === null) return;
     try { localStorage.setItem(GHOST_KEY, JSON.stringify(payload)); } catch {}
   }
+  // First-visit flag: a single one-shot bit written on the player's first
+  // Start tap. Read once at boot to decide whether the start overlay shows
+  // the onboarding hint + Start-button pulse. Clearing the key (devtools)
+  // brings the hint back — useful for re-reviewing the onboarding path.
+  const SEEN_KEY = 'void-pulse-seen';
+  function readSeen() {
+    try { return localStorage.getItem(SEEN_KEY) === '1'; } catch { return false; }
+  }
+  function writeSeen() {
+    try { localStorage.setItem(SEEN_KEY, '1'); } catch {}
+  }
   // Top-N per-seed leaderboard. Each entry: { score: number, atMs: number }.
   // Stored sorted descending by score, capped at LEADERBOARD_MAX.
   function readBoard() {
@@ -1148,6 +1159,11 @@
   // Prime the start overlay streak badge on load.
   renderStreakStart();
 
+  // First-visit onboarding: on the very first boot the start overlay gets a
+  // hint banner + pulsing Start button. Driven by a CSS parent class so the
+  // JS stays a one-line decision. Cleared atomically on the first Start tap.
+  if (!readSeen()) overlay.classList.add('first-visit');
+
   // ---------- Judging ----------
   function perfectWindowMs() {
     return Math.min(PERFECT_WINDOW_MS_MAX, PERFECT_WINDOW_MS_BASE + Math.max(0, (state.t - GRACE_START_T) * 0.12));
@@ -1866,6 +1882,12 @@
     clearPauseOverlay();
 
     overlay.classList.remove('visible'); overlay.classList.add('hidden');
+    // Clear the first-visit onboarding treatment the moment the player
+    // commits — they've now seen the real game, the hint has done its job.
+    if (overlay.classList.contains('first-visit')) {
+      overlay.classList.remove('first-visit');
+      writeSeen();
+    }
     gameoverEl.classList.remove('visible'); gameoverEl.classList.add('hidden');
     Sfx.setBus('normal');   // un-duck after a previous gameover
     if (state.bonusLifeGranted) {
