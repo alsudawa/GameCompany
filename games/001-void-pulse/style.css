@@ -157,6 +157,27 @@ html, body {
 .best-score  { font-size: 16px; color: var(--fg); opacity: .78; }
 .retry-hint  { font-size: 15px; color: var(--accent); opacity: .85; margin-top: 8px; }
 
+.share-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font: inherit;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: .04em;
+  padding: 8px 16px;
+  margin: 6px auto 0;
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid rgba(232, 233, 255, .28);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .12s ease, border-color .12s ease, transform .08s ease;
+}
+.share-btn:hover  { background: rgba(232, 233, 255, .08); border-color: rgba(232, 233, 255, .5); }
+.share-btn:active { transform: scale(.96); }
+.share-btn.copied { color: var(--accent); border-color: var(--accent); }
+
 .btn {
   font: inherit;
   font-weight: 700;

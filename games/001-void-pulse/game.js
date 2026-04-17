@@ -30,6 +30,11 @@
   const MASTER_GAIN = 0.55;
   const RESUME_COUNTDOWN_MS = 3000;     // 3-2-1 before play resumes after tab return
   const RUN_HISTORY_CAP = 8;             // last-N runs kept for sparkline
+  // Anti-frustration: if a player dies fast N times in a row, next run grants
+  // one sympathy life. Detects "rage-retry" without interrupting the loop.
+  const RAGE_DURATION_S  = 15;          // "fast" = died in under 15s
+  const RAGE_REQUIRED    = 3;           // this many quick deaths in a row
+  const BONUS_LIFE_MAX   = 1;           // cap so it can't stack forever
 
   const PULSE_POOL_SIZE = 32;
   const PARTICLE_CAP = 256;
@@ -58,6 +63,7 @@
     perfectCount: 0,
     hitCount: 0,
     newBestThisRun: false,
+    bonusLifeGranted: false,
     // pause / resume
     paused: false,
     resumeAt: 0,     // performance.now() ms when countdown ends; 0 while paused-indefinitely
@@ -127,6 +133,7 @@
   const pauseCountdownEl = document.getElementById('pauseCountdown');
   const historyEl = document.getElementById('history');
   const historySvg = document.getElementById('historySvg');
+  const shareBtn = document.getElementById('share');
   bestScoreEl.textContent = state.best;
 
   // DPR-aware canvas sizing — render at device pixels for crispness, keep
@@ -164,6 +171,17 @@
   }
   function writeHistory(arr) {
     try { localStorage.setItem('void-pulse-history', JSON.stringify(arr.slice(-RUN_HISTORY_CAP))); } catch {}
+  }
+  // Sliding window of recent run durations (seconds); last RAGE_REQUIRED only.
+  function readRageDurations() {
+    try {
+      const raw = localStorage.getItem('void-pulse-rage');
+      const a = raw ? JSON.parse(raw) : [];
+      return Array.isArray(a) ? a.filter(n => typeof n === 'number').slice(-RAGE_REQUIRED) : [];
+    } catch { return []; }
+  }
+  function writeRageDurations(a) {
+    try { localStorage.setItem('void-pulse-rage', JSON.stringify(a.slice(-RAGE_REQUIRED))); } catch {}
   }
 
   // ---------- Sfx ----------
@@ -288,6 +306,34 @@
     applyMuteUI();
   });
   applyMuteUI();
+
+  // ---------- Share ----------
+  // Compose score text + try native share, else copy to clipboard, else prompt.
+  // Button only shows when the browser can do SOMETHING with it.
+  const canShare = typeof navigator.share === 'function';
+  const canCopy  = !!(navigator.clipboard && navigator.clipboard.writeText);
+  function shareScore() {
+    const base = 'I scored ' + state.score + ' in void-pulse' +
+      (state.newBestThisRun ? ' — new best!' : '') +
+      ' ' + location.href;
+    if (canShare) {
+      navigator.share({ title: 'void-pulse', text: base }).catch(() => {});
+      return;
+    }
+    if (canCopy) {
+      navigator.clipboard.writeText(base).then(() => {
+        const prev = shareBtn.querySelector('span').textContent;
+        shareBtn.classList.add('copied');
+        shareBtn.querySelector('span').textContent = 'Copied!';
+        setTimeout(() => {
+          shareBtn.classList.remove('copied');
+          shareBtn.querySelector('span').textContent = prev;
+        }, 1600);
+      }).catch(() => {});
+    }
+  }
+  shareBtn.addEventListener('click', (e) => { e.stopPropagation(); shareScore(); });
+  shareBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
 
   function retriggerClass(el, cls) {
     el.classList.remove(cls);
@@ -654,17 +700,22 @@
     // pulses — highlight the one the tap would judge (nearest to ring).
     // Radius is interpolated between previous and current fixed-step values
     // so 120Hz displays get smooth motion without running physics at refresh.
+    // Heartbeats use BOTH color (danger red) AND dashed stroke AND thicker
+    // line — redundancy so colorblind players (protanopia/deuteranopia) still
+    // read the heartbeat as a distinct kind of pulse.
     const judgePulse = findJudgePulse();
     for (const p of pulses) {
       if (!p.active) continue;
       const rDraw = p.prevR + (p.r - p.prevR) * alpha;
-      const color = p.heartbeat ? getVar('--danger') : getVar('--fg');
-      ctx.strokeStyle = color;
-      ctx.lineWidth = p === judgePulse ? 4.5 : 3;
+      const isHb = p.heartbeat;
+      ctx.strokeStyle = isHb ? getVar('--danger') : getVar('--fg');
+      ctx.lineWidth = (p === judgePulse ? 4.5 : 3) + (isHb ? 1.5 : 0);
+      if (isHb) ctx.setLineDash([14, 8]);
       ctx.globalAlpha = Math.min(1, 0.5 + rDraw / 260);
       ctx.beginPath();
       ctx.arc(CENTER_X, CENTER_Y, rDraw, 0, Math.PI * 2);
       ctx.stroke();
+      if (isHb) ctx.setLineDash([]);
     }
     ctx.globalAlpha = 1;
 
@@ -776,7 +827,18 @@
     state.t = 0;
     state.score = 0;
     state.combo = 0;
-    state.lives = STARTING_LIVES;
+    // Pity-life grant: if the player has died quickly RAGE_REQUIRED times
+    // in a row, grant one bonus life for this run. Immediately clear the
+    // trigger so the boost doesn't repeat run-after-run.
+    const rageHist = readRageDurations();
+    let bonusLife = 0;
+    if (rageHist.length >= RAGE_REQUIRED &&
+        rageHist.slice(-RAGE_REQUIRED).every(s => s < RAGE_DURATION_S)) {
+      bonusLife = BONUS_LIFE_MAX;
+      writeRageDurations([]);            // consume the trigger
+    }
+    state.lives = STARTING_LIVES + bonusLife;
+    state.bonusLifeGranted = bonusLife > 0;
     state.pulsesSpawned = 0;
     state.nextSpawnAt = 0;
     state.lastTapMs = 0;
@@ -809,6 +871,10 @@
 
     overlay.classList.remove('visible'); overlay.classList.add('hidden');
     gameoverEl.classList.remove('visible'); gameoverEl.classList.add('hidden');
+    if (state.bonusLifeGranted) {
+      state.comboMilestoneText = '+1 LIFE';
+      state.comboMilestoneFade = 1.1;
+    }
 
     lastTime = performance.now();
     acc = 0;
@@ -834,6 +900,20 @@
     const trimmed = history.slice(-RUN_HISTORY_CAP);
     writeHistory(trimmed);
     renderHistory(trimmed);
+    // Track rage-retry window: push this run's duration.
+    const rage = readRageDurations();
+    rage.push(+state.t.toFixed(2));
+    writeRageDurations(rage);
+    // Share button visibility: show if the browser can actually do something
+    // (native share OR clipboard write). Hide on 0-score runs — nothing to brag.
+    const canSomething = canShare || canCopy;
+    if (canSomething && state.score > 0) {
+      shareBtn.hidden = false;
+      shareBtn.classList.remove('copied');
+      shareBtn.querySelector('span').textContent = 'Share';
+    } else {
+      shareBtn.hidden = true;
+    }
     Sfx.gameover();
     finalScoreEl.textContent = state.score;
     bestScoreEl.textContent = state.best;

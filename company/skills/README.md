@@ -15,6 +15,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`gameplay/input-handling.md`](gameplay/input-handling.md) — unified pointer events (mouse + touch)
 - [`gameplay/difficulty-curve.md`](gameplay/difficulty-curve.md) — tuning ramps for the 60–90s session
 - [`gameplay/pause-visibility.md`](gameplay/pause-visibility.md) — tab-hide pause + 3-2-1 countdown resume
+- [`gameplay/anti-frustration.md`](gameplay/anti-frustration.md) — pity life on rage-retry, forgiveness levers
 
 ### Graphics
 - [`graphics/svg-sprites.md`](graphics/svg-sprites.md) — inline SVG sprite patterns, no image files
@@ -32,6 +33,8 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 ### UX
 - [`ux/retention.md`](ux/retention.md) — run-end stats, NEW BEST gating, mute persistence
 - [`ux/progress-feedback.md`](ux/progress-feedback.md) — in-play tier meter + run-history sparkline
+- [`ux/accessibility.md`](ux/accessibility.md) — redundant color coding, keyboard parity, reduced-motion gating
+- [`ux/share.md`](ux/share.md) — Web Share API + clipboard fallback for frictionless virality
 
 ### QA
 - [`qa/casual-checklist.md`](qa/casual-checklist.md) — pre-ship checklist + multi-perspective sweep (player / mobile / onboarding / retention / distribution)

@@ -214,3 +214,45 @@
 - [x] `prefers-reduced-motion`: pause countdown pulse animation disabled.
 - [x] Node syntax check: pass.
 
+---
+
+# Sprint 6 — Accessibility + social + anti-frustration (2026-04-17)
+
+## Issues addressed
+
+### Heartbeat mechanic invisible to colorblind players (P1 — accessibility)
+- **Symptom:** Protanopia/deuteranopia sim on heartbeat vs normal pulse → two near-identical pale rings. The 1.5× bonus mechanic is effectively hidden.
+- **Fix:** Heartbeats now render with three redundant cues: color (danger red), thicker stroke (+1.5px), and a dashed line (`[14, 8]`). Any one suffices.
+- **Verified:** Toggled `ctx.strokeStyle` to the same color for both and confirmed thickness + dash alone are enough to tell them apart.
+
+### No virality on NEW BEST (P2 — growth)
+- **Symptom:** Peak emotional moment of the game had zero share affordance.
+- **Fix:** Added a "Share" button to gameover (visible when score > 0). Uses `navigator.share` on mobile, `navigator.clipboard.writeText` fallback on desktop with a "Copied!" confirmation state. Hidden entirely on browsers supporting neither.
+- **Payload:** Score + NEW BEST annotation (if applicable) + `location.href`.
+
+### Rage-retry churn (P2 — retention)
+- **Symptom:** Three quick deaths in a row is the most likely churn point — no signal to the game that the player is struggling, no forgiveness.
+- **Fix:** Sliding-window tracker of last-3 run durations (localStorage). On start, if all 3 were < 15s, grant +1 bonus life (capped) + a "+1 LIFE" center-screen flash. Trigger consumed immediately so it can't be farmed.
+
+## Regressions & edge cases covered
+
+- **`setLineDash` reset.** After dashed heartbeat stroke, `ctx.setLineDash([])` restores solid for subsequent draws (particles, etc.).
+- **Share button on 0-score runs.** Hidden — nothing to brag.
+- **Share sheet cancel.** `.catch(() => {})` swallows the rejection silently; does NOT fall through to clipboard (would be surprising).
+- **Clipboard write failure.** `.catch(() => {})` — no silent error thrown; button remains in non-copied state.
+- **Rage trigger farming.** Consumed on grant (`writeRageDurations([])`) so bonus can't stack.
+- **Rage hist mixed with long runs.** `.every(s => s < 15)` on `slice(-3)` fails if any of the last 3 was long; good — a single good run resets the signal.
+- **localStorage disabled.** Rage-hist writes + reads in try/catch; game functions normally, just no pity life.
+- **Bonus life between runs.** `state.bonusLifeGranted` initialized in default state, set by start(), drives the milestone text only. Can't leak across retry.
+
+## Retest
+
+- [x] Heartbeat pulses visually distinct even with color channel removed (thicker + dashed).
+- [x] Share button visible only when browser supports share OR clipboard AND score > 0.
+- [x] Clipboard copy shows "Copied!" state, reverts after 1.6s.
+- [x] Three 5-second deaths in a row → next run: 4 lives + "+1 LIFE" flash.
+- [x] Fourth run after pity grant → back to 3 lives (trigger consumed).
+- [x] One long run in the window → pity doesn't trigger.
+- [x] `prefers-reduced-motion`: milestone text still fires (info), no scale animation (motion).
+- [x] Node syntax check: pass.
+

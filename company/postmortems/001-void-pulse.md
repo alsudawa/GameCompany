@@ -160,9 +160,46 @@ Sprint 4 tackled smoothness/juice (visual). Sprint 5 found improvements nowhere 
 ### Next candidates
 
 - **Daily seeded challenge** (`?seed=YYYYMMDD`) — deterministic spawn sequence players can compare to each other ("my 540 on Apr 17")
-- **Web Share API on NEW BEST** — tap to share score; friction-free virality
-- **Anti-frustration: bonus life after N quick deaths** — detect rage-retry, grant one sympathy life
 - **Death-cam: 0.5s slow-mo on fatal miss** — softens the sting, teaches the timing
+
+---
+
+## Sprint 6 — Accessibility + social + anti-frustration (2026-04-17)
+
+**Lens used:** inclusive design (who currently can't play this game?) + virality (what costs 60 seconds of code and saves 60 minutes of marketing?) + player psychology (what makes a struggler stay instead of churn?).
+
+### Problems diagnosed
+
+1. **Heartbeat pulses fail for colorblind players.** The only visual distinguisher between regular pulses (white) and heartbeat pulses (danger red) was color. A protanopic or deuteranopic player sees two rings of near-indistinguishable grays-with-a-tint, erasing the 1.5× bonus mechanic entirely. This is the single biggest accessibility gap we had.
+2. **NEW BEST has no viral surface.** The player hits a new best, sees the gold pill, and… closes the tab. No path out of the game to friends, no URL sharing, no clipboard assist. The highest emotional-payload moment in the game had zero affordance for spread.
+3. **Three quick deaths = churn.** The difficulty curve is tuned for a 60-90s session, but a new player can easily lose all lives in <15s on the first couple tries. Without any forgiveness mechanic, the third quick loss is often the last run the player will ever do.
+
+### Ships
+
+- **Redundant heartbeat encoding.** Heartbeat pulses now draw with color (danger red) + thicker stroke (+1.5px) + dashed line pattern (`[14, 8]`). Any one of the three cues is enough to tell them apart, so colorblind players get the mechanic.
+- **Web Share API with clipboard fallback.** New "Share" button on gameover (shown when score > 0). Native share sheet on mobile, clipboard copy on desktop with a "Copied!" confirmation. Button is hidden entirely if the browser supports neither — no dead affordance.
+- **Pity life on rage-retry.** After three <15s deaths in a row, the next run starts with +1 life and a "+1 LIFE" flash. Trigger is consumed on grant so it can't be farmed. Persisted via localStorage in a capped sliding window.
+
+### What the extraction surfaced (skills)
+
+- New `skills/ux/accessibility.md` — redundant color coding, keyboard parity reminder, reduced-motion gating, semantic HTML. Framed as defaults, not a polish pass.
+- New `skills/ux/share.md` — feature-gated share pattern, visual confirmation for the silent clipboard path, URL inclusion rationale.
+- New `skills/gameplay/anti-frustration.md` — the pity-life pattern with the "consume on grant" rule + a broader table of forgiveness levers.
+
+### Lens rotation still working
+
+Sprint 4: smoothness/juice (visual).
+Sprint 5: robustness / readability / trend (systems + in-play + retention).
+Sprint 6: inclusion / social / psychology.
+
+Each sprint has targeted improvements invisible to the one before — confirming that the bottleneck is not "game quality" but "which lens am I holding up this week." Every ship-ready game has another three sprints of non-trivial improvements if you rotate deliberately.
+
+### Next candidates
+
+- **Daily seeded challenge** (`?seed=YYYYMMDD`) — biggest remaining retention + social-proof lever
+- **Death-cam slow-mo on fatal miss** — teaches timing + softens the sting
+- **Per-seed local leaderboard** — tie shared URL to a ranked comparison
+- **Sprint 7+ lens candidate: performance** — profile canvas draw costs on low-end Android
 
 ---
 
