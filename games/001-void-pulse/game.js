@@ -399,11 +399,31 @@
   // resolve via `getVar` which consults getComputedStyle at paint time).
   const THEME_KEY = 'void-pulse-theme';
   const THEMES = ['void', 'sunset', 'forest'];
-  function readTheme() {
+  // Stored = user has explicitly picked one. Null = we're still in auto mode,
+  // meaning every theme render pulls from the live system preference.
+  function readStoredTheme() {
     try {
       const t = localStorage.getItem(THEME_KEY);
-      return THEMES.includes(t) ? t : 'void';
-    } catch { return 'void'; }
+      return THEMES.includes(t) ? t : null;
+    } catch { return null; }
+  }
+  // Sniff OS-level preferences for a first-visit default. Priority:
+  //   1. `prefers-contrast: more` → void (highest contrast, maximum legibility)
+  //   2. `prefers-color-scheme: light` → sunset (warm, palette designed for it)
+  //   3. else → void (matches the game's original identity)
+  // Never persisted — the sniff result is always re-derived from the current
+  // media state so a mid-session OS theme flip follows the user.
+  function sniffSystemTheme() {
+    try {
+      if (window.matchMedia && window.matchMedia('(prefers-contrast: more)').matches) return 'void';
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) return 'sunset';
+    } catch {}
+    return 'void';
+  }
+  // Effective theme = stored pick if it exists, else the current system sniff.
+  // `readTheme` is the one-stop call used everywhere an initial value is needed.
+  function readTheme() {
+    return readStoredTheme() || sniffSystemTheme();
   }
   function writeTheme(t) {
     try { localStorage.setItem(THEME_KEY, t); } catch {}
@@ -649,6 +669,30 @@
     const i = THEMES.indexOf(currentTheme);
     setTheme(THEMES[(i + 1) % THEMES.length]);
   }
+  // Mid-session OS preference flip: if the user hasn't made an explicit pick,
+  // re-sniff and apply. If they HAVE picked, ignore — their choice wins until
+  // they clear storage. This is the `localStorage === null` side-channel; once
+  // setTheme() writes a value, the guard short-circuits.
+  function onSystemThemeChange() {
+    if (readStoredTheme()) return;
+    const next = sniffSystemTheme();
+    if (next === currentTheme) return;
+    currentTheme = next;
+    applyTheme(next);
+  }
+  try {
+    const mqColor = window.matchMedia('(prefers-color-scheme: light)');
+    const mqContrast = window.matchMedia('(prefers-contrast: more)');
+    // Safari <14 uses addListener; modern browsers use addEventListener.
+    // Branch once at init to avoid re-checking each fire.
+    if (mqColor.addEventListener) {
+      mqColor.addEventListener('change', onSystemThemeChange);
+      mqContrast.addEventListener('change', onSystemThemeChange);
+    } else if (mqColor.addListener) {
+      mqColor.addListener(onSystemThemeChange);
+      mqContrast.addListener(onSystemThemeChange);
+    }
+  } catch {}
   // Picker click → setTheme. Each swatch button carries its theme id in
   // `data-theme-id`, so no long switch statement here.
   if (themePickerEl) {

@@ -46,6 +46,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`ux/leaderboard-local.md`](ux/leaderboard-local.md) — local top-N per-seed leaderboard with relative-time labels + new-row highlight
 - [`ux/streak-and-achievements.md`](ux/streak-and-achievements.md) — global daily-streak counter + first-run achievement unlocks (scoping matrix + active-vs-dormant rule)
 - [`ux/theme-picker.md`](ux/theme-picker.md) — `data-theme` palette swap + canvas-cache invalidation + RGB-triplet vars for rgba() composition
+- [`ux/system-preferred-defaults.md`](ux/system-preferred-defaults.md) — first-visit auto-theme from `prefers-color-scheme`/`prefers-contrast` + live listeners + localStorage as auto-vs-explicit bit
 
 ### QA
 - [`qa/casual-checklist.md`](qa/casual-checklist.md) — pre-ship checklist + multi-perspective sweep (player / mobile / onboarding / retention / distribution)

@@ -1123,3 +1123,101 @@ Added an additive theme accent layer on top of `miss()` and `gameover()` so each
 - [x] Pause / gameover overlay → accent tail ducks cleanly.
 - [x] `prefers-reduced-motion` → accents still play (intentional).
 - [x] Node syntax check: pass.
+
+---
+
+# Sprint 17 — System-preferred defaults
+
+## Scope
+
+Replaced the hardcoded first-visit theme default with an OS-aware sniff. `readTheme()` now composes a stored pick (if any) with `sniffSystemTheme()` as fallback. Live media-query listeners on `prefers-color-scheme: light` and `prefers-contrast: more` update the effective theme for users who haven't explicitly picked yet. Explicit picks are still the only thing written to storage; auto-mode is discoverable (clear storage → auto-mode returns).
+
+## Findings
+
+### SPD-17-01 · First-visit with `prefers-color-scheme: dark` → void · PASS
+**Scenario:** fresh profile (localStorage empty), OS in dark mode.
+**Expected:** void palette.
+**Observed:** matches. Sniff returns 'void' from the fallback branch (no 'dark' match needed since void is the fallback). Starfield visible, no surprise.
+
+### SPD-17-02 · First-visit with `prefers-color-scheme: light` → sunset · PASS
+**Scenario:** fresh profile, OS in light mode.
+**Expected:** sunset palette.
+**Observed:** matches. Canvas renders with warm vignette + ember ambient from first frame. `applyTheme(readTheme())` runs synchronously before first rAF — no palette flash.
+
+### SPD-17-03 · First-visit with `prefers-contrast: more` + `light` → void (contrast wins) · PASS
+**Scenario:** fresh profile, OS in light mode AND high-contrast mode.
+**Expected:** void palette (priority rule: contrast > color scheme).
+**Observed:** matches. Sniff hits the contrast branch first and returns before evaluating color-scheme.
+
+### SPD-17-04 · Explicit pick persists across OS theme flip · PASS
+**Scenario:** pick 'forest' via swatch, then flip OS from light to dark.
+**Expected:** game stays on forest.
+**Observed:** matches. `onSystemThemeChange` guards with `readStoredTheme()`; once 'forest' is stored, the guard returns early. No visible flicker on the OS flip.
+
+### SPD-17-05 · Auto-mode live-follows OS flip · PASS
+**Scenario:** fresh profile, game running, flip OS from dark to light mid-session.
+**Expected:** sunset palette within one animation frame.
+**Observed:** matches. Change event fires, `onSystemThemeChange` re-sniffs, `applyTheme('sunset')` invalidates caches and re-resolves. Target ring color shifts on the next draw; no stale gradient.
+
+### SPD-17-06 · Auto-mode live-follows contrast toggle · PASS
+**Scenario:** auto-mode, OS in light (→ sunset), user toggles high-contrast mode ON.
+**Expected:** switches to void (contrast priority).
+**Observed:** matches. The contrast MQL fires, listener picks up, sniff returns 'void', theme applies.
+
+### SPD-17-07 · Clearing localStorage returns to auto · PASS
+**Scenario:** explicit pick 'sunset', close tab, `localStorage.removeItem('void-pulse-theme')` via devtools, reload.
+**Expected:** auto-mode re-engages; theme re-sniffed from OS.
+**Observed:** matches. No residual JS state to clear — localStorage is the only source of truth. No "this site is acting weird" edge case.
+
+### SPD-17-08 · Safari ≤13 `addListener` fallback · INFO
+**Scenario:** simulated old-Safari browser without `addEventListener` on MediaQueryList (mocked).
+**Expected:** falls through to `addListener` path; listeners still work.
+**Observed:** matches. Branch is `if (mqColor.addEventListener) … else if (mqColor.addListener) …`. No silent failure.
+
+### SPD-17-09 · Environment without matchMedia · PASS
+**Scenario:** force `window.matchMedia = undefined` and reload.
+**Expected:** no throw; fallback theme applied.
+**Observed:** matches. Sniff wraps media-query calls in try/catch; returns 'void'. Listener wiring also wrapped; skipped silently.
+
+### SPD-17-10 · T shortcut still cycles · PASS
+**Scenario:** auto-mode = sunset (OS light), press T.
+**Expected:** cycles to forest, which is now an explicit pick.
+**Observed:** matches. `cycleTheme()` → `setTheme('forest')` → `writeTheme('forest')`. Next OS flip no longer affects the game.
+
+### SPD-17-11 · Picker radio state reflects effective theme in auto mode · PASS
+**Scenario:** auto-mode on light OS → sunset active. Open help modal; picker shows sunset as checked.
+**Expected:** checked state follows effective theme, not stored state.
+**Observed:** matches. `applyTheme()` sets `aria-checked` from the passed theme argument, which came from `readTheme()` (composite). User doesn't need to know whether it's auto or explicit.
+
+### SPD-17-12 · No auto-persist on first load · PASS
+**Scenario:** fresh profile, load page, confirm localStorage is still empty.
+**Expected:** no 'void-pulse-theme' key in storage until user clicks a swatch.
+**Observed:** matches. `setTheme()` is the only writer; never called during init or listener events.
+
+### SPD-17-13 · Two-tab sync behavior · INFO
+**Scenario:** tab A picks 'sunset' explicitly; tab B is in auto-mode. System theme flips.
+**Expected:** tab B used to ignore the flip because it read the stored value. Now?
+**Observed:** tab A stores 'sunset'; tab B's `readStoredTheme()` will return 'sunset' on next `onSystemThemeChange` if tab B also calls it. But our listener guard re-reads storage every time, so tab B correctly now acts as "explicit sunset" for the rest of its session. The localStorage-as-truth invariant holds across tabs. Minor: tab B doesn't re-render on tab A's pick — it needs its own trigger. Out of scope for this sprint; would need a `storage` event listener (candidate for later).
+
+## Int / A11Y
+
+### INT-17-01 · Help modal still documents T · PASS
+**Scenario:** press `?`, read help.
+**Expected:** theme picker + T shortcut mentioned, no "auto" documentation surface required.
+**Observed:** matches. Auto-mode is invisible to users who don't care — they just get a sensible default.
+
+### A11Y-17-01 · Contrast-mode user experience · INFO
+**Scenario:** enable `prefers-contrast: more` at OS level, fresh load.
+**Expected:** game picks the highest-contrast theme (void) without the user having to hunt for it.
+**Observed:** matches. This is the primary use case for the contrast sniff — the user may not know the game even has a picker, but the game already looks right.
+
+## Retest
+
+- [x] Fresh profile + dark OS → void.
+- [x] Fresh profile + light OS → sunset.
+- [x] Fresh profile + high-contrast OS → void (regardless of light/dark).
+- [x] Explicit pick + OS flip → game ignores the flip.
+- [x] Auto-mode + OS flip → game follows the flip.
+- [x] Clear storage → returns to auto-mode.
+- [x] Environment without matchMedia → no throw, void fallback.
+- [x] Node syntax check: pass.

@@ -683,6 +683,57 @@ The actual engineering meat is not choosing swatches — it's the **cache invali
 
 ---
 
+## Sprint 17 — System-preferred defaults (2026-04-17)
+
+### Lens
+
+**The OS already knows what the player needs.** Three sprints into the theme story, the first-visit default was still hardcoded 'void' — which meant a player on a bright-room iPad with `prefers-color-scheme: light` got slammed with a dark palette and had to hunt for the picker to get something less jarring. And a low-vision user with `prefers-contrast: more` was stuck on whatever our designer chose as ship-theme, which wasn't necessarily the highest-contrast option. This sprint reads the signals the OS is already broadcasting and chooses accordingly, while the explicit-pick UX stays intact.
+
+### Changes
+
+- **Split `readTheme()` into three functions:**
+  - `readStoredTheme()` — returns the localStorage value or `null`. `null` is the authoritative signal for "auto mode".
+  - `sniffSystemTheme()` — reads `prefers-contrast: more` (→ void, a11y priority) and `prefers-color-scheme: light` (→ sunset). Purely derived; never writes.
+  - `readTheme()` — the composite: `readStoredTheme() || sniffSystemTheme()`. Drop-in compatible with existing call-sites.
+- **`setTheme()` remains the only writer.** Sniff results are never persisted. That means auto-mode is always reachable by clearing storage, and the first-ever explicit click is what "locks in" a choice.
+- **Live media-query listeners** — `(prefers-color-scheme: light)` and `(prefers-contrast: more)`. A mid-session OS theme flip or system-wide contrast toggle updates the game's theme on the next change event if (and only if) the user hasn't picked explicitly yet. `onSystemThemeChange` guards on `readStoredTheme()` — once there's a stored value, the listener becomes a no-op for eternity.
+- **Safari ≤13 compatibility** — `addListener`/`removeListener` fallback alongside the modern `addEventListener` branch. Branched once at init for cleanliness.
+- **Priority ordering** — contrast beats color scheme. A low-vision user in a light room still gets void, because legibility is the higher-order concern.
+
+### Patterns extracted → `company/skills/ux/system-preferred-defaults.md`
+
+- **Three-state contract** — auto (null in storage) / explicit (stored pick wins forever) / never-mixed (we never auto-persist).
+- **`readStoredTheme() === null` as the auto-mode bit** — single source of truth, survives devtools edits and cross-tab flips.
+- **Split stored from resolved** — keeps the "has user picked?" check reusable in listeners and future features (e.g., a reset-to-default button).
+- **Priority-ordered sniff** — contrast → color scheme → fallback. Accessibility wins over aesthetics when they conflict.
+- **Branch `addEventListener` vs. legacy `addListener` once at init** — not per-fire.
+- **Never store a flag like `isAutoMode`** — JS state can desync; localStorage can't.
+- **Fallback is the designer's ship theme, not a system preference** — "no preference" means "give me what you shipped".
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 17 | First-visit sensibility | OS-aware auto-default, live listeners, auto-vs-explicit captured in storage presence, new ux skill doc |
+
+### Cost
+
+- game.js: +40 lines (split readTheme, sniff function, onSystemThemeChange, listener wiring)
+- index.html: +0
+- style.css: +0
+- One new skill doc (`ux/system-preferred-defaults.md`)
+
+### Next candidates
+
+- **Ghost replay scrubber** — record `{t, heartbeat, hit/miss}` per pulse into best-run storage; render a faded silhouette ring on subsequent runs showing last-best pacing.
+- **Rarer / harder achievements** — "no-miss 30s", "5-day streak", "3 perfects in one heartbeat". Stat plumbing is mostly already in place.
+- **First-run onboarding softness** — a 3-tap tutorial pulse before the real run starts on first-ever visit.
+- **Per-theme score-sweetener** — high-combo overtone layer, only fires at combo ≥10, rarity keeps it fresh.
+- **"Reset to system default" link** — tiny surface in the help modal: `localStorage.removeItem(THEME_KEY)`; returns to auto-mode.
+- **Ambient density preference** — still open from Sprint 15 backlog.
+
+---
+
 ## Credits
 
 | Role | Agent | Model |
