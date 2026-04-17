@@ -178,3 +178,101 @@ The `setTimeout` offset is deliberate: the achievement chime lands *after* the g
 - **Namespacing achievements per-seed** — would require re-earning "first 500 points" for every daily. Ridiculous. Global.
 
 <!-- added: 2026-04-17 (001-void-pulse sprint 13) -->
+
+## Extending the ladder (Sprint 23)
+
+Once the base 5–6 achievements are in, they tend to be easy-medium — stuff most players earn in their first week. The ladder needs a *rare tier* to keep the gameover grid aspirational for returning players, but the addition has to:
+
+1. **Not require a schema migration.** Existing unlock objects must remain valid; new ids get tested against runs starting now.
+2. **Cover distinct play styles**, so no single good run sweeps them all. One more "score X" when you already have "score 500" and "score 1000" just moves the ceiling.
+3. **Leverage state already tracked**, or add minimal new state. Every new tracking field is a potential bug site in reset-on-start.
+
+### Design — axis diversity
+
+Pick new achievements along axes the existing ladder under-covers. For a pulse-timing game with score + combo + perfect count:
+
+| Axis | Example | State needed |
+|---|---|---|
+| Skill ceiling | Combo 100 | `peakCombo` — already tracked |
+| Endurance | 2500 points | `score` — already tracked |
+| Retention | 7-day streak | global streak — already tracked |
+| Precision | 20+ perfects, zero goods | `perfectCount`, `hitCount - perfectCount` — already derivable |
+| Flawlessness | 60s run with zero misses | `missCount` + `duration` — **new tracking needed** |
+
+Each targets a player archetype: the combo grinder, the marathon runner, the daily ritualist, the precision tapper, the zen cruiser. A player who happens to excel at one typically has a weak spot in another — so the ladder rewards *breadth*, not just a single monster run.
+
+### Pattern — additive context fields
+
+```js
+function evaluateAchievements(ctx) {
+  const unlocked = readAchievements();
+  const justNow = [];
+  for (const a of ACHIEVEMENTS) {
+    if (!unlocked[a.id] && a.test(ctx)) {
+      unlocked[a.id] = 1;
+      justNow.push(a.id);
+    }
+  }
+  if (justNow.length) writeAchievements(unlocked);
+  return { unlocked, justNow };
+}
+
+// Caller
+evaluateAchievements({
+  score, peakCombo, perfectCount, hitCount,
+  missCount,    // NEW in Sprint 23
+  duration,     // NEW in Sprint 23
+  streak,
+});
+```
+
+The `ctx` object is always passed whole — tests read the fields they care about, ignore the rest. Adding a new field never breaks existing tests. Removing a field breaks tests that use it (so don't). This is exactly how React props work: declarative, additive, safe to extend.
+
+```js
+// Old entry (Sprint 13) — still works
+{ id: 'combo-50', test: c => c.peakCombo >= 50 },
+// New entry (Sprint 23) — reads the new field
+{ id: 'flawless-60', test: c => c.duration >= 60 && c.missCount === 0 },
+```
+
+### Pattern — pure-function tests
+
+Every test is a pure function of the context. No state peeks, no DOM reads, no Date.now() calls. Why:
+
+- **Order-independent.** Tests can run in any order; iteration order in the ACHIEVEMENTS array doesn't matter for correctness (only for display).
+- **Testable.** A unit test can pass a synthetic `{ score: 1234, ... }` and assert the expected unlocks without any game state.
+- **Composable.** Need a "score 500 AND combo 25 in the same run"? `test: c => c.score >= 500 && c.peakCombo >= 25`. No special framework.
+
+Avoid the temptation to make tests async or read persistent state. Always-finite, always-total functions keep the achievement system a leaf, not a graph.
+
+### Pattern — centralize the miss counter
+
+If two code paths trigger a life loss (tap-miss and pulse-expire-miss), route both through a single `loseLife()` and increment the counter there:
+
+```js
+function loseLife() {
+  state.combo = 0;
+  state.missCount += 1;  // single source of truth
+  state.lives -= 1;
+  // ...
+}
+```
+
+Rather than `state.missCount += 1` at each call site (two places), which is brittle — a third path added later would forget to increment. The counter lives with the consequence (combo-break + life-loss), not with the cause.
+
+### Pattern — reset all new state in `start()`
+
+Every new tracked field gets a `state.<field> = 0` (or the appropriate zero) in the run-start reset. Forgetting this is the single most common source of "my achievement unlocked when it shouldn't have" bugs: stale state from a prior run carries over. Group all resets in one block near the top of `start()` so they're visually scannable.
+
+### Pattern — update the HTML placeholder count
+
+`<span id="achProgress">0 / 6</span>` — the hardcoded initial text on the gameover overlay. When the ladder grows, update it. Otherwise a first-time visitor sees "0 / 6" momentarily before `renderAchievements` overwrites it at gameover. Small thing, easy to miss.
+
+### When NOT to extend the ladder
+
+- If the existing ladder has <50% global unlock rate. That means even the easy tier is hard enough; rare tier will feel oppressive. Fix the easy tier first.
+- If the game is still in active mechanics-balancing. Achievements pinned to specific thresholds lock in "this game rewards X" — hard to re-tune scoring if players have already unlocked "500 points" under a different formula.
+- If you're adding them to pad a gameover screen that's already busy. The grid should feel like a reward, not a spreadsheet.
+
+<!-- added: 2026-04-17 (001-void-pulse sprint 23) -->
+

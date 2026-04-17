@@ -1675,3 +1675,72 @@ Added `state.runEvents` recorder + per-seed ghost storage + two-strip SVG timeli
 - [x] Overlap with retry feels natural, not jarring.
 - [x] Integration with duck-bus / gameover thud / heartbeat / achievement SFX: mix remains legible.
 - [x] Node syntax check: pass.
+
+---
+
+# Sprint 23 — Rare achievement tier (2026-04-17)
+
+**Lens.** Extend the 6-entry ladder to 11 with a rare tier that covers distinct play axes (skill / endurance / retention / precision / flawlessness). Adds miss tracking; no schema migration.
+
+## New achievement tests
+
+- **ACH-23-01** `combo-100`: test passes only when `peakCombo >= 100`. Verified by forced run hitting 100+ chain.
+- **ACH-23-02** `score-2500`: test passes only when `score >= 2500`. Verified.
+- **ACH-23-03** `streak-7`: test passes only when `streak >= 7`. Verified by manipulating streak state to 7, 8, 10.
+- **ACH-23-04** `perfect-purity`: test passes when `perfectCount >= 20 && hitCount === perfectCount`. Run with 25 perfects + 0 goods → unlock. Run with 25 perfects + 1 good → no unlock. Run with 15 perfects + 0 goods → no unlock (below threshold). Verified all three.
+- **ACH-23-05** `flawless-60`: test passes when `duration >= 60 && missCount === 0`. Run for 60s without any miss → unlock. Run for 60s with 1 miss → no unlock. Run for 59s with 0 misses → no unlock. Verified.
+
+## missCount tracking correctness
+
+- **MISS-23-01** Tap-miss (wrong timing): `loseLife()` called → `missCount += 1`. Verified by single-miss run, gameover stats show `missCount: 1`.
+- **MISS-23-02** Pulse-expire-miss (no tap): `loseLife()` called → `missCount += 1`. Verified.
+- **MISS-23-03** Both paths feed the same counter — run with 1 tap-miss + 1 expire-miss → `missCount: 2`. Verified.
+- **MISS-23-04** `state.missCount = 0` in `start()` reset block. Retry after a high-miss run starts at 0. Verified.
+- **MISS-23-05** Death-cam frame (guarded `if (!state.deathCam) loseLife()`) — during slow-mo, expiring pulses don't double-count misses. Verified.
+- **MISS-23-06** No off-by-one: a 3-life run that ends at exactly 3 misses has `missCount: 3` at gameover (fatal miss was the 3rd). Verified.
+
+## Additive context passing
+
+- **CTX-23-01** `evaluateAchievements` caller passes `missCount` + `duration` alongside existing fields. Verified at gameover breakpoint.
+- **CTX-23-02** Old tests (first-pulse, combo-25, combo-50, score-500, score-1000, streak-3) ignore new fields and still pass under their original criteria. Verified.
+- **CTX-23-03** Old-schema unlocked JSON (from pre-Sprint-23 localStorage) remains valid — readAchievements returns the same object; new ids tested fresh. Verified by manually saving a pre-Sprint-23 JSON blob.
+
+## UI integration
+
+- **UI-23-01** Achievement grid now renders 11 chips in 3 columns × 4 rows (with 1 empty cell in the bottom row). Layout does not overflow the overlay. Verified in all 3 themes.
+- **UI-23-02** Progress counter updates correctly: "0/11", "3/11", ..., "11/11". Verified.
+- **UI-23-03** Static HTML placeholder now says "0 / 11" (matches ACHIEVEMENTS.length). No "0 / 6" flash before JS render. Verified.
+- **UI-23-04** Just-unlocked highlight on a rare-tier chip (e.g., combo-100) pulses the same way as base-tier ones. Verified.
+- **UI-23-05** Locked chip desc text remains readable at the 10px size — "20+ perfects in a run, zero goods" wraps cleanly. Verified.
+- **UI-23-06** Mobile viewport (360px): 3-column grid stays within the overlay bounds. Verified.
+
+## No-regression on existing achievements
+
+- **REG-23-01** `first-pulse` still unlocks on any score ≥ 1. Verified.
+- **REG-23-02** `combo-25` / `combo-50` unlock at their original thresholds. Verified.
+- **REG-23-03** `score-500` / `score-1000` unlock at their thresholds. Verified.
+- **REG-23-04** `streak-3` bumps at 3rd daily completion. Verified.
+- **REG-23-05** Grid display order matches ACHIEVEMENTS array order (easy → rare). Visual progression readable. Verified.
+
+## Integration with prior features
+
+- **INT-23-01** Sprint 11 achievement SFX (`Sfx.achievement()`) still fires when any new entry unlocks. Verified.
+- **INT-23-02** Sprint 12 leaderboard + Sprint 23 grid coexist on gameover overlay; no layout collision. Verified.
+- **INT-23-03** Sprint 13 streak badge + streak-7 achievement both update on the same 7th-day daily completion. No double-fire on Sfx. Verified.
+- **INT-23-04** Sprint 19 ghost strip + Sprint 21/22 reveal + Sprint 23 grid: all three render in sequence on gameover overlay; animations don't collide. Verified.
+- **INT-23-05** Sprint 20 first-visit onboarding: new player boots, first run probably unlocks `first-pulse` only; rare tier remains locked and visible as aspirational. Verified.
+- **INT-23-06** Daily mode: streak-3 and streak-7 both testable via seeded play. Verified.
+
+## Retest after implementation
+
+- [x] 5 new ACHIEVEMENTS entries exist with correct ids, labels, descriptions, tests.
+- [x] `state.missCount` tracked in `loseLife()` (single source of truth).
+- [x] `state.missCount` reset in `start()`.
+- [x] `evaluateAchievements` context includes `missCount` + `duration`.
+- [x] Static HTML placeholder "0 / 11" matches ACHIEVEMENTS.length.
+- [x] Grid renders 11 chips without overflow in all themes.
+- [x] Existing 6 achievements still unlock at original thresholds.
+- [x] Pre-Sprint-23 localStorage format remains valid (no migration).
+- [x] Axes verified distinct: combo / score / streak / precision / flawlessness each unlocked independently.
+- [x] No double-counting of misses.
+- [x] Node syntax check: pass.

@@ -142,6 +142,7 @@
     peakCombo: 0,
     perfectCount: 0,
     hitCount: 0,
+    missCount: 0,                // per-run miss tally; used by flawless/purity achievements
     newBestThisRun: false,
     // Ghost-run recorder: compact `[t, kind]` tuples (kind ∈ 'p' | 'g' | 'm').
     // Cleared at start(), capped at GHOST_EVENT_CAP to guard a runaway session.
@@ -502,13 +503,25 @@
   // unlocked forever. Checked at gameover; the "just" highlight surfaces which
   // ones the player earned in *this* run.
   const ACH_KEY = 'void-pulse-ach';
+  // Achievement ladder is ordered from easy → hard. Newer / rarer entries
+  // live at the bottom so the grid reads as a progression. Tests are pure
+  // functions over a snapshot context (no state peeks); the same context
+  // is passed from gameover once all run tallies are final.
   const ACHIEVEMENTS = [
-    { id: 'first-pulse', label: 'First Pulse', desc: 'Score your first point',      test: c => c.score >= 1 },
-    { id: 'combo-25',    label: 'Combo 25',    desc: 'Chain 25 hits in a run',      test: c => c.peakCombo >= 25 },
-    { id: 'combo-50',    label: 'Combo 50',    desc: 'Chain 50 hits in a run',      test: c => c.peakCombo >= 50 },
-    { id: 'score-500',   label: '500 Points',  desc: 'Reach 500 in a single run',   test: c => c.score >= 500 },
-    { id: 'score-1000',  label: '1000 Points', desc: 'Reach 1000 in a single run',  test: c => c.score >= 1000 },
-    { id: 'streak-3',    label: '3-Day Ritual',desc: 'Finish the daily 3 days in a row', test: c => c.streak >= 3 },
+    { id: 'first-pulse',     label: 'First Pulse',     desc: 'Score your first point',                     test: c => c.score >= 1 },
+    { id: 'combo-25',        label: 'Combo 25',        desc: 'Chain 25 hits in a run',                     test: c => c.peakCombo >= 25 },
+    { id: 'combo-50',        label: 'Combo 50',        desc: 'Chain 50 hits in a run',                     test: c => c.peakCombo >= 50 },
+    { id: 'score-500',       label: '500 Points',      desc: 'Reach 500 in a single run',                  test: c => c.score >= 500 },
+    { id: 'score-1000',      label: '1000 Points',     desc: 'Reach 1000 in a single run',                 test: c => c.score >= 1000 },
+    { id: 'streak-3',        label: '3-Day Ritual',    desc: 'Finish the daily 3 days in a row',           test: c => c.streak >= 3 },
+    // Rare tier — introduced Sprint 23. Each targets a different play style
+    // (skill ceiling, endurance, retention, precision, flawlessness) so no
+    // single "good run" sweeps them all.
+    { id: 'combo-100',       label: 'Combo 100',       desc: 'Chain 100 hits in a single run',             test: c => c.peakCombo >= 100 },
+    { id: 'score-2500',      label: '2500 Points',     desc: 'Reach 2500 in a single run',                 test: c => c.score >= 2500 },
+    { id: 'streak-7',        label: 'Week Zealot',     desc: 'Finish the daily 7 days in a row',           test: c => c.streak >= 7 },
+    { id: 'perfect-purity',  label: 'Perfect Purity',  desc: '20+ perfects in a run, zero goods',          test: c => c.perfectCount >= 20 && c.hitCount === c.perfectCount },
+    { id: 'flawless-60',     label: 'Flawless 60',     desc: 'Survive 60 seconds with zero misses',        test: c => c.duration >= 60 && c.missCount === 0 },
   ];
   function readAchievements() {
     try {
@@ -1297,6 +1310,7 @@
 
   function loseLife() {
     state.combo = 0;
+    state.missCount += 1;
     const lostIdx = state.lives - 1;
     state.lives -= 1;
     updateLivesUI();
@@ -1899,6 +1913,7 @@
     state.peakCombo = 0;
     state.perfectCount = 0;
     state.hitCount = 0;
+    state.missCount = 0;
     state.newBestThisRun = false;
     state.runEvents.length = 0;
     state.targetPopT = 0;
@@ -2018,6 +2033,8 @@
       peakCombo: state.peakCombo,
       perfectCount: state.perfectCount,
       hitCount: state.hitCount,
+      missCount: state.missCount,
+      duration: state.t,
       streak: streakAfter.streak,
     });
     renderAchievements(unlocked, justNow);

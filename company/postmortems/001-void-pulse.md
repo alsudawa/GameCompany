@@ -987,6 +987,63 @@ The actual engineering meat is not choosing swatches — it's the **cache invali
 
 ---
 
+## Sprint 23 — Rare achievement tier (2026-04-17)
+
+### Lens
+
+**The base 6 achievements were all earnable in the first week; returning players had nothing left to chase.** This sprint adds 5 rare-tier entries, each targeting a distinct play axis so no single "good run" sweeps them all:
+
+- **Combo 100** — skill-ceiling (peakCombo)
+- **2500 Points** — endurance (score)
+- **Week Zealot** — retention (7-day streak)
+- **Perfect Purity** — precision (20+ perfects with zero goods)
+- **Flawless 60** — flawlessness (60s run with zero misses)
+
+Deliberately along five different axes: a combo-grinder, a marathon runner, a daily ritualist, a precision tapper, and a zen cruiser don't share a single "gold-star" run. The ladder rewards *breadth* over raw score.
+
+### Changes
+
+- **5 new `ACHIEVEMENTS` entries** — appended to the base array (order matters only for display, since tests are pure functions). Labels and descriptions kept terse to fit the 3-column grid.
+- **New `state.missCount` field** — tracked alongside `perfectCount` / `hitCount`. Incremented inside `loseLife()` so *both* miss paths (tap-miss + pulse-expire-miss) feed the same counter. Reset to 0 in `start()`.
+- **`missCount` + `duration` now in achievement context** — pure additive extension: existing tests ignore the new fields, new tests read them. No schema migration needed.
+- **Updated HTML placeholder** — `0 / 6` → `0 / 11` for the first-paint moment before `renderAchievements` overwrites it.
+- **Refactor note**: moved `state.missCount += 1` from `judgeTap` into `loseLife()` — single source of truth. A future fourth path that calls `loseLife()` will automatically increment.
+
+### Patterns extracted → `company/skills/ux/streak-and-achievements.md` (extended section)
+
+- **Axis-diversity rule** — new achievements should hit a play style the existing ladder under-covers. One more "score X" when you have "score 500/1000" is just ceiling-raising.
+- **Additive context fields** — pass a whole object to the test; tests read what they need, ignore the rest. Adding a field never breaks existing tests.
+- **Pure-function tests** — no state peeks, no async, no Date.now(). Composable (`&&`), testable, order-independent.
+- **Centralize the miss counter in `loseLife()`** — two call sites becomes zero manual increments at call sites.
+- **Reset all new state in `start()`** — every new field needs a reset line; forgetting this is the #1 source of "achievement unlocked when it shouldn't".
+- **Update the static HTML placeholder** — small thing, easy to miss; first-paint flash of wrong count.
+- **Don't extend the ladder when global unlock rate on the easy tier is still low** — rare tier oppresses a struggling player. Fix the bottom before adding a top.
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 23 | Content / retention ladder | 5 rare achievements across diverse play axes, new miss tracking, extended streak-and-achievements skill doc |
+
+### Cost
+
+- game.js: +13 lines (5 ACHIEVEMENTS entries + missCount field/reset + centralized increment)
+- index.html: 1 char changed (placeholder count)
+- style.css: 0 (grid auto-scales)
+- Extended `ux/streak-and-achievements.md` with a new "Extending the ladder" section
+
+### Next candidates
+
+- **Tap-to-zoom ghost strip** — still open.
+- **Service worker for offline play** — still open.
+- **Per-theme score-sweetener** — high-combo audio overtone.
+- **Achievement unlock toast during gameplay** — currently deferred to gameover; a mid-run flash for the rare-tier unlocks could be exciting (gated on non-combo-break moments).
+- **Stats page** — lifetime perfect count, miss count, longest streak, total plays. New gameover sub-overlay.
+- **Challenge achievements** — "Beat the ghost by 500 points" — dynamic, seed-aware, re-earnable weekly.
+- **Ambient-density preference** — a slider for drift particle count.
+
+---
+
 ## Credits
 
 | Role | Agent | Model |
