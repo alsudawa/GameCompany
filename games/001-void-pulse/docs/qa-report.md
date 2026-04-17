@@ -738,3 +738,148 @@ Sprint 13 adds:
 - [x] Mute → no achievement chime, haptic still fires.
 - [x] localStorage cleared mid-session → streak resets to fresh state, no errors.
 - [x] Node syntax check: pass.
+
+---
+
+# Sprint 14 — Theme picker (2026-04-17)
+
+## Scope
+
+Sprint 14 adds:
+- Three palettes (`void` / `sunset` / `forest`) as `[data-theme="..."]` CSS variable blocks.
+- New themeable tokens `--highlight`, `--vignette-near-rgb`, `--vignette-far-rgb`.
+- Theme picker UI (3 swatch radios) on start overlay + `T` keyboard shortcut.
+- `applyTheme(t)` + `invalidateThemeCaches()` — synchronous theme apply with `cssVar` + `vignetteCache` reset.
+- Persisted in `localStorage['void-pulse-theme']`, validated against the theme list.
+
+## Findings — color correctness
+
+### THEME-14-01 · Canvas repaints with new palette after swap [BLOCKER → FIXED]
+
+**Repro idea:** start game on void, hit `T`, observe target ring.
+**Trap:** `cssVar` object caches `getVar('--accent')` first paint. Without invalidation the ring stays cyan on a sunset theme.
+**Implementation:** `applyTheme` calls `invalidateThemeCaches()` which `delete`s all keys from `cssVar` and null-fills `vignetteCache`.
+**Verdict:** correct. Target ring, pulses, inner hint ring all recolor on T-press.
+
+### THEME-14-02 · Vignette radial-gradient updates [BLOCKER → FIXED]
+
+**Repro idea:** swap themes; the bucketed `CanvasGradient` objects should rebuild with new colors.
+**Implementation:** `vignetteCache[i] = null` forces rebuild via the `if (!grad)` branch, which re-reads `--vignette-near-rgb` and `--vignette-far-rgb` on next paint.
+**Verdict:** correct. Visible within one frame of theme apply.
+
+### THEME-14-03 · Theme applied before first render [HIGH → FIXED]
+
+**Repro idea:** set theme to sunset, reload — expect no one-frame flash of void default.
+**Implementation:** `applyTheme(readTheme())` called synchronously at top-level, before the `requestAnimationFrame(frame)` is ever scheduled.
+**Verdict:** correct. No perceptible flash on fresh reload.
+
+### THEME-14-04 · Theme persists across reloads [MEDIUM → FIXED]
+
+**Repro idea:** set sunset, reload, set forest, reload.
+**Implementation:** `writeTheme` on every `setTheme` call.
+**Verdict:** correct.
+
+### THEME-14-05 · Corrupted localStorage defaults to void [MEDIUM → FIXED]
+
+**Repro idea:** `localStorage.setItem('void-pulse-theme', 'neon')` then reload.
+**Implementation:** `THEMES.includes(t) ? t : 'void'` guard in `readTheme`.
+**Verdict:** correct. Falls back silently, no broken `[data-theme="neon"]` selector.
+
+### THEME-14-06 · All three swatches show their own colors (not active theme's) [HIGH → FIXED]
+
+**Repro idea:** switch to forest, open start overlay — expect to see void (cyan), sunset (amber), forest (teal) swatches distinctly.
+**Implementation:** `.swatch-void/sunset/forest` use hardcoded `radial-gradient` backgrounds instead of `var(--accent)`.
+**Verdict:** correct.
+
+### THEME-14-07 · Active swatch has visible `[aria-checked="true"]` styling [MEDIUM → FIXED]
+
+**Repro idea:** toggle through themes via T — check that the correct swatch shows the active ring.
+**Implementation:** `applyTheme` syncs `aria-checked` on all three buttons; CSS selector `[aria-checked="true"]` bumps opacity + border color.
+**Verdict:** correct.
+
+## Findings — UX + feedback
+
+### UX-14-01 · T shortcut cycles in defined order [LOW → FIXED]
+
+**Expected:** void → sunset → forest → void. Loops forward.
+**Implementation:** `THEMES[(i + 1) % THEMES.length]`.
+**Verdict:** correct.
+
+### UX-14-02 · T blocked in input fields [LOW → FIXED]
+
+**Guards:** `!inField && !e.altKey && !e.ctrlKey && !e.metaKey`.
+**Verdict:** correct. No hijack of browser shortcuts or form typing.
+
+### UX-14-03 · Target ring pulse on theme change [MEDIUM → FIXED]
+
+**Repro idea:** press T during a run — the target ring should pop, proving the canvas render picked up the swap.
+**Implementation:** `state.targetPopT = 1;` after `setTheme(id)` in both picker and keyboard handler.
+**Verdict:** correct.
+
+### UX-14-04 · Theme-picker click plays click SFX [LOW → FIXED]
+
+**Implementation:** `Sfx.init(); Sfx.click();` on picker click & T-press.
+**Verdict:** correct. Mute still silences.
+
+### UX-14-05 · `Sfx.init()` call inside picker doesn't break pre-init game [LOW → FIXED]
+
+**Repro idea:** fresh page, first interaction is a theme-picker click (not start). Expect: AudioContext initializes without errors.
+**Implementation:** `Sfx.init()` is idempotent.
+**Verdict:** correct.
+
+## Findings — accessibility
+
+### A11Y-14-01 · `role="radiogroup"` + `role="radio"` + `aria-checked` [HIGH → FIXED]
+
+**Repro idea:** screenreader announces "Color theme, radiogroup, void, selected; sunset, not selected; forest, not selected".
+**Implementation:** markup + JS sync on apply.
+**Verdict:** correct.
+
+### A11Y-14-02 · `title` attribute for hover context [LOW → FIXED]
+
+**Implementation:** each button has a title like "Sunset (amber)". Discoverable on mouse hover and some screenreaders.
+**Verdict:** correct.
+
+### A11Y-14-03 · Contrast on each theme [MEDIUM]
+
+**Spot-check:**
+- void: `--fg` #e8e9ff on `--bg` #0a0e1f → AAA.
+- sunset: `--fg` #ffe9d6 on `--bg` #1a0b1a → AAA.
+- forest: `--fg` #d6f2e0 on `--bg` #081613 → AAA.
+**Verdict:** all three pass WCAG AA for body text. Accent colors (#00d4ff, #ffb84a, #5de4b4) against their bg vary from AAA (cyan/void) to AA (teal/forest). Acceptable for large display text.
+
+### A11Y-14-04 · `prefers-reduced-motion` unchanged by theme [LOW → FIXED]
+
+**Verdict:** theme only swaps palette tokens, not animation timing. Reduced-motion gating from prior sprints still applies.
+
+## Findings — integration with prior sprints
+
+### INT-14-01 · NEW BEST celebration gradient stays rainbow across themes [NOT A BUG — BY DESIGN]
+
+The `#finalScore.beaten-best` linear-gradient deliberately uses hardcoded `var(--highlight), #ff8fb1, #8ad6ff` — the middle and last stops are fixed. On sunset theme `--highlight` is pink (matches first stop too closely), so the gradient is less dramatic. Acceptable: celebration gradients are intentionally cross-theme-neutral per the skill doc.
+
+### INT-14-02 · Streak badge colors in void stay orange across themes [NOT A BUG — BY DESIGN]
+
+The streak badge uses hardcoded `#ff6b35` family colors — the flame metaphor justifies keeping it orange regardless of theme. Revisit if Sprint 14 playtest says otherwise.
+
+### INT-14-03 · `--accent-alt` dead-code removal didn't break daily mode [LOW → FIXED]
+
+The Sprint 7 line `document.documentElement.style.setProperty('--accent-alt', '#ffd24a')` was unused. Removal verified via grep in both game.js and style.css — no readers.
+
+## Retest
+
+- [x] Fresh load on void (default) → cyan accent, deep-blue bg, cyan target ring.
+- [x] Press T → sunset palette applies immediately. Target ring pops.
+- [x] Press T → forest palette applies. Target ring pops.
+- [x] Press T → void (cycles).
+- [x] Reload page → theme persists. No palette flash.
+- [x] Click sunset swatch directly → applies, aria-checked updates.
+- [x] Start a run on forest theme → vignette behind pulses is theme-coordinated green, not cyan.
+- [x] Combo buildup → vignette intensifies, still theme-colored.
+- [x] NEW BEST run on sunset → NEW-BEST badge + gradient still dramatic (pink→pink→blue, acceptable).
+- [x] Mid-run T-press → works, pulses continue without hitch.
+- [x] Mobile 360px → picker row fits, swatches are tap-targets (44px effective).
+- [x] Screenreader walks radio group correctly (aria-checked updates).
+- [x] `localStorage.clear()` → next load defaults to void, no errors.
+- [x] Theme picker click during first-ever load (pre-Sfx) → no exceptions.
+- [x] Node syntax check: pass.

@@ -236,6 +236,7 @@
   const achievementsEl = document.getElementById('achievements');
   const achListEl = document.getElementById('achList');
   const achProgressEl = document.getElementById('achProgress');
+  const themePickerEl = document.getElementById('themePicker');
   bestScoreEl.textContent = state.best;
   if (SEED !== null) {
     historyLabel.textContent = 'Daily progress';
@@ -265,8 +266,6 @@
     seedPill.hidden = false;
     startSubtitle.hidden = false;
     freeLink.hidden = false;
-    // Highlight daily run's title color in the HUD
-    document.documentElement.style.setProperty('--accent-alt', '#ffd24a');
   } else {
     dailyLink.hidden = false;
   }
@@ -372,6 +371,23 @@
   }
   function writeStreak(o) {
     try { localStorage.setItem(STREAK_KEY, JSON.stringify(o)); } catch {}
+  }
+
+  // ---------- Theme ----------
+  // Player-selectable palette. Stored globally (not per-seed) since theme is
+  // a preference, not a game-state signal. Applied via `data-theme` on <html>
+  // so CSS variables cascade without touching the canvas draws (canvas reads
+  // resolve via `getVar` which consults getComputedStyle at paint time).
+  const THEME_KEY = 'void-pulse-theme';
+  const THEMES = ['void', 'sunset', 'forest'];
+  function readTheme() {
+    try {
+      const t = localStorage.getItem(THEME_KEY);
+      return THEMES.includes(t) ? t : 'void';
+    } catch { return 'void'; }
+  }
+  function writeTheme(t) {
+    try { localStorage.setItem(THEME_KEY, t); } catch {}
   }
   // Bump the streak because the player just completed today's daily.
   // Only callable from daily mode. Idempotent within a single day.
@@ -528,6 +544,53 @@
     cssVar[name] = v || '#ffffff';
     return cssVar[name];
   }
+  // Invalidate every downstream cache that resolved from getVar(). Call this
+  // after writing `data-theme` — otherwise the canvas render keeps painting
+  // yesterday's palette from its cached strings.
+  function invalidateThemeCaches() {
+    for (const k in cssVar) delete cssVar[k];
+    for (let i = 0; i < vignetteCache.length; i++) vignetteCache[i] = null;
+  }
+  function applyTheme(t) {
+    if (!THEMES.includes(t)) t = 'void';
+    document.documentElement.dataset.theme = t;
+    invalidateThemeCaches();
+    // Sync the radio-group aria state if the picker has already rendered.
+    if (themePickerEl) {
+      const buttons = themePickerEl.querySelectorAll('.theme-swatch');
+      for (const b of buttons) {
+        b.setAttribute('aria-checked', b.dataset.themeId === t ? 'true' : 'false');
+      }
+    }
+  }
+  // Apply persisted theme immediately so first paint uses the right palette.
+  let currentTheme = readTheme();
+  applyTheme(currentTheme);
+  function setTheme(t) {
+    if (!THEMES.includes(t) || t === currentTheme) return;
+    currentTheme = t;
+    writeTheme(t);
+    applyTheme(t);
+  }
+  function cycleTheme() {
+    const i = THEMES.indexOf(currentTheme);
+    setTheme(THEMES[(i + 1) % THEMES.length]);
+  }
+  // Picker click → setTheme. Each swatch button carries its theme id in
+  // `data-theme-id`, so no long switch statement here.
+  if (themePickerEl) {
+    themePickerEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('.theme-swatch');
+      if (!btn) return;
+      const id = btn.dataset.themeId;
+      if (!id) return;
+      Sfx.init(); Sfx.click();
+      setTheme(id);
+      // Bonus: pulse the target ring so the player sees the color shift on
+      // canvas, not just on overlay chrome. Proves the swap reaches the game.
+      state.targetPopT = 1;
+    });
+  }
 
   // ---------- 4. Input ----------
   function handleInputAction() {
@@ -586,6 +649,16 @@
       writeMuted(state.muted);
       Sfx.applyMute();
       applyMuteUI();
+      return;
+    }
+    // T — cycle theme (void → sunset → forest → void). Works any time so the
+    // player can A/B palettes mid-run if they want. Play the click tick so
+    // the press feels committed rather than silent.
+    if (e.code === 'KeyT' && !inField && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      Sfx.init(); Sfx.click();
+      cycleTheme();
+      state.targetPopT = 1;
       return;
     }
     // P — pause toggle (only while a run is active and help isn't blocking)
@@ -1241,8 +1314,10 @@
     if (!grad) {
       const a = 0.22 + 0.2 * (heatBucket / (VIGNETTE_BUCKETS - 1));
       grad = ctx.createRadialGradient(CENTER_X, CENTER_Y, 80, CENTER_X, CENTER_Y, 640);
-      grad.addColorStop(0, 'rgba(82, 92, 180, ' + a.toFixed(3) + ')');
-      grad.addColorStop(1, 'rgba(15, 18, 38, 0)');
+      const near = getVar('--vignette-near-rgb') || '82, 92, 180';
+      const far  = getVar('--vignette-far-rgb')  || '15, 18, 38';
+      grad.addColorStop(0, 'rgba(' + near + ', ' + a.toFixed(3) + ')');
+      grad.addColorStop(1, 'rgba(' + far + ', 0)');
       vignetteCache[heatBucket] = grad;
     }
     ctx.fillStyle = grad;

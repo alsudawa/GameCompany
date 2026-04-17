@@ -4,13 +4,41 @@
    ============================================================ */
 
 :root {
+  /* Default theme = void. Player can switch to sunset / forest via the
+     theme picker on the start overlay; the chosen theme writes
+     `data-theme="..."` on <html>, below. All color-critical tokens live
+     here (including the celebration gold `--highlight` and the vignette
+     radial-gradient rgb triplets consumed by the canvas render). */
   --bg:     #0a0e1f;
   --fg:     #e8e9ff;
   --accent: #00d4ff;
   --danger: #ff3d6b;
   --subtle: #2a2e5c;
+  --highlight: #ffd24a;
+  --vignette-near-rgb: 82, 92, 180;
+  --vignette-far-rgb:  15, 18, 38;
   --shadow: 0 6px 24px rgba(0,0,0,.35);
   --radius: 14px;
+}
+[data-theme="sunset"] {
+  --bg:     #1a0b1a;
+  --fg:     #ffe9d6;
+  --accent: #ffb84a;
+  --danger: #ff4d6d;
+  --subtle: #4a2a3c;
+  --highlight: #ff8fb1;
+  --vignette-near-rgb: 180, 92, 120;
+  --vignette-far-rgb:  38, 15, 28;
+}
+[data-theme="forest"] {
+  --bg:     #081613;
+  --fg:     #d6f2e0;
+  --accent: #5de4b4;
+  --danger: #ff7a5a;
+  --subtle: #1a3a2e;
+  --highlight: #e8ff7a;
+  --vignette-near-rgb: 92, 180, 140;
+  --vignette-far-rgb:  12, 30, 22;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -68,12 +96,12 @@ html, body {
   transform-origin: left center;
 }
 #score.approaching-best {
-  color: #ffd24a;
-  text-shadow: 0 0 14px rgba(255, 210, 74, .55), 0 2px 8px rgba(0, 0, 0, .5);
+  color: var(--highlight);
+  text-shadow: 0 0 14px color-mix(in srgb, var(--highlight) calc(100% * .55), transparent), 0 2px 8px rgba(0, 0, 0, .5);
 }
 #score.beaten-best {
-  color: #ffd24a;
-  text-shadow: 0 0 22px rgba(255, 210, 74, .9), 0 2px 8px rgba(0, 0, 0, .5);
+  color: var(--highlight);
+  text-shadow: 0 0 22px color-mix(in srgb, var(--highlight) calc(100% * .9), transparent), 0 2px 8px rgba(0, 0, 0, .5);
   animation: scoreBeaten 1.4s ease-in-out infinite;
 }
 @keyframes scoreBeaten {
@@ -110,7 +138,7 @@ html, body {
 #comboMeterFill {
   height: 100%;
   width: 0%;
-  background: linear-gradient(90deg, var(--accent), #ffd24a);
+  background: linear-gradient(90deg, var(--accent), var(--highlight));
   border-radius: 2px;
   transition: width .14s ease-out;
 }
@@ -133,7 +161,7 @@ html, body {
 }
 .life.bonus-glow {
   animation: lifeBonusGlow 1.4s ease-out 1;
-  color: #ffd24a !important;
+  color: var(--highlight) !important;
 }
 @keyframes lifeLostFlash {
   0%   { color: var(--danger); transform: scale(1.4); text-shadow: 0 0 14px rgba(255, 61, 107, .9); }
@@ -141,9 +169,9 @@ html, body {
   100% { color: var(--subtle); transform: scale(1.0); text-shadow: none; }
 }
 @keyframes lifeBonusGlow {
-  0%   { color: #ffd24a; transform: scale(1.5); text-shadow: 0 0 18px rgba(255, 210, 74, .9); }
-  60%  { color: #ffd24a; transform: scale(1.0); text-shadow: 0 0 10px rgba(255, 210, 74, .55); }
-  100% { color: #ffd24a; transform: scale(1.0); text-shadow: none; }
+  0%   { color: var(--highlight); transform: scale(1.5); text-shadow: 0 0 18px color-mix(in srgb, var(--highlight) calc(100% * .9), transparent); }
+  60%  { color: var(--highlight); transform: scale(1.0); text-shadow: 0 0 10px color-mix(in srgb, var(--highlight) calc(100% * .55), transparent); }
+  100% { color: var(--highlight); transform: scale(1.0); text-shadow: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .life.lost-flash, .life.bonus-glow { animation: none; }
@@ -324,13 +352,13 @@ html, body {
   font-weight: 800;
   letter-spacing: .24em;
   color: #061028;
-  background: linear-gradient(90deg, #ffd24a, #ff8fb1 50%, #8ad6ff);
+  background: linear-gradient(90deg, var(--highlight), #ff8fb1 50%, #8ad6ff);
   padding: 5px 14px;
   border-radius: 999px;
   display: none;
   margin: 0 auto 8px;
   animation: newBestPulse 1.2s ease-in-out infinite;
-  box-shadow: 0 0 24px rgba(255, 210, 74, .4);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--highlight) calc(100% * .4), transparent);
 }
 .new-best.visible { display: inline-block; }
 @keyframes newBestPulse {
@@ -358,7 +386,7 @@ html, body {
   transition: fill .12s ease;
 }
 #historySvg .hbar.latest { fill: var(--accent); }
-#historySvg .hbar.best   { fill: #ffd24a; }
+#historySvg .hbar.best   { fill: var(--highlight); }
 #historySvg .hline {
   stroke: rgba(232, 233, 255, .18);
   stroke-width: 1;
@@ -368,7 +396,7 @@ html, body {
   font-size: 11px;
   letter-spacing: .15em;
   text-transform: uppercase;
-  color: #ffd24a;
+  color: var(--highlight);
   opacity: .8;
   font-variant-numeric: tabular-nums;
 }
@@ -430,9 +458,9 @@ html, body {
   letter-spacing: .22em;
   padding: 4px 10px;
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(255, 210, 74, .18), rgba(255, 143, 177, .18));
-  border: 1px solid rgba(255, 210, 74, .42);
-  color: #ffd24a;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--highlight) calc(100% * .18), transparent), rgba(255, 143, 177, .18));
+  border: 1px solid color-mix(in srgb, var(--highlight) calc(100% * .42), transparent);
+  color: var(--highlight);
   z-index: 11;
   pointer-events: none;
   text-transform: uppercase;
@@ -442,7 +470,7 @@ html, body {
   font-size: 12px;
   letter-spacing: .2em;
   text-transform: uppercase;
-  color: #ffd24a;
+  color: var(--highlight);
   opacity: .9;
   margin-top: -6px;
   margin-bottom: 2px;
@@ -460,7 +488,7 @@ html, body {
   padding-bottom: 1px;
   transition: opacity .12s ease, color .12s ease, border-color .12s ease;
 }
-.daily-link:hover { opacity: 1; color: #ffd24a; border-color: rgba(255, 210, 74, .6); }
+.daily-link:hover { opacity: 1; color: var(--highlight); border-color: color-mix(in srgb, var(--highlight) calc(100% * .6), transparent); }
 
 .kbhint {
   font-size: 12px;
@@ -520,7 +548,7 @@ html, body {
 @keyframes demoPulse {
   0%   { width: 22px;  height: 22px;  margin: -11px 0 0 -11px;  opacity: .15; border-color: rgba(255,61,107,.5); }
   55%  { width: 60px;  height: 60px;  margin: -30px 0 0 -30px;  opacity: 1;   border-color: rgba(255,61,107,1); }
-  70%  { width: 76px;  height: 76px;  margin: -38px 0 0 -38px;  opacity: 1;   border-color: rgba(255,210,74,1); }
+  70%  { width: 76px;  height: 76px;  margin: -38px 0 0 -38px;  opacity: 1;   border-color: color-mix(in srgb, var(--highlight) calc(100% * 1), transparent); }
   85%  { width: 110px; height: 110px; margin: -55px 0 0 -55px;  opacity: .35; border-color: rgba(255,61,107,.6); }
   100% { width: 140px; height: 140px; margin: -70px 0 0 -70px;  opacity: 0;   border-color: rgba(255,61,107,.2); }
 }
@@ -583,7 +611,7 @@ html, body {
   line-height: 1.4;
 }
 .help-list em {
-  color: #ffd24a;
+  color: var(--highlight);
   font-style: normal;
   font-weight: 600;
 }
@@ -661,7 +689,7 @@ html, body {
   transition: background .14s ease;
 }
 .lb-row.lb-top {
-  background: rgba(255, 210, 74, .10);
+  background: color-mix(in srgb, var(--highlight) calc(100% * .10), transparent);
 }
 .lb-row.lb-new {
   background: rgba(0, 212, 255, .18);
@@ -674,13 +702,13 @@ html, body {
   letter-spacing: .08em;
   text-transform: uppercase;
 }
-.lb-row.lb-top .lb-rank { color: #ffd24a; opacity: 1; }
+.lb-row.lb-top .lb-rank { color: var(--highlight); opacity: 1; }
 .lb-row.lb-new  .lb-rank { color: var(--accent); opacity: 1; }
 .lb-score {
   color: var(--fg);
   font-weight: 600;
 }
-.lb-row.lb-top .lb-score { color: #ffd24a; }
+.lb-row.lb-top .lb-score { color: var(--highlight); }
 .lb-when {
   color: var(--fg);
   opacity: .5;
@@ -835,3 +863,57 @@ html, body {
   .ach-chip { font-size: 9px; padding: 6px 2px 5px; }
   .ach-chip .ach-desc { display: none; }
 }
+
+/* ---------- Theme picker (start overlay) ---------- */
+.theme-picker {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+.theme-swatch {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  background: transparent;
+  border: 1px solid rgba(232, 233, 255, .15);
+  border-radius: 10px;
+  color: var(--fg);
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  opacity: .7;
+  cursor: pointer;
+  transition: opacity .14s ease, border-color .14s ease, transform .08s ease;
+}
+.theme-swatch:hover { opacity: 1; }
+.theme-swatch:active { transform: scale(.96); }
+.theme-swatch[aria-checked="true"] {
+  opacity: 1;
+  border-color: var(--accent);
+  background: rgba(232, 233, 255, .04);
+}
+.swatch-ring {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: block;
+  box-shadow: inset 0 0 0 2px rgba(10, 14, 31, .6);
+}
+/* The three swatches are hardcoded preview colors (NOT var()-driven) so
+   every swatch shows *its* theme regardless of the currently active one.
+   A player on sunset still sees the void and forest swatches correctly. */
+.swatch-void {
+  background: radial-gradient(circle at 35% 35%, #00d4ff 0 40%, #0a0e1f 70% 100%);
+}
+.swatch-sunset {
+  background: radial-gradient(circle at 35% 35%, #ffb84a 0 40%, #1a0b1a 70% 100%);
+}
+.swatch-forest {
+  background: radial-gradient(circle at 35% 35%, #5de4b4 0 40%, #081613 70% 100%);
+}
+.swatch-name { color: var(--fg); opacity: .7; }
+.theme-swatch[aria-checked="true"] .swatch-name { opacity: 1; color: var(--accent); }

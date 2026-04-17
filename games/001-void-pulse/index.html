@@ -49,9 +49,14 @@
         <div class="demo-tap">TAP!</div>
       </div>
       <button id="start" class="btn">Tap to start</button>
-      <p class="kbhint">or press <kbd>Space</kbd> · <kbd>M</kbd> mute · <kbd>P</kbd> pause · <kbd>?</kbd> help</p>
+      <p class="kbhint">or press <kbd>Space</kbd> · <kbd>M</kbd> mute · <kbd>P</kbd> pause · <kbd>T</kbd> theme · <kbd>?</kbd> help</p>
       <a id="dailyLink" class="daily-link" href="?daily=1" hidden>Try today's daily →</a>
       <a id="freeLink"  class="daily-link" href="./" hidden>← Back to free play</a>
+      <div id="themePicker" class="theme-picker" role="radiogroup" aria-label="Color theme">
+        <button type="button" class="theme-swatch" data-theme-id="void"   role="radio" aria-checked="true"  title="Void (cyan)"><span class="swatch-ring swatch-void"></span><span class="swatch-name">void</span></button>
+        <button type="button" class="theme-swatch" data-theme-id="sunset" role="radio" aria-checked="false" title="Sunset (amber)"><span class="swatch-ring swatch-sunset"></span><span class="swatch-name">sunset</span></button>
+        <button type="button" class="theme-swatch" data-theme-id="forest" role="radio" aria-checked="false" title="Forest (teal)"><span class="swatch-ring swatch-forest"></span><span class="swatch-name">forest</span></button>
+      </div>
     </div>
 
     <div id="gameover" class="overlay hidden">
@@ -109,9 +114,10 @@
           <li><span class="help-key">combo bar</span><span>fills toward the next ×multiplier (cap ×4)</span></li>
           <li><span class="help-key">3 lives</span><span>miss / mistap to lose one. Die fast 3x in a row → next run grants +1 gold life</span></li>
           <li><span class="help-key">daily mode</span><span><code>?daily=1</code> — same pulse sequence for everyone today</span></li>
+          <li><span class="help-key">theme picker</span><span>void / sunset / forest — press <kbd>T</kbd> to cycle</span></li>
         </ul>
         <p class="help-keys">
-          <kbd>Space</kbd> tap · <kbd>M</kbd> mute · <kbd>P</kbd> pause · <kbd>?</kbd> this help · <kbd>Esc</kbd> close
+          <kbd>Space</kbd> tap · <kbd>M</kbd> mute · <kbd>P</kbd> pause · <kbd>T</kbd> theme · <kbd>?</kbd> this help · <kbd>Esc</kbd> close
         </p>
         <button id="helpClose" class="btn help-close" type="button">Got it</button>
       </div>

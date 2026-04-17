@@ -527,6 +527,58 @@ Net effect: a 360px-wide phone now sees the rule of the game without reading, an
 
 ---
 
+## Sprint 14 — Theme picker + canvas-cache invalidation (2026-04-17)
+
+### Lens
+
+**Player personalization.** After 13 sprints of gameplay/retention polish, the palette was still fixed. "Void" (cyan on deep blue) is striking but any single palette fatigues over ten-plus sessions. A theme picker is a classic casual-game personalization lens — cheap to add, zero gameplay risk, and it forces a useful audit of color-token discipline.
+
+The actual engineering meat is not choosing swatches — it's the **cache invalidation** that the canvas render demands. We already have a `cssVar` cache (Sprint 10 perf work) and a bucketed `CanvasGradient` cache for the vignette. Both snapshot colors. Both must be invalidated on theme swap, or the overlay updates cleanly while the gameplay canvas keeps painting yesterday's palette.
+
+### Changes
+
+- **Three palettes** — `void` (current cyan/deep-blue), `sunset` (amber/plum), `forest` (teal/dark-green). Declared as `:root` + `[data-theme="sunset"]` + `[data-theme="forest"]` CSS variable blocks.
+- **New token `--highlight`** (was hardcoded `#ffd24a` everywhere) — carries the celebration-gold role, now theme-adaptive (gold → pink → lime).
+- **New tokens `--vignette-near-rgb` + `--vignette-far-rgb`** — raw RGB triplets consumed by the canvas render for rgba() composition with runtime alpha. `CanvasGradient` can't take `color-mix`, and storing `rgb(...)` strings can't add alpha, so triplets are the pattern.
+- **`invalidateThemeCaches()`** — clears both `cssVar` and `vignetteCache`. Registered as a checklist for future additions.
+- **`applyTheme(t)`** — writes `document.documentElement.dataset.theme`, invalidates caches, syncs picker radio aria-state. Called synchronously before first `requestAnimationFrame` so no default-palette flash.
+- **Theme picker UI** — three circular swatch buttons on the start overlay; each swatch background uses hardcoded preview colors (NOT `var()`) so every theme shows its own preview regardless of active theme.
+- **`T` keyboard shortcut** — cycles void → sunset → forest → void. Works anywhere (start overlay, mid-run, gameover) so the player can A/B palettes quickly.
+- **Target-ring pulse on theme change** — `state.targetPopT = 1` plays the existing hit-pop animation, giving canvas-side proof that the swap reached gameplay rendering, not just overlay chrome.
+- **Purged dead code** — `--accent-alt` was written in Sprint 7 but never read; removed.
+
+### Patterns extracted → `company/skills/ux/theme-picker.md`
+
+- **`[data-theme="..."]` over classes** — specificity hygiene, single-value semantics, stackable with component selectors.
+- **RGB-triplet vars for canvas rgba() composition** — the "store `82, 92, 180` not `rgb(82, 92, 180)`" trick.
+- **Cache-invalidation checklist** — every color-derived cache (`cssVar`, `CanvasGradient`, offscreen canvas, etc.) must be registered in `invalidateThemeCaches()`. This is the non-obvious engineering burden of a theme picker on canvas games.
+- **Hardcoded swatch previews** — each swatch shows its own theme's colors. Counterintuitive until you notice the alternative (all swatches matching the active theme) is useless.
+- **Feedback pulse into canvas** — a one-frame gameplay-render gesture on theme change proves the swap reached the canvas layer.
+- **What NOT to theme** — celebration gradients (NEW BEST), shadow, radius, intrinsic-meaning reds (life-lost) all stay fixed. Over-theming makes palettes feel washy.
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 14 | Player personalization | 3 palettes + `T` cycle + canvas-cache invalidation plumbing + skill doc |
+
+### Cost
+
+- game.js: +55 lines (readTheme/writeTheme + applyTheme + invalidateThemeCaches + cycleTheme + picker click handler + T shortcut + vignette rgb-triplet swap)
+- index.html: +6 lines (theme picker radio group in start overlay + kbhint + help-modal entry)
+- style.css: +45 lines (sunset + forest `[data-theme]` blocks + .theme-picker + swatch previews) — plus ~15 in-place refactors from `#ffd24a` to `var(--highlight)`
+- One new skill doc (`ux/theme-picker.md`)
+
+### Next candidates
+
+- **Per-theme background particles** — sunset could have ember drift, forest could have falling petals. Zero-alloc particle pool (skill: `graphics/particle-fx.md`) is already sized for this; just need theme-gated spawn rules.
+- **Theme-conditional SFX** — forest theme's miss sfx could be a lower-register rustle instead of the sawtooth thud. Cheap to plumb through the existing `Sfx._env` interface.
+- **Ghost replay scrubber** — record last run's pulse positions, replay as low-alpha ghost overlay on the gameover screen.
+- **Share-card theme badge** — include theme name in share payload, maybe a small unicode-circle color hint.
+- **System-preference auto-theme** — `prefers-color-scheme` + candidate `prefers-contrast` hooks → default to a theme that matches the OS.
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

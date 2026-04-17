@@ -43,6 +43,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`ux/help-modal.md`](ux/help-modal.md) — `?` key + auto-pause discoverable help modal for stacked hidden mechanics
 - [`ux/leaderboard-local.md`](ux/leaderboard-local.md) — local top-N per-seed leaderboard with relative-time labels + new-row highlight
 - [`ux/streak-and-achievements.md`](ux/streak-and-achievements.md) — global daily-streak counter + first-run achievement unlocks (scoping matrix + active-vs-dormant rule)
+- [`ux/theme-picker.md`](ux/theme-picker.md) — `data-theme` palette swap + canvas-cache invalidation + RGB-triplet vars for rgba() composition
 
 ### QA
 - [`qa/casual-checklist.md`](qa/casual-checklist.md) — pre-ship checklist + multi-perspective sweep (player / mobile / onboarding / retention / distribution)
