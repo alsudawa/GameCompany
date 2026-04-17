@@ -1103,11 +1103,15 @@ html, body {
   border-radius: 6px;
   transition: color .15s, background .15s;
 }
-.ghost-link-btn:hover,
+.ghost-link-btn:hover {
+  color: var(--accent);
+  background: rgba(232, 233, 255, .05);
+}
 .ghost-link-btn:focus-visible {
   color: var(--accent);
   background: rgba(232, 233, 255, .05);
-  outline: none;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* ---------- Lifetime stats overlay (Sprint 26) ---------- */
@@ -1224,11 +1228,15 @@ html, body {
   cursor: pointer;
   transition: all .15s;
 }
-.stats-reset-btn:hover,
+.stats-reset-btn:hover {
+  background: rgba(255, 61, 107, .1);
+  color: rgba(255, 61, 107, 1);
+}
 .stats-reset-btn:focus-visible {
   background: rgba(255, 61, 107, .1);
   color: rgba(255, 61, 107, 1);
-  outline: none;
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
 }
 .stats-reset-btn.armed {
   background: rgba(255, 61, 107, .22);
@@ -1375,3 +1383,28 @@ html, body {
 }
 .swatch-name { color: var(--fg); opacity: .7; }
 .theme-swatch[aria-checked="true"] .swatch-name { opacity: 1; color: var(--accent); }
+
+/* ---------- Focus-visible keyboard rings (Sprint 35) ----------
+   Outline-based rings for all interactive elements that previously
+   relied only on the browser default (which is inconsistent across
+   engines and low-contrast against the dark chrome). outline-offset
+   pushes the ring off the element's border so it's distinguishable
+   from the selected-state outline some elements already carry. Kept
+   separate from :hover so keyboard focus is visibly different from
+   mouse hover — a keyboard user can tell "Space will activate THIS". */
+.btn:focus-visible,
+.icon-btn:focus-visible,
+.share-btn:focus-visible,
+.daily-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Theme swatches already use border-color for the selected state, so
+   the focus ring needs outline-offset >= 3px to read as a separate
+   layer. Dashed pattern is a belt-and-braces cue so a keyboard user
+   on the currently-selected swatch still sees they're focused there. */
+.theme-swatch:focus-visible {
+  outline: 2px dashed var(--accent);
+  outline-offset: 3px;
+  opacity: 1;
+}

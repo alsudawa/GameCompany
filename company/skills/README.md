@@ -49,6 +49,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`ux/retention.md`](ux/retention.md) — run-end stats, NEW BEST gating, mute persistence
 - [`ux/progress-feedback.md`](ux/progress-feedback.md) — in-play tier meter + run-history sparkline
 - [`ux/accessibility.md`](ux/accessibility.md) — redundant color coding, keyboard parity, reduced-motion gating
+- [`ux/focus-visible-audit.md`](ux/focus-visible-audit.md) — keyboard focus-ring coverage audit + outline-offset layering + split-selector rule for hover-vs-focus differentiation (dashed-ring pattern for selected-state collisions)
 - [`ux/share.md`](ux/share.md) — Web Share API + clipboard fallback for frictionless virality
 - [`ux/onboarding.md`](ux/onboarding.md) — looping CSS-animated demo + keyboard-shortcut hints on the start overlay
 - [`ux/two-phase-demo.md`](ux/two-phase-demo.md) — two-state start-overlay demo ("tap this, skip that") in one 5.2s single-animation cycle (phase-gap split + color-blind-safe labels + static side-by-side reduced-motion fallback)

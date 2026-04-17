@@ -1602,6 +1602,57 @@ The start-overlay `.demo` element predates the rhythm pivot (sprint 29). It show
 
 ---
 
+## Sprint 35 — Focus-visible keyboard-ring audit (accessibility lens) (2026-04-17)
+
+### Lens
+
+Earlier accessibility work covered screen-reader announcements (sprint 21-ish) and reduced-motion gating (passim), but focus-visible coverage was uneven: only `.ghost-link-btn` and `.stats-reset-btn` had explicit `:focus-visible` styles, and both collapsed hover and focus into the same rule with `outline: none`. Every *other* interactive element — the start button, help modal, stats close, mute icon, share button, theme swatches, daily links — relied on browser defaults, which are inconsistent across engines and low-contrast against void-pulse's dark chrome. A keyboard-only user couldn't reliably tell where focus was.
+
+### Audit findings
+
+- **5 classes had no `:focus-visible` style at all:** `.btn`, `.icon-btn`, `.share-btn`, `.daily-link`, `.theme-swatch`.
+- **2 classes had `:focus-visible` collapsed into a shared rule with `:hover`** and set `outline: none`: `.ghost-link-btn`, `.stats-reset-btn`. Keyboard users and mouse-hover users saw identical styling.
+- **Tab order is clean** — no `tabindex` overrides, all interactive elements are natively `<button>` or `<a>`, so they're reachable in source order.
+- **Overlay focus-trap** — not audited in this sprint (help/stats modals use native Tab flow; focus doesn't trap but stays within overlay because background is inert). Flagged for a future sprint.
+
+### Changes
+
+- **Consolidated focus-ring block** at the end of `style.css` (sprint 35 section header): `outline: 2px solid var(--accent); outline-offset: 2px` applied to `.btn`, `.icon-btn`, `.share-btn`, `.daily-link`.
+- **Dashed ring with offset 3px for `.theme-swatch:focus-visible`** — the solid `var(--accent)` border already signals the selected state, so the focus ring uses a dashed pattern and an extra outline-offset to read as a distinct layer.
+- **Split hover/focus for `.ghost-link-btn` and `.stats-reset-btn`** — both rules now have separate `:hover` (no outline change) and `:focus-visible` (adds accent / danger outline respectively) variants. Shared styles are duplicated inline rather than abstracted — 2 selectors isn't enough to warrant a custom-property indirection.
+
+### Patterns extracted → `company/skills/ux/focus-visible-audit.md` (new, ~130 lines)
+
+- Audit procedure: grep interactive elements, grep each class for `focus|outline`, keyboard-tab in the browser.
+- Split `:hover` from `:focus-visible` when they share non-outline styles — keyboard focus needs an *additional* cue, not just the same visual as mouse hover.
+- Outline-offset ≥2px so the ring reads as a separate layer from element borders.
+- Dashed pattern + bigger offset for elements with a selected-state border/outline.
+- Common mistakes: `*:focus { outline:none }` reset, ring color = background, overflow-hidden-parent clipping box-shadow fallbacks.
+- When NOT to add: decorative elements, parent-label coverage, immediate-focus-handoff buttons.
+
+### Wrap-up
+
+| Sprint | Angle | Outcome |
+|---|---|---|
+| 35 | Accessibility / keyboard | Focus-visible ring coverage for all interactive elements; new skill doc `ux/focus-visible-audit.md` |
+
+### Cost
+
+- style.css: ~28 lines added (consolidated focus-ring block + split hover/focus rules)
+- No HTML, no JS, no new assets
+- 1 new skill doc (`ux/focus-visible-audit.md`, ~130 lines)
+- README index: 1 new entry
+
+### Next candidates
+
+- **Overlay focus-trap audit** — help/stats modals don't explicitly trap focus; a Tab from the last element escapes into the underlying page. Low urgency (page underneath is inert during overlay), but flaggable.
+- **Per-band BGM intensity hint in HUD** — color the beat ring by current band.
+- **Beat indicator as onboarding cue** — pulse during start overlay.
+- **Localization pass** / **service worker** (still open).
+- **Stats-panel sparkline** / **stats export** (still open).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |
