@@ -88,6 +88,20 @@ With custom properties, *one* keyframe references `var(--tint)` and the variable
 
 This also means: **the animation auto-theme-swaps.** `--accent` changes at `:root` → `--beat-tint` (= `var(--accent)`) re-resolves → the next pulse uses the new accent. No animation rewrite.
 
+### When you DON'T need the custom-property indirection
+
+If the state-tint lands directly on a property you can override per-state (e.g. `color:` on the element itself), skip the custom-property step and override the property directly:
+
+```css
+#combo              { color: var(--accent); transition: color .22s ease; }
+#combo[data-tier="mid"]  { color: color-mix(in srgb, var(--accent) 40%, var(--highlight)); }
+#combo[data-tier="peak"] { color: var(--highlight); }
+```
+
+The custom-property indirection is only needed when the tint has to pass into a context you can't override per-state — a keyframe, a pseudo-element's color, a multi-property composition (`box-shadow` + `background` both using the same varying color). For simple "one state → one property value," direct override is shorter and clearer.
+
+**Rule of thumb:** if your tint appears in exactly one CSS property declaration on the element, direct-override. If it appears in 2+ places or inside an `@keyframes`, introduce `--tint` and reference it from all the uses.
+
 ## Tuning
 
 - **Collapse adjacent states that should look the same.** If `warm` and `easy` both read as "calm intro," map them to the same tint. Don't invent 5 tints for 5 states if only 3 semantic tiers exist. The void-pulse mapping collapses 5 bands → 4 visual states (warm/easy → neutral; mid/hard → accent; climax → peak; out → accent).

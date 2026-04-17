@@ -117,14 +117,25 @@ html, body {
 }
 #combo {
   font-size: 22px;
+  /* Tier-tinted color — default is accent (low tier). data-tier overrides
+     below promote to blended (mid) or highlight (peak). Reuses the Sprint
+     39 state-tint pattern (graphics/state-tint.md). Transition smooths the
+     tier-up/tier-down color change so it reads as a progressive ramp
+     rather than a hard swap. */
   color: var(--accent);
+  transition: color .22s ease, opacity .12s ease;
   letter-spacing: -0.01em;
-  transition: opacity .12s ease;
   min-height: 22px;
   min-width: 5ch;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+/* Mid tier (mult ×2 / ×2.5) — color-mix between accent and highlight.
+   Reads as "warming up" between cool-accent and warm-highlight. */
+#combo[data-tier="mid"]  { color: color-mix(in srgb, var(--accent) 40%, var(--highlight)); }
+/* Peak tier (mult >= ×3) — full highlight. Gold/warm in most themes,
+   signaling "you've entered the money zone." */
+#combo[data-tier="peak"] { color: var(--highlight); }
 #comboMeter {
   width: 72px;
   height: 3px;

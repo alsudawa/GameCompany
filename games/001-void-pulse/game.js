@@ -2476,6 +2476,7 @@
   let hudScoreBeaten = false;
   let lastComboFillPct = -1;
   let lastComboActive = false;
+  let lastComboTier = null;
 
   // ---------- Pause (visibility / blur) ----------
   function pauseGame() {
@@ -2937,6 +2938,21 @@
     } else {
       hudCombo.textContent = '';
     }
+    // Tier-tint the combo text so the multiplier progression is visible at
+    // a glance — reuses the state-tint pattern (graphics/state-tint.md).
+    // 3 tiers: low (<×2) = default accent, mid (×2-×2.5) = blended, peak
+    // (>=×3) = highlight. When combo resets, attribute is cleared so the
+    // CSS default takes over (only applies when there's text to tint).
+    let tier;
+    if (state.combo === 0) tier = null;
+    else if (m >= 3) tier = 'peak';
+    else if (m >= 2) tier = 'mid';
+    else tier = 'low';
+    if (tier !== lastComboTier) {
+      if (tier === null) hudCombo.removeAttribute('data-tier');
+      else hudCombo.dataset.tier = tier;
+      lastComboTier = tier;
+    }
 
     // Combo progress meter — distance to next multiplier step (COMBO_STEP).
     // At cap, stay full. Hide entirely when combo == 0 to reduce idle noise.
@@ -3126,6 +3142,8 @@
     hudScoreBeaten = false;
     lastComboFillPct = -1;
     lastComboActive = false;
+    lastComboTier = null;
+    if (hudCombo) hudCombo.removeAttribute('data-tier');
     comboMeter.classList.remove('active');
     comboMeterFill.style.width = '0%';
     // clear any lingering pause state from a previous run

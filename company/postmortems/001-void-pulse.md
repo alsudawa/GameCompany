@@ -1967,6 +1967,84 @@ Together they cover both the visual and the mechanical sides of keyboard a11y.
 
 ---
 
+## Sprint 41 — Combo-tier tint (pattern reuse validation)
+
+**Lens:** Sprint 39 extracted the state-tint pattern (`graphics/state-tint.md`) with the explicit claim "this generalizes beyond bands — combo tiers, health, power-ups, day/night." Two sprints later: **does the pattern actually reuse cleanly on a second surface?** Or did I abstract prematurely?
+
+The combo number in the HUD currently reads as one color (accent) from ×1 to ×4, which is visually static during the most dynamic part of the run. The multiplier climb is a progression; the color should reflect it.
+
+### Design
+
+Map the 7 multiplier tiers (×1.0, ×1.5, ×2.0, ×2.5, ×3.0, ×3.5, ×4.0) to 3 visual tiers:
+
+| Tier | Multiplier | Tint |
+|---|---|---|
+| low | 1.0–1.5 | `var(--accent)` (cool, default) |
+| mid | 2.0–2.5 | `color-mix(accent 40%, highlight)` (warming) |
+| peak | 3.0–4.0 | `var(--highlight)` (peak gold) |
+
+3 tiers, not 7 — the goal is readable progression, not fine-grained feedback. A tier-up happens once every ~10 combos, which feels like a meaningful event rather than color churn.
+
+### Implementation (pattern reuse check)
+
+**What worked identically to Sprint 39 (bands → beat ring):**
+1. `data-tier` attribute on the target element (`#combo`) instead of a class.
+2. CSS custom property… wait, actually I *didn't* need a custom property here because the tint IS the color directly — no composition needed. Just `color: var(--accent)` default, overridden by `#combo[data-tier="peak"] { color: var(--highlight) }`.
+3. `lastComboTier` guard — only write to `dataset` when the tier actually changes.
+4. Reset in start/gameover cleanup (`removeAttribute('data-tier')`).
+5. `lastIndexOf`-style rightmost-wins logic wasn't relevant here (no tie collision).
+
+**What was different:**
+- Bands came from a fixed schedule (`BAND_SCHEDULE[barIdx]`); combo tier is derived from a runtime-computed `comboMult()`. The *source* of the state is different but the *flow* (state → attribute → CSS) is identical.
+- I didn't introduce `--combo-tint` custom property because the color goes *straight* on the element (not inside a keyframe). The Sprint 39 pattern used the var specifically because the color had to propagate into `@keyframes beatPulseAccent`. For a static `color:` property, you can just override directly. **The custom-property indirection is only needed when the tint has to pass into a non-overridable context (keyframe, pseudo-element, etc.).**
+
+This is a useful refinement of the skill doc — the custom-property step is optional when the tint lands on a property you can directly override per-state.
+
+### Key decisions
+
+- **Added a CSS `transition: color .22s ease`** — without it, the tier-up is a hard snap. With it, the color lerps over 220ms, reading as "leveling up" rather than "random swap." The Sprint 39 version didn't need this because the beat pulse animation already encompassed the color change; here the combo number isn't animated, so the transition is the only motion.
+- **3 tiers, not 7.** Two cents of cognitive load per digit of multiplier adds up. 3 tiers → 3 memorable color states (cool / warming / peak). Matches the pattern doc's heuristic: "collapse adjacent states that should look the same."
+- **Kept the existing meter-fill gradient (`--accent → --highlight`) untouched.** The meter already communicates "ramping toward highlight." The text-number tier-tint reinforces this without duplicating the signal.
+
+### What the pattern doc needs updating for
+
+The skill doc (`graphics/state-tint.md`) currently implies the custom-property step is always needed. The correction:
+- **Custom property required** when the tint enters a context you can't override (keyframe, :before/:after color that needs the varying color, multi-property composition like `color-mix`).
+- **Direct property override** when the tint lands on a single property on the element itself. Simpler, fewer moving parts.
+
+I'll note this in the Sprint 41 section rather than editing the skill doc — the doc's general guidance is still correct; Sprint 41 is just a worked example of the simpler case.
+
+### Pattern reuse verdict
+
+**Validated.** Applying the pattern to a second surface took ~15 lines of diff across game.js + style.css. No new infrastructure, no edge cases. The pattern *also* suggested a useful refinement (direct-override vs custom-property indirection) that I wouldn't have noticed without a second worked example.
+
+The skill doc remains largely correct. The only "gotcha" is that the first application (Sprint 39) happened to be the complex case (keyframe), so the pattern was documented slightly over-engineered for the simple case.
+
+### Wrap-up
+
+- Combo text color progresses cool → warming → peak as multiplier climbs.
+- Theme-swap still works (tints resolve through `:root` cascade).
+- CSS transition smooths the tier-up so it reads as a ramp, not a snap.
+- Zero JS color logic — JS only sets the attribute.
+- Pattern reuse confirmed on a second surface with ~15 lines of code; skill doc validated with one refinement note.
+
+### Cost
+
+- game.js: +~15 lines (lastComboTier var, tier compute in updateHud, reset)
+- style.css: +10 lines (2 tier overrides + transition) + 1 comment block
+- 0 new skill docs (reuse validates Sprint 39's)
+- 0 README changes (no new doc)
+
+### Next candidates
+
+- **Update `graphics/state-tint.md`** — add a "when do you need the custom-property indirection" subsection, pointing at direct-override as the simpler default.
+- **Keyboard-only full-flow verification** — with Sprint 40's focus work done, this is the natural live-replay audit.
+- **Gameover screen focus handling** — explicit retry button or auto-focus, since the overlay currently has no focused element.
+- **Per-tier combo-milestone SFX variant** — the state-tint is visual; pair it with a subtle audio tier-up cue for redundancy.
+- **Localization scaffolding** / **service worker** / **gamepad input** (still open).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |
