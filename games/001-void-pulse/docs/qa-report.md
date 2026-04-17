@@ -2394,3 +2394,54 @@ Verify that the HUD no longer machine-guns score updates to screen readers, that
 1. **BGM ↔ chart sync verified correct** — anchor and first pulse both at 1.0s; pause/resume re-align via wall-clock. No perceptible drift. ✓
 2. **Score rebalancing confirmed** — new max ~37.5k (vs 46k Sprint 29); SCHEMA_VERSION stays 2 (formula unchanged, content denser). ✓
 3. **All accessibility guards in place** — chromatic aberration, bloom, hazard-wash all gated on `!reducedMotion`; hazard visual signals triple-redundant. ✓
+
+---
+
+# Sprint 38 retest
+
+**Tester:** @qa-tester (delegated audit)
+**Scope:** Sprints 32–37 (6 feature sprints since the Sprint 31 audit)
+**Method:** Code-level correctness audit, not live replay. Verified against game.js / style.css / index.html.
+**Verdict:** **PASS** — no P0/P1/P2 findings.
+
+## Coverage
+
+| Sprint | Feature | Verdict | Notes |
+|---|---|---|---|
+| 32 | HUD beat indicator | PASS | state.t-driven (BGM-independent); reflow-retrigger clean; reduced-motion gated |
+| 33 | BGM sidechain duck on hazard-hit | PASS | anchor-before-ramp lets overlapping ducks compose; mute/pause/stop all cancel scheduled values |
+| 34 | Two-phase onboarding demo | PASS | single 5.2s animation origin; phase split at 48%/52%; semantic TAP/SKIP labels; side-by-side reduced-motion fallback |
+| 35 | Focus-visible audit | PASS | all buttons + icons + swatches have explicit focus rings; hover-vs-focus cleanly split; dashed+offset on `.theme-swatch` to avoid collision with aria-checked border |
+| 36 | Stats export | PASS | `hidden` gate on empty state; `.copied` feedback mirrors share-btn; accent palette distinguishes from destructive reset |
+| 37 | Stats-panel sparkline | PASS | `fillSparkline(el,scores,W,H,SLOTS)` reusable; `.spark-svg` shared CSS; rightmost-tie rule prevents `.latest`+`.best` double-class |
+
+## Cross-cutting checks
+
+- **BGM ↔ chart sync through mute/pause/tab-hide:** still stable post-Sprint 33 duck. `cancelScheduledValues` at mute/pause/stop clears any in-flight duck envelope — no residual gain-hold on resume.
+- **Reduced-motion coverage:** beat indicator (style.css:339), demo pulses (:708), demo labels (:711) all gated. Juice effects already covered in prior sprints.
+- **Colorblind safety:** hazard triple-redundant (color+stroke+dashed); demo uses semantic TAP/SKIP text; tension flash is time-domain not color-only.
+- **Input/audio gesture-gate:** audio still correctly gated on first user gesture; dt cap at 1/30 holds; retry path ~650ms responsive.
+- **Console hygiene:** no `console.warn`/`console.error` in Sprint 32-37 code paths.
+
+## Minor observations (no action needed)
+
+- **Sparkline empty state is belt-and-braces:** both CSS-gated (`.stats-empty .stat-row-spark { display: none }`) and runtime-cleared (`while(firstChild)removeChild`). Redundant but safe; both defenses survive a future CSS-only or JS-only rewrite.
+- **Beat indicator reflow trick:** `void beatEl.offsetWidth;` at game.js:2122 is the standard CSS-animation-restart pattern. Documented pattern, no issue.
+
+## Preservation-worthy positives
+
+1. Beat indicator derives from `state.t`, not BGM playhead — works muted, robust to audio timing jitter.
+2. BGM duck uses layered guards (`running` / `paused` / `muted` / `ctx`) — no silent failures, no undefined-gain edge cases.
+3. Demo is pure CSS, zero JS — auto-pauses on tab-hide via browser default.
+4. Focus-visible rings split from `:hover` — keyboard users get a distinct visual, mouse users aren't double-styled.
+5. Stats export mirrors share-btn UX — consistent clipboard feedback pattern across the app.
+6. Sparkline `lastIndexOf(max)` + `i === bestIdx && i !== latest` gives rightmost-tie-prefers-latest without double-class fight.
+
+## Ideas for future sprints (non-bugs, design suggestions)
+
+- **Per-band beat-ring tint** — color the beat ring by current BGM band (calm=subtle, tense=accent, climax=highlight) so the indicator reinforces the dynamics arc.
+- **Overlay focus-trap audit** — open Help or Stats modal by keyboard, Tab: does focus escape to the game HUD underneath? Worth a live-replay audit next sprint.
+- **JSON export disclosure** — the current copy-as-text is great for casual share; a secondary "Copy as JSON" for power users / data archivists would be a small add.
+- **Localization scaffolding** — strings are currently inline in index.html/game.js. A simple i18n key→string table would open up non-English builds.
+
+**Sign-off:** All six sprints verified correct. Game is stable for ongoing rotation. Recommend continuing the sprint cadence.

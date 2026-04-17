@@ -1755,6 +1755,77 @@ Sprint 36 shipped a text-based stats export; this sprint closes the loop on the 
 
 ---
 
+## Sprint 38 — QA audit (Sprints 32–37 retest)
+
+**Lens:** 6 feature sprints in a row since Sprint 31's audit — due for an independent verification pass before piling on more features. The question: *did anything silently regress?*
+
+### Method
+
+Delegated to the @qa-tester subagent (Haiku) with a scoped prompt covering each of the six sprints. Code-level correctness audit (not live replay) against game.js / style.css / index.html, with cross-cutting BGM sync, reduced-motion, colorblind, console hygiene, and input-gesture-gate checks.
+
+### Result
+
+**PASS — no P0/P1/P2 findings.**
+
+Sprint-by-sprint coverage:
+
+| Sprint | Feature | Verdict |
+|---|---|---|
+| 32 | HUD beat indicator | PASS |
+| 33 | BGM sidechain duck | PASS |
+| 34 | Two-phase onboarding demo | PASS |
+| 35 | Focus-visible audit | PASS |
+| 36 | Stats export | PASS |
+| 37 | Stats-panel sparkline | PASS |
+
+Full retest report appended to `games/001-void-pulse/docs/qa-report.md` under the `# Sprint 38 retest` heading.
+
+### What the audit confirmed
+
+- **BGM duck composes correctly under overlap** — `setValueAtTime(g.value, t)` before the attack ramp anchors the envelope at current gain, so overlapping ducks smoothly re-anchor instead of snapping. Verified the guard layering (`running`/`paused`/`muted`/`ctx`) prevents silent failures.
+- **Beat indicator is BGM-independent** — derives from `state.t`, so it works when muted. Reflow-retrigger (`void offsetWidth`) restarts CSS animation on every beat.
+- **Demo is pure CSS with zero JS** — auto-pauses on tab-hide via browser default. Single 5.2s animation origin means the two phases can't drift apart even under backgrounded-tab throttling.
+- **Focus rings don't collide with selected-state borders** — `.theme-swatch` uses dashed + 3px offset specifically to avoid collision with the aria-checked solid border.
+- **Sparkline best-tie rule is correctly implemented** — `lastIndexOf(max)` + `i === bestIdx && i !== latest` prevents `.latest` + `.best` double-class fight.
+- **Cross-cutting:** reduced-motion, colorblind-redundancy, console hygiene all clean.
+
+### Observations (not bugs)
+
+- **Sparkline empty-state is belt-and-braces** — gated by both CSS (`.stats-empty .stat-row-spark { display: none }`) and JS (`while(firstChild)removeChild`). Redundant but safe; either defense alone would suffice, and keeping both survives a future rewrite of either surface.
+- **Beat reflow-retrigger** — standard CSS-animation-restart pattern; documented.
+
+### Ideas surfaced by the audit (candidates for coming sprints)
+
+- Per-band beat-ring tint (calm/tense/climax color mapping)
+- Overlay focus-trap audit (live-replay, Tab inside modals)
+- JSON export extension for power users
+- Localization scaffolding (i18n key→string table)
+
+### Patterns extracted
+
+None new — the audit validated existing pattern docs (`audio/sidechain-duck.md`, `ux/two-phase-demo.md`, `ux/focus-visible-audit.md`, `ux/stats-export.md`, `ux/sparkline.md`) rather than surfacing new ones. A clean-pass audit is itself evidence that the skill library is accurately capturing what ships.
+
+### Wrap-up
+
+6-sprint cadence between audits seems healthy. No fixes required means no "Sprint 38 fix commit" — just a QA report appendix and this postmortem section. Sprint 39 can resume feature work with confidence that the foundation is solid.
+
+### Cost
+
+- 1 QA subagent delegation (~5 minutes)
+- qa-report.md: +~60 lines (Sprint 38 retest appendix)
+- postmortem: +~55 lines (this section)
+- 0 code changes
+- 0 new patterns (skill library validated as-is)
+
+### Next candidates
+
+- **Per-band beat-ring tint** — visual feedback for BGM dynamics arc.
+- **Overlay focus-trap audit** — live-replay of modal tab behavior.
+- **Keyboard-only flow audit** — can you complete a full run + share + theme change + stats review with no mouse?
+- **Localization scaffolding** / **service worker** (still open).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |
