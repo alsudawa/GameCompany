@@ -46,6 +46,29 @@
   const COMBO_STEP = 5;
   const COMBO_MULT_MAX = 4;
 
+  // Render-cache constants — pre-allocated objects reused every frame to keep
+  // GC pressure off the hot path. Vignette opacity has 6 distinct values
+  // bucketed by combo heat; reusing one CanvasGradient per bucket avoids
+  // allocating a new gradient every frame.
+  const VIGNETTE_BUCKETS = 6;
+  const vignetteCache = new Array(VIGNETTE_BUCKETS);
+  const HEARTBEAT_DASH = [14, 8];
+  const NO_DASH = [];
+
+  // Adaptive quality — sample the first ~60 render frames; if median dt > 22ms
+  // (under ~45fps), drop the starfield to lighten the per-frame fillRect count.
+  const ADAPTIVE_SAMPLE_FRAMES = 60;
+  const ADAPTIVE_BUDGET_MS = 22;
+  const dtSamples = new Float32Array(ADAPTIVE_SAMPLE_FRAMES);
+  let dtSampleIdx = 0;
+  let dtSamplesFull = false;
+  let renderStarfield = true;
+
+  // Dev FPS overlay (?fps=1)
+  const SHOW_FPS = (() => {
+    try { return new URLSearchParams(location.search).get('fps') === '1'; } catch { return false; }
+  })();
+
   // ---------- Seeded RNG (for daily challenge) ----------
   // mulberry32 — small, fast, good distribution for casual-game RNG.
   // Deterministic per seed so `?seed=20260417` always produces the same
@@ -601,8 +624,13 @@
 
   function loseLife() {
     state.combo = 0;
+    const lostIdx = state.lives - 1;
     state.lives -= 1;
     updateLivesUI();
+    // Flash the just-lost glyph so the player perceives the hit at HUD level,
+    // not just as a missed pulse on the canvas.
+    const glyphs = hudLives.querySelectorAll('.life');
+    if (lostIdx >= 0 && glyphs[lostIdx]) retriggerClass(glyphs[lostIdx], 'lost-flash');
     if (state.lives <= 0 && !state.deathCam) {
       // Enter death-cam: slow the sim for a dramatic beat before the
       // gameover overlay. Fires exactly once (guarded on !deathCam) so a
@@ -618,8 +646,27 @@
     }
   }
 
+  function ensureLifeGlyphs(n) {
+    let glyphs = hudLives.querySelectorAll('.life');
+    while (glyphs.length < n) {
+      const span = document.createElement('span');
+      span.className = 'life';
+      span.textContent = '\u25EF'; // ◯
+      hudLives.appendChild(span);
+      glyphs = hudLives.querySelectorAll('.life');
+    }
+    while (glyphs.length > n) {
+      hudLives.removeChild(glyphs[glyphs.length - 1]);
+      glyphs = hudLives.querySelectorAll('.life');
+    }
+    return glyphs;
+  }
   function updateLivesUI() {
-    const glyphs = hudLives.querySelectorAll('.life');
+    // Render exactly max(STARTING_LIVES, state.lives) glyphs so a granted
+    // bonus life is actually visible (was previously invisible — state.lives
+    // could be 4 while only 3 glyphs existed in the HTML).
+    const totalSlots = Math.max(STARTING_LIVES, state.lives);
+    const glyphs = ensureLifeGlyphs(totalSlots);
     for (let i = 0; i < glyphs.length; i++) {
       const alive = i < state.lives;
       glyphs[i].style.opacity = alive ? '1' : '0.25';
@@ -822,20 +869,31 @@
     ctx.clearRect(0, 0, W, H);
 
     // Starfield — drawn first, faintly twinkling; gets softly washed by the
-    // vignette above it so it reads as "depth" not "pattern".
-    ctx.fillStyle = getVar('--fg');
-    for (const s of stars) {
-      const tw = 0.5 + 0.5 * Math.sin(state.t * 1.2 + s.phase);
-      ctx.globalAlpha = 0.18 + tw * 0.22;
-      ctx.fillRect(s.x - s.size / 2, s.y - s.size / 2, s.size, s.size);
+    // vignette above it so it reads as "depth" not "pattern". Skipped on
+    // adaptive-quality drop (see ADAPTIVE_BUDGET_MS) — the vignette below
+    // still provides depth.
+    if (renderStarfield) {
+      const twT = state.t * 1.2;
+      ctx.fillStyle = getVar('--fg');
+      for (const s of stars) {
+        const tw = 0.5 + 0.5 * Math.sin(twT + s.phase);
+        ctx.globalAlpha = 0.18 + tw * 0.22;
+        ctx.fillRect(s.x - s.size / 2, s.y - s.size / 2, s.size, s.size);
+      }
+      ctx.globalAlpha = 1;
     }
-    ctx.globalAlpha = 1;
 
-    // background vignette (intensifies with combo)
-    const heat = Math.min(1, state.combo / 30);
-    const grad = ctx.createRadialGradient(CENTER_X, CENTER_Y, 80, CENTER_X, CENTER_Y, 640);
-    grad.addColorStop(0, `rgba(82, 92, 180, ${0.22 + 0.2 * heat})`);
-    grad.addColorStop(1, 'rgba(15, 18, 38, 0)');
+    // background vignette (intensifies with combo) — cached by heat-bucket so we
+    // don't allocate a fresh CanvasGradient + rgba string every frame.
+    const heatBucket = Math.min(VIGNETTE_BUCKETS - 1, Math.floor(Math.min(1, state.combo / 30) * VIGNETTE_BUCKETS));
+    let grad = vignetteCache[heatBucket];
+    if (!grad) {
+      const a = 0.22 + 0.2 * (heatBucket / (VIGNETTE_BUCKETS - 1));
+      grad = ctx.createRadialGradient(CENTER_X, CENTER_Y, 80, CENTER_X, CENTER_Y, 640);
+      grad.addColorStop(0, 'rgba(82, 92, 180, ' + a.toFixed(3) + ')');
+      grad.addColorStop(1, 'rgba(15, 18, 38, 0)');
+      vignetteCache[heatBucket] = grad;
+    }
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
 
@@ -883,12 +941,12 @@
       const isHb = p.heartbeat;
       ctx.strokeStyle = isHb ? getVar('--danger') : getVar('--fg');
       ctx.lineWidth = (p === judgePulse ? 4.5 : 3) + (isHb ? 1.5 : 0);
-      if (isHb) ctx.setLineDash([14, 8]);
+      if (isHb) ctx.setLineDash(HEARTBEAT_DASH);
       ctx.globalAlpha = Math.min(1, 0.5 + rDraw / 260);
       ctx.beginPath();
       ctx.arc(CENTER_X, CENTER_Y, rDraw, 0, Math.PI * 2);
       ctx.stroke();
-      if (isHb) ctx.setLineDash([]);
+      if (isHb) ctx.setLineDash(NO_DASH);
     }
     ctx.globalAlpha = 1;
 
@@ -990,7 +1048,51 @@
     }
     const alpha = Math.min(1, acc / FIXED_DT);
     render(alpha);
+    sampleFrameDt(dt);
+    if (SHOW_FPS) updateFpsOverlay(dt);
     if (!state.over) requestAnimationFrame(frame);
+  }
+
+  // Dev FPS overlay — built lazily, only when ?fps=1. Updates twice a second
+  // with smoothed FPS + a "low" tag if adaptive quality kicked in.
+  let fpsEl = null;
+  let fpsAccum = 0;
+  let fpsFrames = 0;
+  let fpsAccumTime = 0;
+  function updateFpsOverlay(dt) {
+    if (!fpsEl) {
+      fpsEl = document.createElement('div');
+      fpsEl.id = 'fpsOverlay';
+      fpsEl.style.cssText = 'position:absolute;top:6px;left:6px;z-index:99;font:11px ui-monospace,Menlo,monospace;color:#9eb;background:rgba(0,0,0,.45);padding:2px 6px;border-radius:4px;pointer-events:none;letter-spacing:.04em';
+      app.appendChild(fpsEl);
+    }
+    fpsAccum += dt;
+    fpsFrames++;
+    fpsAccumTime += dt;
+    if (fpsAccumTime >= 0.5) {
+      const fps = fpsFrames / fpsAccum;
+      fpsEl.textContent = fps.toFixed(0) + ' fps' + (renderStarfield ? '' : ' · low');
+      fpsAccum = 0;
+      fpsFrames = 0;
+      fpsAccumTime = 0;
+    }
+  }
+
+  // Adaptive quality — collect dt for the first ~60 frames after start. If
+  // median dt exceeds the budget, we're on a slow device → drop the starfield.
+  // Uses median rather than mean so a single 200ms hitch (e.g. JIT warmup)
+  // doesn't trigger the downgrade.
+  function sampleFrameDt(dt) {
+    if (dtSamplesFull) return;
+    dtSamples[dtSampleIdx++] = dt * 1000;
+    if (dtSampleIdx >= ADAPTIVE_SAMPLE_FRAMES) {
+      dtSamplesFull = true;
+      const arr = Array.from(dtSamples).sort((a, b) => a - b);
+      const median = arr[arr.length >> 1];
+      if (median > ADAPTIVE_BUDGET_MS) {
+        renderStarfield = false;
+      }
+    }
   }
 
   // ---------- 8. Flow ----------
@@ -1051,6 +1153,11 @@
     if (state.bonusLifeGranted) {
       state.comboMilestoneText = '+1 LIFE';
       state.comboMilestoneFade = 1.1;
+      // Also flash the bonus glyph itself so the player learns "the gold one
+      // was the freebie" — reinforces the +1 LIFE text with a HUD anchor.
+      const glyphs = hudLives.querySelectorAll('.life');
+      const bonusIdx = state.lives - 1;
+      if (glyphs[bonusIdx]) retriggerClass(glyphs[bonusIdx], 'bonus-glow');
     }
 
     lastTime = performance.now();

@@ -24,6 +24,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`graphics/particle-fx.md`](graphics/particle-fx.md) — canvas particle pool
 - [`graphics/backdrop.md`](graphics/backdrop.md) — zero-alloc starfield, depth via twinkle
 - [`graphics/death-cam.md`](graphics/death-cam.md) — slow-mo freeze-frame beat on fatal endings
+- [`graphics/perf-budget.md`](graphics/perf-budget.md) — zero-alloc render audit + adaptive quality + dev FPS overlay
 
 ### Audio
 - [`audio/web-audio-sfx.md`](audio/web-audio-sfx.md) — oscillator + envelope SFX recipes; spawn-tick anchor

@@ -93,6 +93,9 @@ html, body {
   letter-spacing: -0.01em;
   transition: opacity .12s ease;
   min-height: 22px;
+  min-width: 5ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 #comboMeter {
   width: 72px;
@@ -122,7 +125,28 @@ html, body {
   font-size: 22px;
   line-height: 1;
   color: var(--accent);
-  transition: color .1s ease, opacity .1s ease;
+  transition: color .1s ease, opacity .1s ease, transform .14s ease;
+  display: inline-block;
+}
+.life.lost-flash {
+  animation: lifeLostFlash .42s ease-out;
+}
+.life.bonus-glow {
+  animation: lifeBonusGlow 1.4s ease-out 1;
+  color: #ffd24a !important;
+}
+@keyframes lifeLostFlash {
+  0%   { color: var(--danger); transform: scale(1.4); text-shadow: 0 0 14px rgba(255, 61, 107, .9); }
+  50%  { color: var(--danger); transform: scale(1.0); text-shadow: 0 0 6px  rgba(255, 61, 107, .6); }
+  100% { color: var(--subtle); transform: scale(1.0); text-shadow: none; }
+}
+@keyframes lifeBonusGlow {
+  0%   { color: #ffd24a; transform: scale(1.5); text-shadow: 0 0 18px rgba(255, 210, 74, .9); }
+  60%  { color: #ffd24a; transform: scale(1.0); text-shadow: 0 0 10px rgba(255, 210, 74, .55); }
+  100% { color: #ffd24a; transform: scale(1.0); text-shadow: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .life.lost-flash, .life.bonus-glow { animation: none; }
 }
 
 .overlay {

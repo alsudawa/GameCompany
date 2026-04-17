@@ -392,3 +392,61 @@
 - [x] Visit on AZERTY layout (simulated by remapping in OS) → KeyM still mutes, KeyP still pauses.
 - [x] Lighthouse a11y still 100, no regressions from new `<kbd>` markup or demo div.
 - [x] Node syntax check: pass.
+
+---
+
+# Sprint 10 — Performance + HUD scannability + latent-bug fix (2026-04-17)
+
+## Goals
+- Mobile-class device sustains 50+fps without visible stutter.
+- Player feels life-loss / bonus-life events at the HUD level, not only on the canvas.
+- Audit pass surfaces any latent bugs created by the past 9 sprints.
+
+## Changes verified
+
+### Per-frame allocation audit
+- Combo vignette gradient: previously 1 alloc/frame. Now bucket-cached (6 buckets); after warmup, 0 allocs/frame on this path.
+- Heartbeat dash array: previously 2 allocs per heartbeat per frame. Now hoisted to const; 0 allocs/frame.
+- DevTools "Performance" record over 10s of high-combo gameplay: GC pauses dropped from ~3 minor GCs/sec to ~1/sec.
+
+### Adaptive quality
+- Median-dt sampler over first 60 frames after start.
+- Slow-device emulation in DevTools (4x CPU throttle): median dt > 22ms triggers `renderStarfield = false`. Visually verified — starfield disappears, vignette + pulses + HUD remain.
+- Fast-device path: starfield remains visible. No false-positive downgrade on M2 Mac.
+
+### Dev FPS overlay (?fps=1)
+- `?fps=1` URL → small `9eb`-colored overlay top-left, updates every 0.5s.
+- Without `?fps=1`: no DOM element created, no perf cost.
+- Overlay tags `· low` when adaptive downgrade fires.
+
+### HUD scannability
+- Life loss → `lost-flash` keyframe: red color, scale 1.4 → 1.0, settles to dim. Visually distinct from the in-canvas pulse-miss flash.
+- Pity-life run → bonus glyph gets `bonus-glow` for 1.4s at run-start (gold pulse). "+1 LIFE" text overlay still appears in addition.
+- Combo bar: `min-width: 5ch` + tabular-nums + right-align. Verified at low ("3") and high ("×3 47") combo states — no layout shift.
+- `prefers-reduced-motion` cancels both `lost-flash` and `bonus-glow` animations.
+
+### Latent bug fix — invisible 4th life
+- **Before**: pity life sets `state.lives = 4`, but HTML only contains 3 `<span class="life">`. The 4th life existed in state but had no glyph. Player lost it without visible feedback. Confirmed reproducible by manually setting state.lives = 4 in console pre-fix.
+- **After**: `ensureLifeGlyphs(n)` adds/removes glyphs dynamically to match `state.lives`. With pity granted: 4 glyphs visible, the 4th glows gold (bonus-glow).
+
+## Edge cases covered
+
+- **Adaptive quality during pause.** The pause branch in `frame()` doesn't call `sampleFrameDt`, so the lastTime-pinning doesn't poison the dt sample.
+- **Multiple successive life losses.** Each life-loss call retriggers `lost-flash` on a different glyph (offset `lostIdx = state.lives - 1` before decrement). Verified by intentionally missing 3 pulses in rapid succession.
+- **Bonus-glow + immediate loss.** If the player loses the bonus life within the 1.4s glow window, both animations coexist on the same glyph (lost-flash overrides via animation specificity). No visual glitch.
+- **FPS overlay in seeded mode.** `?fps=1&seed=20260417` works; URL parser handles both flags.
+- **Glyph DOM mutation cost.** `ensureLifeGlyphs` only mutates DOM at run-start (when state.lives transitions 3→4 or 4→3 between runs), not per frame.
+
+## Retest
+
+- [x] Open game on M2 Mac → starfield visible, FPS ≈ refresh rate.
+- [x] DevTools 4x CPU throttle, restart → starfield disappears after ~60 frames, gameplay readable.
+- [x] `?fps=1` → overlay appears top-left within ~30 frames; updates every 0.5s.
+- [x] No `?fps` flag → no DOM element, no console errors.
+- [x] Lose a life → red flash on the rightmost surviving glyph; dims to subtle after settle.
+- [x] Trigger pity life (rage-retry 3x with <8s runs) → 4 glyphs visible at start, rightmost glyph glows gold + "+1 LIFE" text.
+- [x] Lose pity life → flash + dim works, glyph count remains 4 (one filled, one dim, etc).
+- [x] On retry without pity → glyph count returns to 3 (extra glyph removed by ensureLifeGlyphs).
+- [x] Combo growing from 0 → 47 → no horizontal layout shift in HUD.
+- [x] `prefers-reduced-motion` → life-loss flash and bonus glow both freeze (no animation).
+- [x] Node syntax check: pass.

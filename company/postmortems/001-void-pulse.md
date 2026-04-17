@@ -324,6 +324,62 @@ Net effect: a 360px-wide phone now sees the rule of the game without reading, an
 
 ---
 
+## Sprint 10 — Performance + HUD scannability + bug discovery (2026-04-17)
+
+### Lens
+- **Low-end mobile**: the game runs at 144fps on a desktop M-series Mac, but we've never opened DevTools on a Galaxy A12. A 2-3ms allocation budget per frame is invisible on fast hardware and a stutter generator on slow.
+- **HUD perception**: the player's eye spends most of the run on the canvas, not the HUD. Hits and bonuses need to telegraph at the HUD level *too*, not only on the canvas.
+- **Audit-as-improvement**: a perf pass forces a top-to-bottom code re-read, which is exactly when latent bugs surface.
+
+### Changes shipped
+
+1. **Per-frame allocation audit** —
+   - `ctx.createRadialGradient(...)` for the combo vignette was allocating one CanvasGradient + 2 colorStops + 1 rgba string every frame. Now bucket-cached into 6 heat-bucket gradients; cache fills in ≤6 frames, then zero allocations forever.
+   - `ctx.setLineDash([14, 8])` and `ctx.setLineDash([])` per heartbeat-pulse per frame replaced with module-level `HEARTBEAT_DASH` / `NO_DASH` constants. At 5+ heartbeats × 60fps that's 300+ saved allocations/sec.
+   - Hoisted `state.t * 1.2` out of the starfield loop (40 iterations per frame).
+2. **Adaptive quality** — sample dt for the first 60 frames after start; if median > 22ms (~45fps), drop the starfield. Median-not-mean so JIT warmup hitches don't trigger downgrade. Cosmetic-only — pulses, lives, score never dim.
+3. **Dev FPS overlay** behind `?fps=1` URL flag. Smoothed over 0.5s. Tags `· low` when adaptive quality has kicked in. Lazily built on first call so production runs pay zero cost.
+4. **HUD scannability** —
+   - `.life` glyph gets a `lost-flash` keyframe (red pulse + scale 1.4 → settle dim) when a life is lost. Previously the only feedback was a CSS opacity transition — easy to miss in peripheral vision.
+   - Pity-life bonus glyph gets a `bonus-glow` keyframe (gold pulse, 1.4s) at run-start so the player learns "the gold one is the freebie."
+   - `#combo` got `min-width: 5ch` + `text-align: right` + explicit `tabular-nums` so the multiplier badge ("×2 12") doesn't bounce the layout when text length changes.
+5. **Latent bug fix** — discovered during HUD audit: `state.lives` could reach 4 with the bonus life, but the HUD only had 3 hard-coded `<span class="life">` elements, so the 4th life was *invisible* — players had a phantom life they could lose without seeing. Replaced with `ensureLifeGlyphs(n)` that dynamically grows/shrinks the glyph list to match `state.lives`.
+
+### Patterns extracted
+
+- **Bucket-cached gradients** — discretize any continuous parameter to 4-8 buckets and the visual diff is imperceptible while the alloc cost goes to zero.
+- **Median-dt adaptive quality** — single-shot sampling, not continuous; drop cosmetic layers, never gameplay.
+- **Bug-find by audit lens** — perf audits force re-reading code with a different question, which exposes bugs unrelated to perf. Three of the last seven sprints found a non-trivial bug this way.
+
+### Sprint 2-10 wrap-up table
+
+| Sprint | Lens | Representative addition |
+|---|---|---|
+| 2 | Perceived timing | Time-domain judge windows |
+| 3 | Multi-perspective sweep | DPR, mute, keyboard, onboarding |
+| 4 | Smoothness + juice | 120Hz interpolation, haptics, starfield |
+| 5 | Robustness + trend | Tab-pause, combo meter, run-history |
+| 6 | Accessibility + virality | Colorblind dashing, Share API, pity life |
+| 7 | Ritual | Daily seeded challenge |
+| 8 | Moment-of-death + progression | Death-cam, per-seed history, tomorrow teaser |
+| 9 | Onboarding + power-user | CSS demo loop, M/P shortcuts |
+| 10 | Perf + HUD scannability + bug | Gradient cache, adaptive quality, dynamic lives glyphs |
+
+### Cost
+
+- game.js: +90 lines (cache + adaptive sampler + FPS overlay + dynamic lives + life-loss flash trigger)
+- style.css: +25 lines (lost-flash, bonus-glow keyframes, combo min-width)
+- One new skill doc (`graphics/perf-budget.md`)
+- One latent bug eliminated (invisible 4th life)
+
+### Next candidates
+
+- **Local leaderboard top-5 per seed** — small, satisfying retention loop on top of the daily mode
+- **Audio dynamics** — subtle master-bus rise (+2dB) when in beaten-best state; ducking on overlay open
+- **Help modal** (`?` shortcut) — one-screen explainer for combo/pity/daily/death-cam, since we've layered a lot of hidden mechanics
+
+---
+
 ## Credits
 
 | Role | Agent | Model |
