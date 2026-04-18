@@ -78,8 +78,14 @@ The rule: if it happens more than once a second, it doesn't get announced. Build
 | New best (gameover) | ✅ rolled into summary | high salience |
 | Streak bumped (daily) | ✅ rolled into summary | rewards returning |
 | Achievement unlocked (mid-run toast) | ✅ via central announcer | rare, meaningful |
-| Pause / resume | ❌ (visual overlay is enough) | overlay's `aria-modal` handles focus |
-| Theme change | ❌ (visual change speaks for itself) | keyboard T is self-announcing via button |
+| Mute toggle (M key + button) | ✅ "Sound muted." / "Sound on." | audio IS the feedback channel — muting it removes AT's only cue |
+| Theme cycle (T key + swatch click) | ✅ "Theme <name>." | palette flip is purely visual; keyboard T has no focusable anchor |
+| Pause (P key, visibility blur) | ✅ "Game paused." | state change; pause overlay's visual countdown isn't equivalent in AT |
+| Resume countdown start | ✅ "Resuming." | matches the visible "3 / 2 / 1" AT can't read as it mutates |
+| Bonus life granted (retroactive, on retry) | ✅ "Bonus life granted." | rare (once per qualifying run) and celebratory |
+| Help / stats modal open-close | ❌ (handled by dialog semantics) | `role="dialog"` + `aria-modal` + focus move already speak |
+| Mid-run "new best crossed" | ❌ in-run | gameover summary catches it |
+| Resume visible countdown ticks | ❌ | already-spoken visible text; double-announce is noise |
 
 Total: ~6-12 announcements per run. That's a one-utterance-per-5-seconds budget, well under "noisy".
 
@@ -179,3 +185,55 @@ Reasons to centralize:
 - **Prefix "Achievement unlocked:" rot in the UI** — if the visual toast *already* says "Achievement", the prefix reads redundant visually. Keep it only in the SR announcement; the visual element has its own framing.
 
 <!-- added: 2026-04-17 (001-void-pulse sprint 27) -->
+
+## Extension — the "AT-silent state change" audit (Sprint 47)
+
+The initial announcement table (above) was built from the *gameplay loop* moments: hit, combo, life, gameover. It missed an entire category: **global toggles that change persistent state without producing on-screen text**. These are the ones easiest to miss in review because they "feel fine" to a sighted developer — the UI does visibly flip — but provide zero feedback to assistive tech.
+
+Three filters to run when auditing a finished game for announcement gaps:
+
+1. **Is the feedback channel itself the thing being muted?** Mute is the canonical case — the audio track is *how the game tells the player what happened*. Toggling it off strips AT of every cue simultaneously. The announcement has to come via the *other* channel (the live region) for the same reason you wouldn't use `color: red` to indicate an error to a colorblind user: don't signal X's absence using only X.
+2. **Does the visual change have no a11y-tree expression?** Theme cycling flips the palette — a huge visual change, zero DOM/ARIA change. Same for any "flip" that only rewrites CSS custom properties. Announce it.
+3. **Does state persist across the next meaningful interaction, and is it kept silently?** Pause is persistent (until resumed). Mute is persistent (until toggled). Theme is persistent (across sessions). These are all worth one utterance each, because the next input the player makes depends on knowing the current state.
+
+Counter-rule — **do NOT announce state changes that already have AT-native expressive UI**:
+
+- **Modal dialogs** (`role="dialog"` + `aria-modal="true"` + focus move) speak their own opening. Adding `announce('Help opened.')` is redundant — the reader already says "Help dialog" when focus enters, because the title is wired via `aria-labelledby`.
+- **Form field edits** speak on change via the native input role.
+- **Tab focus moves** announce the target element's role/label; you don't need to duplicate that in a live region.
+- **Visible countdown text** that gets updated in a region the reader is already polling (or a visually-spoken element with an accessible label) — don't duplicate.
+
+### Decision rubric — when to add an announce() call
+
+Given a new feature or a polish pass, walk the checklist:
+
+| Signal | Action |
+|---|---|
+| State changes, + it's rare (≤ once per 5 sec typically) | ✅ announce |
+| State changes, + persists across later interactions | ✅ announce |
+| Visual-only change (palette, icon swap, animation) with no DOM text | ✅ announce |
+| Change is expressed through a native ARIA-aware pattern (dialog, input, focus target) | ❌ skip — don't double-announce |
+| Change happens in the inner gameplay loop (per-frame, per-tick, per-hit) | ❌ skip — use tier-gating or per-run rollup |
+| Change is already the subject of a central rollup (e.g. gameover summary) | ❌ skip — one call at rollup time |
+| Change is a *visible* countdown that assistive tech already polls via live region | ❌ skip — redundant |
+
+### Where to place the announce() call — centralize by action, not by handler
+
+Theme cycling has two entry points: keyboard `T` shortcut and swatch button clicks. The temptation is to add `announce()` at both. Instead, put it inside `setTheme()` (the single function both paths call). Same with mute: the state-update path can share the announce, but since mute has two handlers (keydown + button click) that *don't* funnel through a shared mutator, the pragmatic choice is to duplicate the one-liner at both sites. Prefer centralization when available; duplication is acceptable when no shared chokepoint exists.
+
+### Phrasing discipline
+
+- **Imperative or declarative, always ended with a period** — "Game paused." not "game paused" or "Paused!". Periods add a terminal pause that separates the announcement from whatever the reader polls next.
+- **Name the thing, not the verb** — "Theme sunset." reads cleaner than "Theme changed to sunset." AT users know *something changed* (that's why they're hearing it); the critical info is *to what*.
+- **Boolean toggles: both branches, symmetric phrasing** — "Sound muted." / "Sound on." (not "Sound muted." / "Sound unmuted." — the latter is mouthy).
+- **Resist adjectives** — "Game paused." not "Game is now paused." Shorter reads win because the next announcement might interrupt.
+
+### Anti-patterns specific to global-state announcements
+
+- **Announcing on page load** — do not fire `announce('Theme void.')` when the page first applies a stored theme. The user didn't take an action; the announcement is noise. Place the call inside the *setter* that user-actions invoke, and let the initial `applyTheme()` remain silent. (In void-pulse: `applyTheme()` fires on load; `setTheme()` wraps apply+announce and is only called by user gestures.)
+- **Announcing every frame of a pause countdown** — the pause overlay visually shows "3, 2, 1" — announcing each would interrupt itself every 1 sec. Announce the *transition* ("Resuming.") once, let the visual countdown finish silently.
+- **Announcing reflected state from settings** — if the user flips a toggle in a settings modal, the modal's form control already speaks via native role. Don't also live-region-announce it.
+- **Verbose composite announcements for tiny changes** — "Sound has been muted due to user pressing the mute button" is cargo. Five syllables max for common toggles.
+- **Using `role="alert"` instead of `role="status"` for mute/theme** — these aren't errors; they're acknowledgments. Alert would interrupt whatever the reader is mid-sentence on; polite status queues politely.
+
+<!-- added: 2026-04-18 (001-void-pulse sprint 47) -->

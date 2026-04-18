@@ -2665,6 +2665,129 @@ Manual audit as cold-boot new-profile player:
 
 ---
 
+## Sprint 47 — Screen-reader announcement coverage audit (global toggles)
+
+**Lens:** Sprint 27 established the live-region announcer with a deliberate *gameplay-loop* focus — score/combo/life moments got cataloged; the initial skill doc even listed "Pause" and "Theme change" under "don't announce" with rationales like *"overlay's aria-modal handles focus"* and *"keyboard T is self-announcing via button"*. After 20 subsequent sprints, the game accumulated several global toggles (mute via M key + button, theme cycle via T key + swatches, pause via P key + visibility blur, retroactive bonus-life celebration) that all flip persistent state with **zero AT-tree expression**. Re-audit from the global-state angle, not the gameplay-loop one.
+
+### The gap — category we missed
+
+The Sprint 27 catalog was correct *for the gameplay loop*. What it didn't ask was the inverse: **which actions a player can take that mutate persistent state without producing announceable UI?**
+
+Walking through each:
+
+| Action | How AT user currently learns the result | Verdict |
+|---|---|---|
+| Press **M** → mute toggles | Audio *absence* — but AT's only cue for hit/combo is audio. Silent mute has zero signal. | Gap |
+| Click **#mute** button | Same as M. `aria-pressed` flips, but that requires focus on the button; keyboard users who pressed M weren't focused there. | Gap |
+| Press **T** → theme cycles | Purely visual palette flip. No DOM text, no focus move, no icon swap. AT hears nothing. | Gap |
+| Click a swatch | Same as T. | Gap |
+| Press **P** → pause | Pause overlay appears (`aria-hidden` flips), BGM ducks. But the overlay has no `role="dialog"` wiring; AT user gets an audio gap and the visual "paused" text, but no spoken state. | Gap |
+| Press **P** again → resume countdown starts | Visual countdown "3, 2, 1" appears and mutates. No spoken transition. | Gap |
+| Earn bonus life on retry (retroactive celebration) | "+1 LIFE" milestone text flashes 1.1 sec, gold glyph pulses. Milestone text isn't live-regioned. | Gap |
+
+**Pattern:** every "global toggle" or "state ack" not routed through a focused, ARIA-aware control is invisible to AT. The gameplay-loop catalog missed this entirely because those events happen *during* a run; the global toggles happen at the *start* of a session, mid-overlay, or post-death — moments the Sprint 27 audit didn't walk.
+
+### What changed
+
+**`game.js` — 4 announcement call sites added, all routed through the existing `announce()` helper:**
+
+```js
+// M key handler
+applyMuteUI();
+announce(state.muted ? 'Sound muted.' : 'Sound on.');
+
+// #mute button click handler — same one-liner duplicated
+applyMuteUI();
+announce(state.muted ? 'Sound muted.' : 'Sound on.');
+
+// setTheme() — centralizes for T key + swatch clicks
+applyTheme(t);
+announce('Theme ' + t + '.');
+
+// pauseGame()
+BGM.pause();
+announce('Game paused.');
+
+// beginResumeCountdown()
+pauseCountdownEl.classList.add('number');
+announce('Resuming.');
+
+// bonusLifeGranted block in start() (retroactive on retry)
+if (glyphs[bonusIdx]) retriggerClass(glyphs[bonusIdx], 'bonus-glow');
+announce('Bonus life granted.');
+```
+
+**Phrasing discipline:**
+
+- **Declarative, terminal period** — "Game paused." reads with a natural stop before whatever AT polls next. Saying "Game is now paused" is five more syllables and the word "now" adds nothing.
+- **Boolean toggles use symmetric positive phrasing** — "Sound muted." / "Sound on." (not "Sound unmuted" — mouthy). Each branch names the *resulting state*, not the *transition verb*.
+- **Theme announcement names the result only** — "Theme sunset." not "Theme changed to sunset." The AT user already knows *something changed* (that's why they're hearing it); the informational content is "to what."
+- **Rare events get celebratory tone** — "Bonus life granted." vs. "Extra life." — "granted" connotes reward, matches the HUD "+1 LIFE" flash.
+
+**`company/skills/ux/screen-reader-announcements.md` — extension section (~80 lines):**
+
+1. **Three-filter audit** for finding announcement gaps in finished UIs:
+   - *Is the feedback channel being muted?* → must cross-announce via other channel. Don't signal X's absence using only X.
+   - *Visual change with no a11y-tree expression?* → announce.
+   - *Persistent state kept silently?* → announce; the next input depends on knowing current state.
+2. **Counter-rule** — don't double-announce what ARIA-native patterns already speak (dialogs, inputs, focus targets, visible countdowns).
+3. **Decision rubric table** — matrix of signals (state change, rarity, persistence, native-ARIA expressiveness, loop-locality) → action (announce / skip).
+4. **Where to place the call — centralize by action, not by handler** — put inside the shared mutator function (`setTheme`) when it exists; duplicate the one-liner at each handler site only when no shared chokepoint exists (the two mute handlers each self-manage).
+5. **Phrasing discipline** — imperative/declarative, terminal period, name-the-result-not-the-verb, resist adjectives.
+6. **Five anti-patterns specific to global-state announcements** — announce-on-load (noise), announce-every-countdown-tick (self-interrupts), announce-reflected-settings-toggle (native controls speak), verbose composites, `role="alert"` for acks.
+
+The Sprint 27 catalog table was also revised in place — rows for mute, theme, pause, resume, bonus-life now show ✅ with updated rationales; rows for help/stats modals, mid-run new-best crossing, and resume visible countdown ticks were added as explicit ❌ with rationales (dialog semantics, rollup in gameover summary, duplication of visible text).
+
+### Design decisions
+
+**Why announce theme changes, when Sprint 27 originally said "keyboard T is self-announcing via button"?** Sprint 27 was wrong. It assumed focus lives on a theme button at the moment `T` is pressed, so the button's state change would speak via its own role. In practice, `T` is a global keyboard shortcut — the player could be focused on the game area, on the mute button, on nothing at all. Focus is almost never on a swatch when T is pressed. The announcement has to be explicit.
+
+**Why centralize theme announcement inside `setTheme()` but duplicate the mute announcement across two handlers?** Because `setTheme()` is the single mutator both T-key and swatch-click call — putting the announce there covers both paths with one line and ensures future callers (settings modal, URL param, whatever) inherit the behavior. Mute doesn't have that shared mutator — the keydown handler and button click handler each directly mutate `state.muted` and call `applyMuteUI`. Refactoring to introduce `setMuted()` would be a 10-line cleanup for a 2-line benefit. Duplication is acceptable when the alternative costs more than the duplication saves.
+
+**Why announce on pauseGame() but also on beginResumeCountdown(), not on the countdown completion?** The resume countdown has visible text ("3, 2, 1") that mutates in place; AT polls that text. Announcing the *start* of resumption ("Resuming.") once gives the AT user the transition signal; the visible countdown continues as polled text. Announcing again at completion would interrupt the polling with a redundant "Game resumed." — the sighted player doesn't need confirmation that `1 → gameplay` finished; neither does AT.
+
+**Why announce bonus life *retroactively* on retry, not at the moment it's granted?** The bonus life is granted when a combo milestone fires during play — a moment that's already drenched in announcements (multiplier tier change via `announceMilestoneTier`). Adding "Bonus life granted!" at the moment of grant would stack on top of the tier announcement and one would clip the other. The retry moment is naturally silent (the player just pressed Space to restart), so the announcement lands with no competition — matching the visual "+1 LIFE" flash that also fires at retry.
+
+**Why "Bonus life granted." instead of "Extra life"?** "Granted" connotes reward-earned-through-play; "extra" connotes a consumable pickup. The former matches the game's framing (you earned it by reaching a combo threshold); the latter would suggest a power-up was collected. Linguistic choices affect how AT users model the game's economy.
+
+**Why skip help/stats modal open-close announcements?** Because `role="dialog" aria-modal="true" aria-labelledby="helpTitle"` plus a focus move already causes AT to announce "Help dialog. <title>". Adding `announce('Help opened.')` would produce double-speech. The pause overlay, notably, does *not* currently have dialog semantics — it's a half-visible overlay, not a modal — so it doesn't speak itself on open. That's why pause needed an announce and help doesn't.
+
+**Why skip the mid-run "new best crossed" moment?** Because the gameover summary already announces "New best! Score X. Peak combo Y." The mid-run moment is visually celebrated (score flashes, audio cue, sparkle particles) but announcing it mid-play would either (a) spoil the gameover-summary surprise, or (b) duplicate with the summary. Better: one well-composed utterance at gameover than two partial utterances.
+
+### Why this was the right lens now
+
+The postmortem has 20+ sprints of a11y work already — live region, tier gating, prefers-contrast, modal focus traps, tap-anywhere gameover, keyboard shortcuts. The game is *more* accessible than most shipped games. And yet: a blind player who muted audio would have absolutely no way of knowing they'd done so. That's a catastrophic regression from "functional" to "silent-unplayable" from a single key press, and it was invisible during every prior sprint because every prior sprint focused on a different axis (visual contrast, motor accessibility, focus order, reading order).
+
+The lens to apply for audits like this: **the most important gaps are the ones your prior audits weren't scoped to find.** Sprint 27 audited the gameplay loop. Sprint 47 audited the global-toggle layer. Sprint 48 could audit the overlay layer (pause dialog semantics), or the save-state layer (theme/mute persistence as announced reloads). Each audit inherits a lens from an angle the previous one didn't cover.
+
+### Testing notes (no headless run — reasoning from code flow + ARIA spec + prior console work)
+
+- **M key + #mute click** — two identical `announce()` sites on two handlers. Both now fire. A screen-reader test would hear "Sound muted." / "Sound on." on each toggle; the audio channel's silence is no longer the only cue.
+- **T key + swatch click** — `cycleTheme()` → `setTheme()` → announce. Swatches directly call `setTheme(t)` (verified via code search). Both covered. Initial `applyTheme(currentTheme)` on load is *not* called through `setTheme()`, so page-load stays silent — no false "Theme void." announcement on cold start. ✓
+- **Pause (P key + visibility blur)** — `pauseGame()` is the single entry (visibility handler also calls `pauseGame`). Announcement fires once. ✓
+- **Resume countdown start** — P-press when paused → `beginResumeCountdown()` → announce "Resuming." Visible countdown ("3, 2, 1") continues via the pollable `pauseCountdownEl.textContent`. ✓
+- **Bonus life on retry** — fires inside the `if (state.bonusLifeGranted)` block during `start()`, alongside the existing `+1 LIFE` milestone text and gold-glyph flash. ✓
+- **No regressions** — no existing `announce()` calls were removed or reordered; all additions are new sites. The `_srPending` coalescing guarantees that if two announcements fire within one microtask window (e.g. mute + theme pressed in rapid succession), the later one wins — acceptable because they're rare enough that one-in-a-thousand-runs overlap is invisible.
+- `node --check game.js` passes.
+
+### Wrap-up
+
+- Mute, theme, pause, resume, and bonus-life now announce through the live region — five global-toggle gaps closed.
+- Skill doc extended with a three-filter audit for finding announcement gaps, a decision rubric matrix, and anti-patterns specific to global state.
+- Sprint 27 catalog revised: pause/theme flipped from ❌ to ✅ with updated rationales; three new ❌ rows added (help modal, mid-run best-cross, countdown ticks) with explicit non-announce rationales.
+- Prior audits had gameplay-loop focus; this sprint shows the same project needs periodic re-audits from *different lenses*, because earlier audits inherit the blindness of their own scope.
+
+### Next candidates
+
+- **Pause modal a11y** — overlay is still not a `role="dialog"`; adding dialog semantics + focus handling would let the overlay speak its own opening, at which point the `announce('Game paused.')` might become redundant. (The SR skill doc's counter-rule would kick in.) Decide: keep announce-first vs. upgrade-to-dialog.
+- **Keyboard-only full-flow manual test** — still open (7 sprints overdue).
+- **Emoji ladder in share** — deferred from Sprint 42.
+- **First-gameover context overlay** — proposed in Sprint 46; complements "of max" label.
+- **`prefers-reduced-motion` audit sweep** — similar re-audit, but from the motion-sensitivity angle: walk every animation added in 40+ sprints and verify each honors the reduced-motion branch. Likely several drift points.
+- **Localization scaffolding** / **service worker** / **gamepad input** (still open, long).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

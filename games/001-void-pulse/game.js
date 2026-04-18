@@ -1387,6 +1387,10 @@
     currentTheme = t;
     writeTheme(t);
     applyTheme(t);
+    // Announce so keyboard/SR users get confirmation — the T key and swatch
+    // clicks are otherwise silent beyond the subtle palette flip, which AT
+    // can't perceive. Centralized here so both code paths covered at once.
+    announce('Theme ' + t + '.');
   }
   function cycleTheme() {
     const i = THEMES.indexOf(currentTheme);
@@ -1566,6 +1570,7 @@
       Sfx.applyMute();
       BGM.setMuted(state.muted);
       applyMuteUI();
+      announce(state.muted ? 'Sound muted.' : 'Sound on.');
       return;
     }
     // T — cycle theme (void → sunset → forest → void). Works any time so the
@@ -1623,6 +1628,7 @@
     Sfx.applyMute();
     BGM.setMuted(state.muted);
     applyMuteUI();
+    announce(state.muted ? 'Sound muted.' : 'Sound on.');
   });
   applyMuteUI();
 
@@ -2520,11 +2526,13 @@
     pauseEl.setAttribute('aria-hidden', 'false');
     Sfx.setBus('duck');
     BGM.pause();
+    announce('Game paused.');
   }
   function beginResumeCountdown() {
     if (!state.paused) return;
     state.resumeAt = performance.now() + RESUME_COUNTDOWN_MS;
     pauseCountdownEl.classList.add('number');
+    announce('Resuming.');
   }
   function clearPauseOverlay() {
     pauseEl.classList.remove('visible');
@@ -3216,6 +3224,7 @@
       const glyphs = hudLives.querySelectorAll('.life');
       const bonusIdx = state.lives - 1;
       if (glyphs[bonusIdx]) retriggerClass(glyphs[bonusIdx], 'bonus-glow');
+      announce('Bonus life granted.');
     }
 
     lastTime = performance.now();
