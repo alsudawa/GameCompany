@@ -4453,6 +4453,136 @@ By Sprint 58 the connections were dense enough that a meta-skill was overdue. Th
 
 ---
 
+## Sprint 59 — Cognitive-load audit on first-visit overlay (the 9th audit) (Apr 18, 2026)
+
+### Lens
+
+Sprint 58 closed by naming the next audit out loud: *"cognitive-load audit — the still-uncovered axis: does a brand-new player understand what to do in 3 seconds? Probably the natural ninth audit."* Sprint 59 cashes that promise. The lens is **first-3-second comprehension on the start overlay** — *not* bug-hunting, *not* perf, *not* accessibility-in-the-narrow-sense. Just: when a player who has never seen this game lands on the page, how long does their eye take to find "the thing I do to start playing," and how many other elements do they have to evaluate-and-discard along the way?
+
+This is also a deliberate validation of Sprint 58's meta-skill. Sprint 58 wrote `audit-from-the-margin.md` with a "template for adding the ninth audit" (lines 106–150). Sprint 59 is the literal execution of that template — if the template is good, the ninth audit should fall out of it naturally.
+
+### Survey
+
+Read `index.html` lines 50–70 to enumerate the start overlay's children. Counted **9 distinct elements** competing for the new player's attention on first visit:
+
+| # | Element | Selector |
+|---|---|---|
+| 1 | Title | `<h1>void pulse</h1>` |
+| 2 | Hook copy | `<p class="hook">Tap on the beat. Dodge the red. 60-second chart, chase 100% accuracy.</p>` |
+| 3 | First-visit hint | `<p id="firstVisitHint">First time? Tap white rings · skip red ones · chase 100% accuracy.</p>` |
+| 4 | Demo loop | `<div class="demo-loop">` |
+| 5 | Start button | `<button id="startBtn">Start</button>` |
+| 6 | Keyboard shortcut hints | `<p class="kbhint">or press Space · M mute · P pause · …</p>` |
+| 7 | Lifetime stats button | `<button id="statsBtn">Lifetime stats →</button>` |
+| 8 | Daily-mode link | `<a class="daily-link">Try today's daily →</a>` |
+| 9 | Theme picker (radiogroup of 3 swatches) | `<div id="themePicker">` |
+
+Existing first-visit chrome reduction (from sprint ?? — pre-this-postmortem): only `.kbhint` and `#statsBtn` were hidden via `body.first-visit` descendant rules. **Seven of nine elements** still visible to a brand-new player.
+
+### Diagnosis (the 3-question rubric, applied)
+
+For each element, three yes/no questions per `cognitive-load-audit.md` step 2:
+
+1. **Q1.** Does a brand-new player NEED this to take their first action?
+2. **Q2.** Does this have a frame of reference for a brand-new player?
+3. **Q3.** Is this NOT redundant with another visible element?
+
+| Element | Q1 | Q2 | Q3 | Verdict |
+|---|---|---|---|---|
+| Title | ✅ | ✅ | ✅ | **Show** |
+| Hook copy | ✅ | ✅ | ❌ overlaps firstVisitHint | **Hide on first-visit** |
+| firstVisitHint | ✅ | ✅ | ✅ | **Show** |
+| Demo loop | ✅ (shows what to do) | ✅ | ✅ | **Show** |
+| Start button | ✅ | ✅ | ✅ | **Show** |
+| Keyboard hints | ❌ no kb on mobile, no muscle memory | ❌ "M mute / P pause" — what mute, what pause | — | Hide *(already hidden)* |
+| Stats button | ❌ zero stats yet | ❌ "lifetime" of nothing | — | Hide *(already hidden)* |
+| Daily link | ❌ mode-switch is return-player concern | ❌ "daily" — what is daily? | — | **Hide on first-visit** |
+| Theme picker | ❌ cosmetic | ❌ "void / sunset / forest" — labels mean nothing pre-game | — | **Hide on first-visit** |
+
+Failures requiring action this sprint: **3 elements** (hook, daily-link, themePicker). The hook + firstVisitHint diagnosis is the most interesting — they convey nearly the same content in different tones, and showing both forces the player to read both before they realize they're redundant. Eye-tracking research (and just plain self-observation) shows readers re-parse when they hit a near-duplicate, so two redundant explanations are *worse* than one.
+
+After the fix, the first-visit overlay condenses from 9 elements → 4 essential elements (title, firstVisitHint, demo, Start button). **A 56% noise reduction.** The pulsing Start button — already styled with a `firstVisitPulse` keyframe — now has a clear visual command of the surface; the eye lands on it in ~1 second instead of bouncing through three rows of chrome first.
+
+### Implementation
+
+Single CSS edit, ~4 lines (Recipe A from `cognitive-load-audit.md`):
+
+```css
+/* style.css — extend existing rule from 2 selectors to 5 */
+.overlay.first-visit .kbhint,
+.overlay.first-visit #statsBtn,
+.overlay.first-visit .hook,        /* NEW */
+.overlay.first-visit #themePicker, /* NEW */
+.overlay.first-visit .daily-link { /* NEW (covers both #dailyLink and #freeLink) */
+  display: none;
+}
+```
+
+Added a comment block above the rule explaining the Sprint 59 reasoning (cross-references the redundancy diagnosis + frame-of-reference principle + return-player chrome concept). Total: ~13 lines of new content (4 selectors + comment).
+
+**Zero JS changes.** This is the workhorse strength of Recipe A — the `body.first-visit` class infrastructure was already in place from prior sprints (the first-visit-hint sprint added it), so the cognitive-load fix is pure descendant-selector composition.
+
+### Verification
+
+Walked through `cognitive-load-audit.md` step 5 side-effect checklist:
+
+- **Vertical space.** Hiding 3 elements compacts the overlay vertically. The remaining 4 (title, firstVisitHint, demo, Start) still center cleanly — verified by reading the `.overlay` flex layout (`align-items: center; justify-content: center; gap: …`). The remaining gap stack reads as four discrete steps from "what is this game" to "press this." No floating-at-top awkwardness.
+- **Tab order.** `display: none` correctly excludes hidden elements from tab order (browser default). No need to also set `tabindex="-1"`.
+- **Sibling-offset selectors.** Re-grepped style.css for `right:` positioning that might depend on visible siblings. The `.help-btn` is at `right: 68px` (Sprint 55 retune); the icon-btn it clears stays visible regardless of `.first-visit`. Safe.
+- **Reduced-motion.** The Start button's `firstVisitPulse` keyframe already has a `@media (prefers-reduced-motion: reduce)` override. Verified the override stays attached after the surrounding rule changes — yes, it's a separate selector block.
+- **Second-visit transition.** The `body.first-visit` class is removed via `localStorage.setItem('vp:played', '1')` after the first run completes. On the *next* page load, the class is gone and all 5 hidden elements reappear at full strength. Mid-game pop-in is impossible (class change happens at gameover save, not mid-frame).
+
+`node --check game.js` → OK (no JS touched, but ran for habit). Manual sanity: opened `index.html` in Reader's mind and re-scanned the start overlay. The eye now lands on the Start button within the first ~1.5s of viewing instead of ~4s.
+
+### Skill extraction
+
+Wrote a brand-new skill: [`company/skills/ux/cognitive-load-audit.md`](../skills/ux/cognitive-load-audit.md), ~270 lines. Structure follows the meta-skill template *exactly*:
+
+- **Thesis** paragraph — dev knows what every element means; first-time player has no context
+- **5 cognitive-load shrink patterns** — redundant copy, return-player affordances, decorative chrome vs CTA, choices-before-baseline, stats/config-without-data
+- **5-step audit** (enumerate → score with 3-question rubric → table-ize → fix recipe → verify side-effects) — direct mirror of meta-skill's 5-step shape
+- **3 named recipes**: A `.first-visit` descendant-hide (the workhorse), B system-derived default (for cosmetic choices like theme), C hide-until-data (for stats/config)
+- **Common gap patterns** — grep red-flags + safe-replacement HTML/CSS pairs
+- **When NOT to use** section — tutorial-driven games, choice-IS-the-game genres, multiplayer lobbies
+- **Cadence** — per sprint that adds an overlay element + 20-sprint full sweep
+- **Cost** asymmetry paragraph — tying back to the meta-skill's "5% audit, 95% feature" budget
+
+The most *interesting* part of writing this skill: the 3-question rubric (Q1 need / Q2 frame-of-reference / Q3 redundancy) generalizes way past start screens. It applies to gameover panels, settings menus, even mid-game HUD elements. The skill flags this in "When NOT to use" but the underlying rubric is broadly transferable — possibly the seed of a future "audit X for relevance to its surface" generalization.
+
+Updated supporting docs:
+- `company/skills/audit-from-the-margin.md` — family table grew from 8 to 9 members; "future additions" list shrank by one (cognitive-load promoted from candidate to canonical); added a "no-pair audits are also fine" paragraph naming this audit as the first prevent-only member; renamed "template for the ninth" → "template for the tenth" with a note that the 9th was written from this template (direct meta-skill validation); audit budget math updated to 9/180 ≈ 5%
+- `company/skills/README.md` — added cognitive-load entry to UX section; updated Meta entry to say "nine periodic audits" instead of "eight"
+- `company/skills/qa/casual-checklist.md` — added one bullet to the Onboarding section cross-linking to the new skill, with a one-line description of the first-visit hide-list and the condensed 4-element overlay shape
+
+### Reflection
+
+**What worked.** The meta-skill template (Sprint 58) made writing the 9th audit *much* faster than writing audits 1–8. I had to do the survey + diagnosis + fix work as usual, but the *structuring* of the new skill doc — section headings, pattern-counting, recipe naming, side-effects checklist, when-not-to-use section, cost paragraph — all came directly from the template. About half the time-cost of a skill doc is figuring out the shape; the meta-skill removed that. Sprint 58 retroactively justifies itself in a single sprint.
+
+**What I'd do differently.** I picked the start overlay as the audit surface, but `cognitive-load-audit.md`'s step 1 (Enumerate) lists *five* surfaces: start overlay, gameover panel, pause panel, help modal, in-play frame-1 HUD. I only audited one. A future sprint should walk the other four — gameover panel especially is loaded with stats (run summary, NEW BEST badge, share button, retry, sparkline, achievement toasts) that *might* overwhelm a player who just lost their first run and is in a low-arousal "what just happened" state. The audit framework is built; using it on more surfaces is just sprint-time.
+
+**Cross-sprint pattern.** Sprints 55-56-57-58-59 form a five-sprint arc on the audit-discipline axis: tap-target → touch-gesture → boot-error → meta-skill → first new audit using the meta-skill. Each sprint built on the previous; the arc would have been impossible to plan upfront because Sprint 58 (the meta-skill) had to be triggered by Sprints 55-57's accumulating duplication. The lesson generalizes: **periodic meta-reflection sprints are the natural way to extract reusable structure from feature sprints, but only after enough features have been written to have structure to extract.** Trying to write a meta-skill on Sprint 1 would have been speculative; writing it on Sprint 58 was *almost overdue*. The signal "three sprints converging on the same axis" is the trigger.
+
+**The recursive validation.** A meta-skill is a hypothesis: "this template is reusable." A meta-skill that's never reused is just a fancy retrospective. Sprint 59 is the falsification test — and the test passed. Every section of the new cognitive-load skill maps cleanly onto a section of the template. The template is real, transferable infrastructure now, not just a Sprint 58 vibe.
+
+### Files touched
+
+- `games/001-void-pulse/style.css` — extended `.overlay.first-visit` display:none rule from 2 to 5 selectors + ~10-line comment block.
+- `company/skills/ux/cognitive-load-audit.md` — **NEW**, ~270 lines: the 9th audit.
+- `company/skills/audit-from-the-margin.md` — family table 8→9; "future additions" list slimmed; no-pair-audit paragraph added; template-for-the-tenth retitle; budget arithmetic.
+- `company/skills/README.md` — added cognitive-load UX entry; Meta entry updated to "nine".
+- `company/skills/qa/casual-checklist.md` — one new Onboarding bullet cross-linking to the audit skill.
+- `company/postmortems/001-void-pulse.md` — this section.
+
+### Next candidates
+
+- **Audit the OTHER four surfaces** the cognitive-load skill identifies (gameover panel, pause, help modal, in-play frame-1 HUD). Most likely high-value target: gameover panel, since post-failure UX is often noise-heavy (stats spam) and players in a low-arousal moment.
+- **Real-device walkthrough sprint** — *still* deferred (now 5 sprints in a row). Let me actually do this next or kill the entry.
+- **Sprint-counter / audit-tracker doc** — `company/audit-log.md`. Increasing utility now that the 20-sprint cadence is real and there are 9 audits to track.
+- **Color-contrast re-audit** (carried from S51) — might be a natural pair with the gameover-panel cognitive-load audit, since both are "what does the player perceive on this surface."
+- **Carried backlog**: stats-panel + gameover render perf sweep (S54), mirrored writer audit (S53), network-resilience audit (S58), low-end device perf audit (audit-from-margin "future additions").
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

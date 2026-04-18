@@ -14,7 +14,7 @@ This skill is *the* meta-pattern under which all the periodic audits in this fol
 5. A template for adding the ninth audit
 6. Anti-patterns: when "audit fatigue" creeps in
 
-## The current audit family (8 members as of Sprint 58)
+## The current audit family (9 members as of Sprint 59)
 
 | # | Audit | What's at the margin | Lens / period |
 |---|---|---|---|
@@ -26,10 +26,11 @@ This skill is *the* meta-pattern under which all the periodic audits in this fol
 | 6 | [`data/persistence-defensiveness.md`](data/persistence-defensiveness.md) | Tampered / corrupt localStorage on player's machine | Data / 20 sprints |
 | 7 | [`mobile/tap-target-audit.md`](mobile/tap-target-audit.md) | Thumbs on small screens (44px floor) | Mobile box-model / 20 sprints |
 | 8 | [`mobile/touch-gesture-audit.md`](mobile/touch-gesture-audit.md) | Mobile players whose OS competes with the game for input | Mobile input-stack / 20 sprints |
+| 9 | [`ux/cognitive-load-audit.md`](ux/cognitive-load-audit.md) | Brand-new players in the first 3 seconds (no frame of reference for chrome) | Onboarding / 20 sprints |
 
-Companion: [`data/boot-error-fallback.md`](data/boot-error-fallback.md) — not an audit *per se* but the recovery layer for cases where audit-1-through-8 prevention all fails.
+Companion: [`data/boot-error-fallback.md`](data/boot-error-fallback.md) — not an audit *per se* but the recovery layer for cases where audit-1-through-9 prevention all fails.
 
-The list **will grow.** Likely future additions: cognitive-load audit (3-second comprehension), color-contrast audit (carried from Sprint 51), network-resilience audit (offline/slow-3G), low-end-device perf audit (sub-60Hz throttled CPU), localization-readiness audit (string-extract surface).
+The list **will grow.** Likely future additions: color-contrast audit (carried from Sprint 51), network-resilience audit (offline/slow-3G), low-end-device perf audit (sub-60Hz throttled CPU), localization-readiness audit (string-extract surface), copy-as-UI audit (microcopy review for tone consistency + clarity).
 
 ## The shared 5-step audit shape
 
@@ -103,9 +104,11 @@ The principle: **each prevent-layer covers ~95% of the failure mode; the recover
 
 When you write a new audit, ask: **does this audit need a paired recovery layer?** If the prevention is brittle, or if the failure is silent, the answer is usually yes.
 
-## A template for the ninth audit (and tenth, and eleventh…)
+**No-pair audits are also fine** — and worth naming explicitly. The cognitive-load audit (member 9) is *prevent-only* because its failure mode is silent disengagement (player closes the tab) rather than a throw or a stuck state. There's nothing to "recover from" — the player's gone. For these audits the prevent layer must be more conservative (the rubric in `ux/cognitive-load-audit.md` defaults to *hide* on any "no" answer); there's no safety net beneath it.
 
-When you find yourself thinking "we've never audited X" — three sprints in a row of the same lens, or a postmortem reflection that calls out a missing dimension — don't sit on it. The cost of writing the audit is one sprint. The cost of *not* having it is N sprints of accumulating drift on that axis.
+## A template for the tenth audit (and eleventh, and twelfth…)
+
+The ninth audit (cognitive-load, Sprint 59) was written using exactly this template — direct validation that the meta-pattern is reusable. When you find yourself thinking "we've never audited X" — three sprints in a row of the same lens, or a postmortem reflection that calls out a missing dimension — don't sit on it. The cost of writing the audit is one sprint. The cost of *not* having it is N sprints of accumulating drift on that axis.
 
 Template skill structure (copy from any of the existing 8):
 
@@ -171,7 +174,7 @@ Trying to run all eight audits every sprint. This is impossible at any reasonabl
 
 When starting a new game (002, 003, …), the producer should:
 1. Skim this doc + the eight indexed audits
-2. Bake the audit cadence into the project's sprint plan (e.g. sprint 5: persistence audit; sprint 10: tap-target; sprint 15: touch-gesture; sprint 20: reduced-motion + keyboard-flow + SR)
+2. Bake the audit cadence into the project's sprint plan (e.g. sprint 5: persistence audit; sprint 10: tap-target; sprint 15: touch-gesture; sprint 20: reduced-motion + keyboard-flow + SR; sprint 25: cognitive-load — *especially* before the first external playtest)
 3. Adopt the prevent-vs-recover pair discipline for the data + mobile-input axes from day one (the boot-error fallback in particular is ~80 lines and should be the first thing in `game.js`)
 4. Add new audits to this folder when the new game surfaces axes the existing eight don't cover — e.g. a multiplayer game would surface a "network-state-resilience audit"; a turn-based game would surface a "save-state-transactionality audit"
 
@@ -181,4 +184,4 @@ The audit family is a *transferable asset* of the company, not a single-game art
 
 This meta-skill itself: ~5 minutes per sprint to remember it exists, ~30 minutes per game-start to plan the audit rotation, ~30 minutes per new audit to write it up. Compared to the alternative (each game re-deriving the audit shape from scratch, eight times, with no shared template), the asymmetry is overwhelming.
 
-The audit *family*: ~1 sprint of dedicated time per audit, 8 audits, run every 20 sprints. That's roughly 8 sprints out of every 160 (5%) spent on cross-cutting audits. The remaining 95% is feature work, polish, and per-sprint axis variety. The 5% is what keeps the 95% from collapsing under accumulated drift.
+The audit *family*: ~1 sprint of dedicated time per audit, 9 audits, run every 20 sprints. That's roughly 9 sprints out of every 180 (5%) spent on cross-cutting audits. The remaining 95% is feature work, polish, and per-sprint axis variety. The 5% is what keeps the 95% from collapsing under accumulated drift.

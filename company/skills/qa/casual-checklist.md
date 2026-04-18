@@ -107,6 +107,7 @@ Correctness passes miss whole bug classes. Every QA session should rotate throug
 - [ ] First 5s is visibly easier than the "intro" waypoint — new players get 2–3 free taps before difficulty kicks in
 - [ ] Game readable in < 60s without any tutorial text
 - [ ] Hook line on the title screen explains the input in one sentence
+- [ ] **First-visit overlay hides return-player chrome.** Theme picker, daily-mode link, lifetime-stats button, kbd-shortcut hints, and any second-explanation copy redundant with the first-visit hint should be `display: none` on `body.first-visit`. The first-visit overlay condenses to: title + first-visit hint + demo + Start button. *(See `ux/cognitive-load-audit.md` for the 5 shrink patterns + 3-question rubric + Recipe A/B/C fixes.)*
 
 ### Retention
 - [ ] Run-end panel shows 2–4 orthogonal stats beyond raw score (streak, precision, volume)

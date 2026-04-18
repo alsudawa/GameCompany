@@ -858,9 +858,23 @@ html, body {
    link are return-player tools — a brand-new player has no keyboard
    muscle memory and no stats to look at yet. Showing them on first load
    just adds noise competing with the core "tap here to start" signal.
-   They'll re-appear on the second page load when first-visit is cleared. */
+   They'll re-appear on the second page load when first-visit is cleared.
+
+   Sprint 59 (cognitive-load audit): also hide the hook (redundant with
+   firstVisitHint — both say "tap, skip red, chase 100%"), the theme picker
+   (a brand-new player has no frame of reference for "void/sunset/forest"
+   labels), and the daily-link (mode-switch is a return-player concern).
+   The first-visit overlay condenses to: title + firstVisitHint + demo +
+   Start button. Five elements competing for attention drops to four;
+   redundancy in the explanation copy resolves; the eye lands on the
+   pulsing Start button without bouncing through irrelevant chrome.
+   On the player's second page load, the .first-visit class is gone and
+   ALL the affordances reappear — they've earned them by completing run 1. */
 .overlay.first-visit .kbhint,
-.overlay.first-visit #statsBtn {
+.overlay.first-visit #statsBtn,
+.overlay.first-visit .hook,
+.overlay.first-visit #themePicker,
+.overlay.first-visit .daily-link {
   display: none;
 }
 @keyframes firstVisitPulse {
