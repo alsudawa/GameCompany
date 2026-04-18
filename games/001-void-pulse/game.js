@@ -1519,8 +1519,10 @@
 
     // Focus trap inside open modals — runs before other keyboard bindings so
     // Tab is captured cleanly. Help/Stats have inner close-buttons; gameover
-    // has the retry-hint (tabindex=0) plus optional share button. Pause is
-    // auto-resume-on-focus so no trap needed there.
+    // has the retry-hint (tabindex=0) plus optional share button. Pause has
+    // no inner focusables, so trapFocus hits the empty-set branch and just
+    // preventDefaults Tab — focus stays on the dialog container, which is
+    // the desired modal semantics (nothing else is reachable while paused).
     if (e.key === 'Tab') {
       if (helpEl && !helpEl.classList.contains('hidden')) {
         if (trapFocus(helpEl, e)) return;
@@ -1531,6 +1533,9 @@
       }
       if (gameoverEl && !gameoverEl.classList.contains('hidden')) {
         if (trapFocus(gameoverEl, e)) return;
+      }
+      if (pauseEl && !pauseEl.classList.contains('hidden')) {
+        if (trapFocus(pauseEl, e)) return;
       }
     }
 
@@ -2515,6 +2520,10 @@
   let lastComboTier = null;
 
   // ---------- Pause (visibility / blur) ----------
+  // Opener-focus snapshot so resume restores to wherever the player was — a
+  // keyboard user who triggered pause via P from the mute button gets focus
+  // back on the mute button, not dumped to body.
+  let pausePrevFocus = null;
   function pauseGame() {
     if (!state.running || state.over || state.paused) return;
     state.paused = true;
@@ -2526,12 +2535,19 @@
     pauseEl.setAttribute('aria-hidden', 'false');
     Sfx.setBus('duck');
     BGM.pause();
-    announce('Game paused.');
+    // Dialog semantics: role=dialog + aria-modal + aria-labelledby speak the
+    // title ("Game paused") to AT on focus-in, so no explicit announce() is
+    // needed — a second live-region utterance would duplicate. Focus move is
+    // what triggers the dialog's own announcement.
+    pausePrevFocus = document.activeElement;
+    try { pauseEl.focus({ preventScroll: true }); } catch { pauseEl.focus(); }
   }
   function beginResumeCountdown() {
     if (!state.paused) return;
     state.resumeAt = performance.now() + RESUME_COUNTDOWN_MS;
     pauseCountdownEl.classList.add('number');
+    // Dialog is still open; no focus change fires. Live-region is the only
+    // channel to signal the transition → keep announce().
     announce('Resuming.');
   }
   function clearPauseOverlay() {
@@ -2541,6 +2557,19 @@
     if (state.running && !state.over) {
       Sfx.setBus(hudScoreBeaten ? 'beaten' : 'normal');
     }
+    // Focus restore: if focus is still inside the now-hidden dialog, move it
+    // back to the element the player was on before pause. Keyboard users
+    // return to their prior context; AT hears the restored target speak its
+    // own accessible name, which is the natural "exiting dialog" cue.
+    if (pauseEl.contains(document.activeElement)) {
+      const target = pausePrevFocus;
+      if (target && typeof target.focus === 'function' && document.contains(target)) {
+        try { target.focus({ preventScroll: true }); } catch { target.focus(); }
+      } else {
+        try { document.activeElement.blur(); } catch {}
+      }
+    }
+    pausePrevFocus = null;
   }
   // ---------- Help modal ----------
   const helpEl = document.getElementById('help');

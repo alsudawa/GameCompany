@@ -2788,6 +2788,192 @@ The lens to apply for audits like this: **the most important gaps are the ones y
 
 ---
 
+## Sprint 48 — Pause overlay a11y (container-focus dialog variant)
+
+**Lens:** Sprint 47 added `announce('Game paused.')` as a *live-region plug* covering the pause overlay's lack of dialog semantics. That sprint's own skill doc counter-rule — *"don't double-announce what dialog semantics already speak"* — made the plug self-flagging tech debt the moment it was written. Close the loop: upgrade the pause overlay to a proper ARIA dialog, which makes the Sprint 47 announce redundant. This is the inverse of the usual sprint: instead of adding capability, we upgrade infrastructure so a prior layer's workaround becomes obsolete.
+
+### The pause overlay today — what's there, what's missing
+
+```html
+<!-- BEFORE (Sprint 47) -->
+<div id="pause" class="overlay hidden" aria-hidden="true">
+  <div class="pause-ring">
+    <div id="pauseCountdown" class="pause-countdown">paused</div>
+  </div>
+  <p class="pause-hint">Return to the tab — or press <kbd>P</kbd> — to resume</p>
+</div>
+```
+
+Audit from an ARIA perspective:
+
+| Attribute | Status | Gap |
+|---|---|---|
+| `role="dialog"` | missing | AT doesn't identify this as a modal |
+| `aria-modal="true"` | missing | AT can't assume focus should be trapped |
+| `aria-labelledby` | missing | dialog has no spoken name on open |
+| `aria-describedby` | missing | exit hint isn't linked; orphaned from title |
+| `aria-hidden` toggle | ✓ | works as before |
+| Focus management | missing | focus stays wherever it was pre-pause |
+| Focus restore on close | missing | no snapshot of opener-focus |
+| Tab trap | missing | Tab during pause leaks to HUD controls |
+| Live-region announcement | plugged (Sprint 47) | will become redundant once dialog is wired |
+
+Every row above except `aria-hidden` is a gap. The Sprint 47 live-region plug was covering *one* of them (spoken state change) at the cost of being the wrong mechanism — role=status is for ambient updates, not dialog open/close. Dialog semantics are the structurally correct answer.
+
+### What changed
+
+**`index.html`:**
+
+```html
+<!-- AFTER -->
+<div id="pause" class="overlay hidden"
+     role="dialog" aria-modal="true"
+     aria-labelledby="pauseTitle" aria-describedby="pauseHint"
+     aria-hidden="true" tabindex="-1">
+  <h2 id="pauseTitle" class="sr-only">Game paused</h2>
+  <div class="pause-ring">
+    <div id="pauseCountdown" class="pause-countdown" aria-hidden="true">paused</div>
+  </div>
+  <p class="pause-hint" id="pauseHint">Return to the tab — or press <kbd>P</kbd> — to resume</p>
+</div>
+```
+
+Five attribute additions + one new element + one new id:
+
+1. `role="dialog"` + `aria-modal="true"` — declares modal semantics so AT speaks the title on focus-in and trap is expected.
+2. `aria-labelledby="pauseTitle"` paired with a new sr-only `<h2 id="pauseTitle">Game paused</h2>` — stable title that AT reads when the dialog opens. Visual design stays minimalist (no new title text appears on screen).
+3. `aria-describedby="pauseHint"` with new `id="pauseHint"` on the existing hint paragraph — AT reads exit instructions right after the title.
+4. `tabindex="-1"` — makes the container programmatically focusable but keeps it *out* of natural Tab order. Exactly the "container-focus dialog" pattern (reachable via `.focus()`, invisible to Tab).
+5. `aria-hidden="true"` on `#pauseCountdown` — the mutating text ("paused" → "3" → "2" → "1") is visual-only; hide it from AT so the stable `#pauseTitle` isn't confused with ticking numbers when AT re-polls.
+
+**`game.js` — pauseGame() / clearPauseOverlay():**
+
+```js
+// Opener-focus snapshot lives alongside the pause state.
+let pausePrevFocus = null;
+
+function pauseGame() {
+  // ... existing state transitions, overlay show ...
+  pausePrevFocus = document.activeElement;
+  try { pauseEl.focus({ preventScroll: true }); }
+  catch { pauseEl.focus(); }
+  // (announce('Game paused.') removed — dialog focus-in speaks the title now)
+}
+
+function clearPauseOverlay() {
+  // ... existing state transitions, overlay hide ...
+  if (pauseEl.contains(document.activeElement)) {
+    const target = pausePrevFocus;
+    if (target && typeof target.focus === 'function' && document.contains(target)) {
+      try { target.focus({ preventScroll: true }); } catch { target.focus(); }
+    } else {
+      try { document.activeElement.blur(); } catch {}
+    }
+  }
+  pausePrevFocus = null;
+}
+```
+
+The `beginResumeCountdown()` announce — "Resuming." — **stays**. Once the dialog is open, a state change *inside* the dialog doesn't fire a focus move and doesn't re-trigger the dialog-speak mechanism. The live region is the only channel for that transition. This is exactly the counter-rule's "internal state change" exception, which is now spelled out in the skill doc.
+
+**`game.js` — Tab trap extension:**
+
+```js
+if (e.key === 'Tab') {
+  // help, stats, gameover checks...
+  if (pauseEl && !pauseEl.classList.contains('hidden')) {
+    if (trapFocus(pauseEl, e)) return;
+  }
+}
+```
+
+`pauseEl` has no children in the FOCUSABLE_SEL set (the container is `tabindex="-1"`, excluded from selector). `trapFocus` hits the empty-focusables branch and `preventDefault`s Tab — focus stays on the dialog container where `pauseGame()` placed it. The existing `trapFocus` helper needed zero modification; its empty-set handling was already correct for this case.
+
+**`style.css`:**
+
+```css
+#pause:focus,
+#pause:focus-visible {
+  outline: none;
+}
+```
+
+The overlay being visible IS the focus cue; a dashed outline wrapping the entire full-screen dialog would be a visual disaster. AT users still get the dialog-opening announcement regardless of visible outline, so suppressing the outline doesn't regress a11y.
+
+### Design decisions
+
+**Why sr-only title instead of a visible `<h2>`?** The pause overlay's visual design has a 140px pulsing ring as its hero element — a stable visible title above it would compete for attention or force a layout rework. The sr-only approach gives AT the stable label it needs without changing visual design. If the title *was* already visible somewhere (as in the help modal's "how to play" text), we'd just add an id to it. Creating sr-only titles is the right move when the dialog's visual identity doesn't include text-as-title.
+
+**Why `aria-hidden="true"` on the countdown?** Because it mutates every second during the resume countdown: "paused" → "3" → "2" → "1". If the countdown were inside the a11y tree, AT would re-poll it on each change. With a live region elsewhere announcing "Resuming.", that would create two announcement sources (the live region update plus the polled countdown) both firing at roughly the same cadence — exactly the stacked-utterance problem Sprint 27 solved for the HUD. Hide it and keep the transition signal centralized.
+
+**Why remove the Sprint 47 `announce('Game paused.')` but keep `announce('Resuming.')`?** The first one was covering the dialog-open announcement that now fires automatically on focus-in. Keeping both would cause double-speech: AT hears "Game paused dialog" from the focus-in *and* "Game paused." from the live region. The second announce (Resuming) handles a state transition **inside** the already-open dialog — no focus move fires, no dialog re-speak, so the live region is still the only channel. This is the single most important nuance of upgrading a live-region-plug to a dialog: **audit which announces become redundant and which are still load-bearing**.
+
+**Why snapshot focus on open?** Players trigger pause from various contexts: keyboard player focused on a HUD button presses P, pointer player clicks nothing (focus on body), screen-reader user tabs to the mute button then presses P. On resume, each should land where they started. Without a snapshot, `pauseEl.focus()` overwrites `document.activeElement`, and we can't restore anything specific — we'd have to fall back to body, which is a worse UX for keyboard/AT users.
+
+**Why `tabindex="-1"` not `tabindex="0"`?** `-1` is "programmatically focusable, not in Tab order". `0` is "programmatically focusable AND in Tab order." Using `0` would mean the pause container shows up in normal Tab cycles even when not paused — Tab-cycling during gameplay would snap a focus ring to the invisible pause overlay, confusing users. `-1` is correct for all "focus-is-moved-into-me-by-code" patterns.
+
+**Why is the `trapFocus` helper's empty-set behavior actually the right semantic?** Because a dialog with no interactive content *is* a valid pattern. Help modals have close buttons; gameover has retry/share; pause has... just a "press P to resume" hint. The exit affordance is a global keyboard shortcut, not a child button. `trapFocus` correctly says "Tab has nowhere to go inside this dialog — preventDefault." Focus stays pinned on the container, where we placed it.
+
+**Why no Escape binding to close pause?** Escape is conventionally "cancel" on modals. But pause isn't a dialog you cancel; it's a state you exit by pressing P (or by tab focus returning to the window). Adding Escape would overload the key (Escape already closes help) and confuse the mental model. Global keyboard shortcuts like P own their activation/deactivation.
+
+**Why no change to the visibility-blur pause path?** The blur-based pause fires when the window itself loses focus — the user is *outside* the page entirely. Focus moves to pauseEl, but AT isn't polling that window anyway. When the user comes back, they either press P (covered) or Tab (caught by the extended trap). No regression from the prior blur path.
+
+### The loop-closure insight
+
+Sprint 47 added a plug. Sprint 48 replaced it with infrastructure. That's not wasted work — it's the correct sequencing:
+
+- **Sprint 47** had a narrower scope ("find SR announcement gaps via audit"). Adding a live-region plug was the fastest correct fix inside that scope.
+- **Sprint 48** widens the scope to "does the pause overlay have proper dialog semantics?" Removing the plug is a *consequence* of answering yes.
+
+Had we skipped Sprint 47 and gone straight to Sprint 48, AT users would've had a broken pause for another cycle. Had we skipped Sprint 48, the plug would've been permanent (a live-region plug that works is easy to forget about). The two-sprint pattern — **plug-then-upgrade** — is the right shape when a fix is needed urgently but the proper infrastructure is a bigger job.
+
+The skill doc captures this as its own rule: *"once a dialog pattern is in place, remove the live-region plug it was covering for. Live regions are the fallback when no ARIA-native mechanism speaks; they're not an additive layer."*
+
+### What the skill doc gained
+
+`company/skills/ux/modal-focus-trap.md` now has a ~100-line "container-focus dialog" section covering:
+
+- **HTML template** for the pattern (dialog with no interactive children, sr-only title, labelledby/describedby wiring).
+- **JS template** for pauseGame/clearPauseOverlay equivalents with opener-focus snapshot + restore.
+- **CSS template** for suppressing the focus outline on the container.
+- **Why `tabindex="-1"`** not `0` — with the exact user-flow consequence of each.
+- **Why no live-region announce** on dialog open — explained via the double-speech anti-pattern, with three explicit exceptions (internal state change, blur/visibility paths, user-setting edge cases).
+- **Why snapshot-and-restore focus** — the opener-focus idiom with fallback-to-blur criteria.
+- **Six anti-patterns** specific to container-focus dialogs: skipping labelledby, using mutating text as title, forgetting describedby, stale focus references, leaving old announces in place, showing focus rings on overlays.
+
+The new section is distinct from the earlier "tap-anywhere modals" section because those still have an interactive child (the retry-hint promoted to button). The container-focus variant is a strict subset of tap-anywhere (no interactive children at all). Keeping them as sibling sections in the same skill doc lets future games pick the right variant at a glance.
+
+### Testing notes (no headless run — reasoning from ARIA semantics + code flow)
+
+- **P key while playing** — `pauseGame()` fires. `pausePrevFocus = <body>` (typical). `pauseEl.focus()` moves focus. AT announces "Game paused, dialog. Return to the tab or press P to resume." (aria-labelledby speaks title, aria-describedby speaks hint.) ✓
+- **Tab during pause** — `trapFocus(pauseEl, e)` fires, finds 0 focusables in the container's tabindex-eligible subtree, `preventDefault()`s. Focus stays on pauseEl. ✓
+- **P key to resume** → **beginResumeCountdown()** — announces "Resuming." (live region is only channel; focus didn't move, dialog doesn't re-speak). Countdown text mutates silently (aria-hidden). ✓
+- **Resume completes** → **clearPauseOverlay()** — `pausePrevFocus = <body>`; body exists and is focusable; focus restored. `document.activeElement === <body>` again; gameplay keydown handler receives future Space/Enter. ✓
+- **P key from mute button** — `pausePrevFocus = <#mute>`; after resume, focus restored to mute button; AT speaks "Mute, button, not pressed" (accessible name from aria-label/title). ✓
+- **Visibility blur** — focus was already outside window; `document.activeElement` may be `<body>` or null. `pauseEl.focus()` fires but the window isn't focused so no AT event. When user returns, Tab/P works normally. ✓
+- **Interaction with gameover** — pause can't coexist with gameover (`if (state.over) return` guard), so no overlay-stacking a11y concerns. ✓
+- **`node --check game.js` passes. CSS brace count balanced (344/344).**
+
+### Wrap-up
+
+- Pause overlay promoted to proper ARIA dialog: role + aria-modal + aria-labelledby + aria-describedby + aria-hidden on the countdown.
+- Focus management: snapshot-on-open, restore-on-close, with fallbacks for stale refs.
+- Tab trap: extended to pauseEl; empty-focusables path correctly pins focus to the container.
+- Live-region `announce('Game paused.')` removed (now redundant with dialog focus-in).
+- Live-region `announce('Resuming.')` kept (internal state change, load-bearing).
+- Skill doc extended with a container-focus-dialog pattern section + the plug-then-upgrade sequencing rule.
+
+### Next candidates
+
+- **Keyboard-only full-flow manual test** — now 8 sprints overdue. With pause dialog semantics in place, this is the right time because the full flow (start → pause/resume → play → gameover → share → retry → help → stats) should cleanly round-trip focus across every modal. Worth booking a dedicated sprint.
+- **`prefers-reduced-motion` audit sweep** — still open. Similar "re-audit with a specific lens" arc as Sprint 47.
+- **Emoji ladder in share** — deferred from Sprint 42.
+- **First-gameover context overlay** — proposed in Sprint 46; complements the "of max" label.
+- **Help modal keyboard shortcuts section update** — "P — pause / resume" exists but could call out the new dialog semantics for AT discoverability.
+- **Localization scaffolding** / **service worker** / **gamepad input** (still open, long).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

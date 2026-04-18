@@ -119,11 +119,12 @@
       <p class="retry-hint" id="retryHint" tabindex="0" role="button" aria-label="Tap or press Space to retry">Tap to retry</p>
     </div>
 
-    <div id="pause" class="overlay hidden" aria-hidden="true">
+    <div id="pause" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="pauseTitle" aria-describedby="pauseHint" aria-hidden="true" tabindex="-1">
+      <h2 id="pauseTitle" class="sr-only">Game paused</h2>
       <div class="pause-ring">
-        <div id="pauseCountdown" class="pause-countdown">paused</div>
+        <div id="pauseCountdown" class="pause-countdown" aria-hidden="true">paused</div>
       </div>
-      <p class="pause-hint">Return to the tab — or press <kbd>P</kbd> — to resume</p>
+      <p class="pause-hint" id="pauseHint">Return to the tab — or press <kbd>P</kbd> — to resume</p>
     </div>
 
     <div id="help" class="overlay hidden help-overlay" role="dialog" aria-modal="true" aria-labelledby="helpTitle" aria-hidden="true">

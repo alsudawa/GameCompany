@@ -575,6 +575,14 @@ html, body {
   z-index: 25;
   gap: 18px;
 }
+/* Focus target is the dialog container itself (aria-modal + labelledby
+   speak via AT on focus-in); no visible outline needed since the overlay
+   being visible is already the focus cue. :focus-visible kept :none so
+   keyboard activation doesn't show a ring around the full-screen dialog. */
+#pause:focus,
+#pause:focus-visible {
+  outline: none;
+}
 .pause-ring {
   width: 140px;
   height: 140px;

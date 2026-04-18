@@ -275,3 +275,100 @@ Going with #1 (blur) costs one `if/try` and doesn't fight the existing CSS.
 - **Making the whole overlay `tabindex="0"`.** Tab lands on the overlay backdrop itself. Visually this means the focus ring wraps the whole screen — disorienting, doesn't tell the user *what* is actionable.
 - **A hidden off-screen `<button>` absorbing focus.** Some implementations place an invisible button for AT. Fine for screen readers, but sighted keyboard users see no focus ring, violating `focus-visible-audit.md`.
 - **Duplicating the activation path.** Don't add a `click` handler on `retryHint` if the parent overlay already handles `pointerdown` globally — you'll fire the retry twice per tap on the hint.
+
+## Pattern — the "container-focus dialog" (no-interactive-children variant)
+
+Some dialogs have **no interactive content at all** — a pause screen, a loading screen, a transient state indicator. The player's way *out* is a global keyboard shortcut (e.g. `P` to resume) or an external trigger (window regains focus), not a button inside the modal. Modal a11y spec still applies: `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, focus management, Tab trapping. But the focus target is the *container itself*, not a child.
+
+```html
+<div id="pause"
+     class="overlay hidden"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="pauseTitle"
+     aria-describedby="pauseHint"
+     aria-hidden="true"
+     tabindex="-1">
+  <h2 id="pauseTitle" class="sr-only">Game paused</h2>
+  <div class="pause-ring">
+    <div class="pause-countdown" aria-hidden="true">paused</div>
+  </div>
+  <p class="pause-hint" id="pauseHint">Return to the tab — or press <kbd>P</kbd> — to resume</p>
+</div>
+```
+
+```js
+let pausePrevFocus = null;
+function pauseGame() {
+  // ... state transitions, show overlay ...
+  pausePrevFocus = document.activeElement;
+  try { pauseEl.focus({ preventScroll: true }); } catch { pauseEl.focus(); }
+}
+function clearPauseOverlay() {
+  // ... state transitions, hide overlay ...
+  if (pauseEl.contains(document.activeElement)) {
+    const target = pausePrevFocus;
+    if (target && typeof target.focus === 'function' && document.contains(target)) {
+      try { target.focus({ preventScroll: true }); } catch { target.focus(); }
+    } else {
+      try { document.activeElement.blur(); } catch {}
+    }
+  }
+  pausePrevFocus = null;
+}
+```
+
+```css
+/* The container is the focus target; its :focus ring wrapping the whole
+   screen would be disorienting, and the overlay being visible is already
+   the focus cue. Suppress the outline on this container. */
+#pause:focus, #pause:focus-visible { outline: none; }
+```
+
+```js
+// Tab trap: extend the modal list. trapFocus hits the empty-focusables
+// branch, which preventDefaults Tab — focus stays on the dialog container,
+// exactly the desired semantics.
+if (e.key === 'Tab') {
+  // ... existing trap list ...
+  if (pauseEl && !pauseEl.classList.contains('hidden')) {
+    if (trapFocus(pauseEl, e)) return;
+  }
+}
+```
+
+### Why `tabindex="-1"` on the dialog container, not `tabindex="0"`?
+
+- `tabindex="-1"`: **reachable via programmatic `.focus()`** but **excluded from the natural Tab order**. This is exactly what we want: open-dialog code places focus there; Tab doesn't reach it from outside (the modal backdrop takes precedence by z-index anyway), and inside the dialog Tab has nothing else to cycle to so the trap's empty-focusables branch simply preventDefaults.
+- `tabindex="0"`: would insert the container into the normal tab cycle. A player Tab-ing around *before* pause would focus the `<div>`, get a confusing focus ring around their game area, and activate nothing. Never use `tabindex="0"` on a passive container.
+
+### Why no explicit live-region announcement on open?
+
+`role="dialog"` + `aria-modal="true"` + `aria-labelledby="pauseTitle"` makes AT speak the title ("Game paused") **automatically** when focus enters the dialog. Adding `announce('Game paused.')` via a `role="status"` live region would produce double-speech — AT hears both the focus-in dialog announcement *and* the live-region update. The live region becomes redundant *because dialog semantics are now carrying the signal*.
+
+Rule: **once a dialog pattern is in place, remove the live-region plug it was covering for.** Live regions are the fallback when no ARIA-native mechanism speaks; they're not an additive layer.
+
+Exceptions — keep the live-region announcement when:
+- The dialog **stays open** and an **internal state change** happens (e.g. resume countdown starts). No focus move → no dialog re-speak → live region is the only channel.
+- The dialog is **opened in a blur/visibility context** where focus move doesn't fire reliably (visibility-based pause on some browsers). Test first before pruning.
+- The user has an AT setting that de-emphasizes dialog announcements. Out of scope for most projects — assume default AT behavior.
+
+### Why snapshot `document.activeElement` on open and restore on close?
+
+The player who triggered pause with `P` could have been focused anywhere: the game canvas wrapper (body), the mute button, the theme button, a swatch, etc. On resume, they expect to land back *where they were*, not on body. This is the **opener-focus-restore** pattern, same as help/stats modals. The snapshot is essential because once the dialog focuses itself, `document.activeElement` is now the dialog — without the snapshot, you've lost the prior target.
+
+Fallback to `blur()` when:
+- `pausePrevFocus` is `null` (e.g. visibility-blur path where focus wasn't tracked).
+- The prior target was removed from the DOM (check `document.contains(target)`).
+- The prior target is no longer focusable (e.g. a button that became disabled).
+
+### Anti-patterns specific to container-focus dialogs
+
+- **Skipping `aria-labelledby` because the title is visual-only** — then AT announces "dialog" with no name. Always include a title, sr-only if the visual design doesn't warrant one.
+- **Using the mutating countdown text as the `aria-labelledby` target** — if the dialog is named by an element whose text changes ("paused" → "3" → "2" → "1"), AT re-reads the dialog name on every tick. Keep the title stable; `aria-hidden="true"` the mutating cosmetic element.
+- **Forgetting `aria-describedby` on the how-to-exit hint** — AT speaks the title on open; the description reinforces the exit affordance ("press P to resume"). Without describedby, the hint is orphaned.
+- **Focus-restore to a stale reference** — if the pre-pause target was removed from the DOM mid-pause (rare but possible; e.g. a dynamic HUD element), `target.focus()` throws silently in some browsers. Always guard with `document.contains(target)`.
+- **Keeping an old `announce()` after upgrading to dialog semantics** — the live region plug was for the old non-dialog overlay; once the dialog is wired, the announce becomes a double-speech bug. Grep and remove.
+- **Showing a focus ring around the container** — aesthetic disaster on full-screen overlays. Suppress with `#dialog:focus { outline: none }`. Accessibility is preserved because the overlay being visible IS the focus cue; AT users get the dialog-opening announcement regardless of visual ring.
+
+<!-- added: 2026-04-18 (001-void-pulse sprint 48) -->
