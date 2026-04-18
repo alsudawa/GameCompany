@@ -280,17 +280,38 @@ html, body {
 }
 .final-score { font-size: 22px; color: var(--fg); margin-top: 10px; }
 .best-score  { font-size: 16px; color: var(--fg); opacity: .78; }
-.retry-hint  { font-size: 15px; color: var(--accent); opacity: .85; margin-top: 8px; }
+/* Retry-hint is a <p tabindex="0" role="button"> — primary action target after
+   gameover. Sized at 44×44 minimum (iOS HIG / Android Material) so a thumb on
+   mobile lands cleanly without the adjacent share-btn / leaderboard rows
+   stealing the tap. inline-block + line-height anchors the visual baseline so
+   the centered text looks identical to its pre-Sprint-55 layout. */
+.retry-hint {
+  display: inline-block;
+  min-height: 44px;
+  padding: 12px 18px;
+  font-size: 15px;
+  line-height: 20px;
+  color: var(--accent);
+  opacity: .85;
+  margin-top: 8px;
+  cursor: pointer;
+  border-radius: 8px;
+}
 
 .share-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 7px;
   font: inherit;
   font-weight: 600;
   font-size: 13px;
   letter-spacing: .04em;
-  padding: 8px 16px;
+  /* Sprint 55: padding bumped + min-height 44px to clear the iOS HIG /
+     Android Material tap-target floor. Visual size barely changes — the
+     extra height comes mostly from line-height-effective padding. */
+  padding: 12px 18px;
+  min-height: 44px;
   margin: 6px auto 0;
   background: transparent;
   color: var(--fg);
@@ -409,12 +430,16 @@ html, body {
 }
 
 /* Mute toggle (top-right) */
+/* Sprint 55: bumped 36→44 to clear the iOS HIG / Android Material 44px tap
+   floor. The SVG glyph stays at 18px so the visual weight is unchanged —
+   only the hit area grows. .help-btn (positioned to the left of mute) shifts
+   from right:60 → right:68 below to preserve the gap after the size bump. */
 .icon-btn {
   position: absolute;
   top: 14px;
   right: 14px;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -660,7 +685,9 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 .daily-link {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   margin-top: 14px;
   font-size: 13px;
   letter-spacing: .05em;
@@ -668,7 +695,11 @@ html, body {
   opacity: .65;
   text-decoration: none;
   border-bottom: 1px solid rgba(232, 233, 255, .2);
-  padding-bottom: 1px;
+  /* Sprint 55: 12px vertical padding lifts the link's tap-area to 44px
+     (12 + 13(font) + 12 ≈ 44) without disturbing the underline-as-affordance
+     visual. Horizontal padding gives a wider strike-zone too. */
+  padding: 12px 14px 11px;
+  min-height: 44px;
   transition: opacity .12s ease, color .12s ease, border-color .12s ease;
 }
 .daily-link:hover { opacity: 1; color: var(--highlight); border-color: color-mix(in srgb, var(--highlight) calc(100% * .6), transparent); }
@@ -828,7 +859,7 @@ html, body {
 /* ---------- Help (?) modal ---------- */
 .help-btn {
   top: 14px;
-  right: 60px;            /* sit just left of the mute button */
+  right: 68px;            /* sit just left of the mute button (44 + 14 + 10 gap) */
 }
 .help-overlay {
   background: rgba(10, 14, 31, .82);
@@ -1180,7 +1211,9 @@ html, body {
 
 /* ---------- Start overlay: lifetime stats entry (Sprint 26) ---------- */
 .ghost-link-btn {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   border: none;
   color: rgba(232, 233, 255, .55);
@@ -1188,7 +1221,11 @@ html, body {
   letter-spacing: .08em;
   text-transform: uppercase;
   cursor: pointer;
-  padding: 4px 8px;
+  /* Sprint 55: padding 14px vertical + min-height: 44px so the small
+     "Lifetime stats →" link clears the tap-target floor. Visual weight
+     stays low (font: 11px, transparent bg) — the hit area is what grew. */
+  padding: 14px 12px;
+  min-height: 44px;
   margin: 2px 0 4px;
   border-radius: 6px;
   transition: color .15s, background .15s;
@@ -1325,9 +1362,17 @@ html, body {
 }
 .stats-reset-btn,
 .stats-export-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   border-radius: 8px;
-  padding: 6px 12px;
+  /* Sprint 55: 12px vertical padding + min-height 44px clears the tap floor.
+     Stats panel pairs Reset (destructive) / Export (positive) — both grow
+     together so the row stays balanced and the visual hierarchy doesn't
+     shift relative to the .btn Close button alongside them. */
+  padding: 12px 14px;
+  min-height: 44px;
   font-size: 11px;
   letter-spacing: .06em;
   text-transform: uppercase;
@@ -1474,8 +1519,14 @@ html, body {
   display: inline-flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 4px;
-  padding: 6px 8px;
+  /* Sprint 55: vertical was already ~50px (padding+ring+name) but width
+     bottomed out near "void" at ~38px. min-width: 48px guarantees the chip
+     clears the 44px tap floor in both axes regardless of theme name length.
+     gap stays at 4px so the ring-above-name composition is unchanged. */
+  padding: 8px 10px;
+  min-width: 48px;
   background: transparent;
   border: 1px solid rgba(232, 233, 255, .15);
   border-radius: 10px;
@@ -1539,7 +1590,6 @@ html, body {
 .retry-hint:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 4px;
-  border-radius: 4px;
   opacity: 1;
 }
 /* Theme swatches already use border-color for the selected state, so

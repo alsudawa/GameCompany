@@ -45,6 +45,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`mobile/dpr-canvas.md`](mobile/dpr-canvas.md) — DPR-aware canvas for crisp rendering on retina
 - [`mobile/haptics.md`](mobile/haptics.md) — `navigator.vibrate()` patterns + reduced-motion gating
 - [`mobile/pwa-lite-install.md`](mobile/pwa-lite-install.md) — manifest + apple-touch-icon + dynamic theme-color for add-to-home-screen (no service worker needed)
+- [`mobile/tap-target-audit.md`](mobile/tap-target-audit.md) — 44×44px tap-target floor audit (5-step framework + four shrink patterns + Recipe A/B fixes + sibling-offset re-check + 20-sprint periodic sweep)
 
 ### UX
 - [`ux/retention.md`](ux/retention.md) — run-end stats, NEW BEST gating, mute persistence

@@ -3905,6 +3905,128 @@ The other cross-cutting pattern: **every periodic single-axis audit makes prior 
 
 ---
 
+## Sprint 55 — Mobile tap-target audit (Apr 18, 2026)
+
+### Lens
+
+After the recent rotation (a11y → audio → data → perf), the next *deliberately distinct* axis was **mobile ergonomics** — specifically tap-target sizing. The game has three months of CSS accretion, much of it added on a desktop monitor where every cursor lands cleanly. Mobile thumbs are different. Industry-standard floor is **44 × 44 CSS px** (iOS HIG 44pt; Android Material 48dp ≈ 44px). I'd never run a single sweep against that floor; almost certain there were regressions hiding in plain sight.
+
+### Survey
+
+Greppped `games/001-void-pulse/index.html` for `<button`, `<a `, `role="button"`, `tabindex="0"`. Eleven distinct interactive elements, mapping to **eight** distinct CSS selectors. Read each rule, computed `padding + line-height + padding` (or explicit `width`/`height`).
+
+| Element(s) | Selector | Measured size | Score | Note |
+|---|---|---|---|---|
+| `#mute`, `#helpBtn` | `.icon-btn` | **36 × 36** | ❌ | Hardcoded sub-floor dims |
+| `#share` | `.share-btn` | ~118 × **~32** | ❌ | Pill, small font + small padding |
+| `#statsBtn` | `.ghost-link-btn` | ~120 × **~24** | ❌ | "Lifetime stats →" entry link |
+| `#statsExport`, `#statsReset` | `.stats-*-btn` | ~90 × **~26** | ❌ | Stats panel action row |
+| 3× theme picker | `.theme-swatch` | width 38–60 × height ~50 | ⚠ → ❌ | Width depends on label length |
+| `#dailyLink`, `#freeLink` | `.daily-link` | ~140 × **~16** | ❌ | Inline link as nav target |
+| `#retryHint` | `.retry-hint` | ~110 × **~21** | ❌ | `<p tabindex="0" role="button">` styled as text |
+| `#start`, `#helpClose`, `#statsPanelClose` | `.btn` | wide × ~50 | ✅ | Already passes |
+
+**Verdict: 7 of 8 selectors fail the floor.** That's a 7-out-of-8 mobile-ergonomics regression sitting in the codebase, completely invisible on desktop. The retryHint case is the worst — a 21-px-tall paragraph acting as the primary post-game CTA, sandwiched between the share-btn above and the leaderboard rows below. On a phone, the player taps "where they think the retry text is" and lands on something else maybe a third of the time.
+
+### Implementation
+
+Two recipes covered every fix.
+
+**Recipe A — explicit-dimension icon button.** For `.icon-btn`, bump `width: 36 → 44` and `height: 36 → 44`. The 18-px SVG glyph stays anchored via existing `align-items: center; justify-content: center`; visual weight is unchanged.
+
+```css
+.icon-btn { width: 44px; height: 44px; }   /* was 36 / 36 */
+.help-btn { right: 68px; }                  /* was 60 = 14+36+10; now 14+44+10 */
+```
+
+The `.help-btn` offset is the easy-to-miss follow-up: it sits at `right: 60px` to nest left of `mute` (which is at `right: 14px`, width 36px, gap 10px). After bumping mute to 44px, the help button needs to move to `right: 68px` or the two icons overlap by 8px.
+
+**Recipe B — text/pill button gets `min-height: 44px` + flex centering + padding bump.** Used on `.share-btn`, `.ghost-link-btn`, `.stats-reset-btn`/`.stats-export-btn`, `.daily-link`, and (via a slight variant) `.retry-hint`.
+
+```css
+.share-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 12px 18px;     /* was 8 16 */
+}
+```
+
+The `inline-flex + align-items: center` is load-bearing. Without it, the increased min-height pushes label text to the top of the box and the layout looks broken. Visually the changes are subtle — most pills grew from ~26-32px tall to 44px tall, with the same font size. They feel airier, not bigger.
+
+For `.theme-swatch`, the width was the borderline axis (38px on the "void" label, 60px on "sunset"). Added `min-width: 48px` to lock both axes above the floor regardless of which theme name occupies the chip.
+
+For `.retry-hint`, since it's a `<p>`, used `display: inline-block` instead of `inline-flex` so the centered text alignment from the parent overlay still applies. Added `border-radius: 8px` to give the new larger box a soft edge that matches the focus-ring aesthetic, then dropped the `border-radius: 4px` from `.retry-hint:focus-visible` since the element now defines its own.
+
+### Verification
+
+Walked each fixed selector mentally against the floor:
+
+| Selector | After | ≥ 44? |
+|---|---|---|
+| `.icon-btn` | 44 × 44 | ✅ |
+| `.share-btn` | width-by-content × `min-height: 44` | ✅ |
+| `.ghost-link-btn` | width-by-content × 44 | ✅ |
+| `.stats-*-btn` | width-by-content × 44 | ✅ |
+| `.theme-swatch` | `min-width: 48` × ~50 | ✅ |
+| `.daily-link` | width-by-content × 44 | ✅ |
+| `.retry-hint` | `min-height: 44` × padded | ✅ |
+
+Confirmed `.help-btn` now sits at `right: 68px`, leaving a 10px gap to mute (which extends from right:14 to right:58). No overlap. CSS parses; node syntax-check on game.js (untouched) clean.
+
+### Skill extraction
+
+Wrote new skill `company/skills/mobile/tap-target-audit.md` capturing the framework. Five-step audit (enumerate → measure → score → fix-with-Recipe-A-or-B → verify-positioned-siblings), four shrink patterns table (icon-button-with-explicit-dims, small-pill, inline-link, paragraph-as-button), red-flag-vs-safe code pairs, side-benefits section (switch users, tremor, 4K cursor, stylus all benefit), and 20-sprint periodic-sweep cadence joining the existing audit rotation (reduced-motion, keyboard-flow, SR-coverage, casual-checklist, persistence-defensiveness, **tap-target**).
+
+The skill cross-links the periodic-audit family — an organism of six audits at the 20-sprint cadence, each one cheap and each one catching a category of drift that's invisible during regular feature work. Indexed in `company/skills/README.md` under Mobile.
+
+### Reflection
+
+**What worked well.**
+The audit table format (selector | size | score) made the pattern jump out — once I'd computed five rows in the same shape, the sixth and seventh practically scored themselves. Padding-and-font-size reasoning is a tight mental model: `pad-top + (font × 1.2) + pad-bottom` ≈ height. Computed in my head for each selector in seconds.
+
+The two-recipe split (Recipe A for explicit-dimension icon buttons, Recipe B for text/pill buttons) was a real time-saver — once I'd written one Recipe-B block, the other five copy-adapted in three keystrokes each. Confirms the value of the audit framework: thinking once, applying mechanically.
+
+The `.help-btn` sibling-offset fix is the kind of thing that gets forgotten until someone screenshots an overlapping icon at 360px width and posts it on Twitter. Catching it in the same sprint as the size bump (because Step 5 of the audit explicitly asks for the recheck) is the whole reason the audit is structured that way.
+
+**What I'd do differently next time.**
+
+1. **Should have measured at multiple viewport widths.** I computed sizes against the canonical mobile width (375 × 667 iPhone-sized) but didn't simulate 320px (smallest supported) or 540px (foldable narrow). At 320px, three theme swatches at 48px min-width + 10px gaps = 164px, plus overlay padding, fits — but if I'd added a fourth theme it would wrap. A multi-viewport check would have surfaced that latent constraint.
+
+2. **No before/after tap-success rate measurement.** The audit is a probability-of-hit improvement, but I have no data to prove the improvement landed. A future sprint should either (a) add a click-heatmap dev overlay, or (b) instrument retry-tap-vs-canvas-tap miss-counts to track over time.
+
+3. **Could have audited `<input>` elements too.** None exist in this game (no text fields), but the framework's grep should include `<input>` and `<select>` for templates that have them. Note added to the skill doc.
+
+4. **Forgot to update the QA casual-checklist with a tap-target line item.** Will leave that for Sprint 56 — it's the natural next step (skill extraction → checklist gating).
+
+**Cross-sprint pattern.**
+
+Sprints 53 → 54 → 55 form a three-sprint trio of *invisible-on-desktop* defects:
+
+- **Sprint 53 (data integrity)**: tampered/corrupt localStorage breaks the boot path on the player's machine; the dev never sees it because the dev's storage is well-formed.
+- **Sprint 54 (perf)**: per-frame allocations and sync I/O cost milliseconds the dev's M-series Mac never notices; only the player on a low-end Android does.
+- **Sprint 55 (mobile tap-targets)**: 36px buttons feel fine under a desktop cursor; only a thumb misses them.
+
+The unifying principle is **the dev's environment is the most generous environment in the player population**. Periodic audits at the 20-sprint cadence are the systematic counter to this — they force you to look at the codebase from a less-privileged vantage point. The reduced-motion / keyboard-flow / SR-coverage / persistence / tap-target audits are now five members of this family. I should write up the family itself as a meta-skill at some point ("audit-from-the-margin discipline") — it's the through-line.
+
+### Files touched
+
+- `games/001-void-pulse/style.css` — six selectors restyled to clear 44px floor + 1 sibling offset re-tuned + 1 stale focus-ring `border-radius` removed. ~30 lines of net change.
+- `company/skills/mobile/tap-target-audit.md` — **NEW** skill, ~165 lines: 5-step audit framework, four shrink patterns, Recipe A/B safe replacements, side-benefits + cadence.
+- `company/skills/README.md` — added Mobile entry.
+- `company/postmortems/001-void-pulse.md` — this section.
+
+### Next candidates
+
+- **Audit-from-the-margin meta-skill** — write up the through-line from Sprints 53/54/55 as its own discipline doc. The five (and growing) periodic audits all stem from one principle.
+- **Multi-viewport sim** — add a "test at 320 / 375 / 414 / 540 / 768" mental walkthrough to the tap-target audit's Step 5.
+- **Tap-target line in qa/casual-checklist.md** — pick up the gating discipline.
+- **Click-heatmap dev overlay** — a `?heat=1` flag that records last-N tap coords and renders them as faint dots over the canvas; would empirically validate retryHint and share-btn hit rates.
+- **Carried backlog**: stats-panel + gameover render perf sweep (Sprint 54), mirrored writer audit (Sprint 53), color contrast re-audit (Sprint 51).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |
