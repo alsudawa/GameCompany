@@ -881,14 +881,14 @@
     { id: 'first-pulse',     label: 'First Pulse',     desc: 'Score your first point',                     test: c => c.score >= 1 },
     { id: 'combo-25',        label: 'Combo 25',        desc: 'Chain 25 hits in a run',                     test: c => c.peakCombo >= 25 },
     { id: 'combo-50',        label: 'Combo 50',        desc: 'Chain 50 hits in a run',                     test: c => c.peakCombo >= 50 },
-    { id: 'score-500',       label: '500 Points',      desc: 'Reach 500 in a single run',                  test: c => c.score >= 500 },
-    { id: 'score-1000',      label: '1000 Points',     desc: 'Reach 1000 in a single run',                 test: c => c.score >= 1000 },
+    { id: 'score-500',       label: '500 Points',      desc: 'Reach 500 in a run',                         test: c => c.score >= 500 },
+    { id: 'score-1000',      label: '1000 Points',     desc: 'Reach 1000 in a run',                        test: c => c.score >= 1000 },
     { id: 'streak-3',        label: '3-Day Ritual',    desc: 'Finish the daily 3 days in a row',           test: c => c.streak >= 3 },
     // Rare tier — introduced Sprint 23. Each targets a different play style
     // (skill ceiling, endurance, retention, precision, flawlessness) so no
     // single "good run" sweeps them all.
-    { id: 'combo-100',       label: 'Combo 100',       desc: 'Chain 100 hits in a single run',             test: c => c.peakCombo >= 100,                                  midRun: true },
-    { id: 'score-2500',      label: '2500 Points',     desc: 'Reach 2500 in a single run',                 test: c => c.score >= 2500,                                     midRun: true },
+    { id: 'combo-100',       label: 'Combo 100',       desc: 'Chain 100 hits in a run',                    test: c => c.peakCombo >= 100,                                  midRun: true },
+    { id: 'score-2500',      label: '2500 Points',     desc: 'Reach 2500 in a run',                        test: c => c.score >= 2500,                                     midRun: true },
     { id: 'streak-7',        label: 'Week Zealot',     desc: 'Finish the daily 7 days in a row',           test: c => c.streak >= 7 },
     { id: 'perfect-purity',  label: 'Perfect Purity',  desc: '20+ perfects in a run, zero goods',          test: c => c.perfectCount >= 20 && c.hitCount === c.perfectCount, midRun: true },
     { id: 'flawless-60',     label: 'Flawless 60',     desc: 'Survive 60 seconds with zero misses',        test: c => c.duration >= 60 && c.missCount === 0,               midRun: true },
@@ -1894,7 +1894,7 @@
       Sfx.applyMute();
       BGM.setMuted(state.muted);
       applyMuteUI();
-      announce(state.muted ? 'Sound muted.' : 'Sound on.');
+      announce(state.muted ? 'Sound off.' : 'Sound on.');
       return;
     }
     // T — cycle theme (void → sunset → forest → void). Works any time so the
@@ -1952,7 +1952,7 @@
     Sfx.applyMute();
     BGM.setMuted(state.muted);
     applyMuteUI();
-    announce(state.muted ? 'Sound muted.' : 'Sound on.');
+    announce(state.muted ? 'Sound off.' : 'Sound on.');
   });
   applyMuteUI();
 
@@ -3651,7 +3651,7 @@
       const glyphs = hudLives.querySelectorAll('.life');
       const bonusIdx = state.lives - 1;
       if (glyphs[bonusIdx]) retriggerClass(glyphs[bonusIdx], 'bonus-glow');
-      announce('Bonus life granted.');
+      announce('Bonus life earned.');
     }
 
     lastTime = performance.now();

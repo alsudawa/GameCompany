@@ -14,7 +14,7 @@ This skill is *the* meta-pattern under which all the periodic audits in this fol
 5. A template for adding the ninth audit
 6. Anti-patterns: when "audit fatigue" creeps in
 
-## The current audit family (9 members as of Sprint 59)
+## The current audit family (10 members as of Sprint 60)
 
 | # | Audit | What's at the margin | Lens / period |
 |---|---|---|---|
@@ -27,10 +27,11 @@ This skill is *the* meta-pattern under which all the periodic audits in this fol
 | 7 | [`mobile/tap-target-audit.md`](mobile/tap-target-audit.md) | Thumbs on small screens (44px floor) | Mobile box-model / 20 sprints |
 | 8 | [`mobile/touch-gesture-audit.md`](mobile/touch-gesture-audit.md) | Mobile players whose OS competes with the game for input | Mobile input-stack / 20 sprints |
 | 9 | [`ux/cognitive-load-audit.md`](ux/cognitive-load-audit.md) | Brand-new players in the first 3 seconds (no frame of reference for chrome) | Onboarding / 20 sprints |
+| 10 | [`ux/microcopy-audit.md`](ux/microcopy-audit.md) | Readers who hear voice drift but can't name it (accumulated tone patchwork over N sprints) | Writing / 20 sprints |
 
-Companion: [`data/boot-error-fallback.md`](data/boot-error-fallback.md) — not an audit *per se* but the recovery layer for cases where audit-1-through-9 prevention all fails.
+Companion: [`data/boot-error-fallback.md`](data/boot-error-fallback.md) — not an audit *per se* but the recovery layer for cases where audit-1-through-10 prevention all fails.
 
-The list **will grow.** Likely future additions: color-contrast audit (carried from Sprint 51), network-resilience audit (offline/slow-3G), low-end-device perf audit (sub-60Hz throttled CPU), localization-readiness audit (string-extract surface), copy-as-UI audit (microcopy review for tone consistency + clarity).
+The list **will grow.** Likely future additions: color-contrast audit (carried from Sprint 51), network-resilience audit (offline/slow-3G), low-end-device perf audit (sub-60Hz throttled CPU), localization-readiness audit (string-extract surface).
 
 ## The shared 5-step audit shape
 
@@ -184,4 +185,4 @@ The audit family is a *transferable asset* of the company, not a single-game art
 
 This meta-skill itself: ~5 minutes per sprint to remember it exists, ~30 minutes per game-start to plan the audit rotation, ~30 minutes per new audit to write it up. Compared to the alternative (each game re-deriving the audit shape from scratch, eight times, with no shared template), the asymmetry is overwhelming.
 
-The audit *family*: ~1 sprint of dedicated time per audit, 9 audits, run every 20 sprints. That's roughly 9 sprints out of every 180 (5%) spent on cross-cutting audits. The remaining 95% is feature work, polish, and per-sprint axis variety. The 5% is what keeps the 95% from collapsing under accumulated drift.
+The audit *family*: ~1 sprint of dedicated time per audit, 10 audits, run every 20 sprints. That's roughly 10 sprints out of every 200 (5%) spent on cross-cutting audits. The remaining 95% is feature work, polish, and per-sprint axis variety. The 5% is what keeps the 95% from collapsing under accumulated drift.

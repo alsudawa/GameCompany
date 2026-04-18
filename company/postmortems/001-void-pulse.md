@@ -4583,6 +4583,110 @@ Updated supporting docs:
 
 ---
 
+## Sprint 60 — Microcopy / tone audit across the full string corpus (Apr 18, 2026)
+
+### Lens
+
+Writing. Not layout, not perf, not mobile, not a11y-narrow — just *the words in the game*. Every user-facing string, read top-to-bottom as if it were a single document instead of 60 fragments each added in their own sprint. This is a deliberately different lens from Sprint 59 (cognitive-load — which elements to show) because microcopy assumes the elements are correct and asks whether the words inside them are right.
+
+The meta-skill (Sprint 58) predicted exactly this kind of audit under its "future additions" list: "copy-as-UI audit (microcopy review for tone consistency + clarity)". Sprint 60 cashes that prediction — 10th audit now formalized.
+
+### Survey
+
+Three greps collected the full corpus:
+1. HTML element text — `grep -nE '>[^<][^<]+<' index.html` (~40 strings: hook, hint, help modal bullets, stat labels, button labels, stats empty-state, pause hint)
+2. JS runtime `textContent` / `innerHTML` / `aria-label` — `grep -nE "textContent\s*=\s*['\"\`]" game.js` (~18 strings: pause-countdown text, "Copied!" flash, reset-confirm, daily labels, ghost comparison)
+3. JS `announce()` calls — `grep -nE "announce\(" game.js` (~10 strings: mute toggle, theme, multiplier, lives, bonus life, resume, gameover composition)
+
+Roughly **60 distinct user-facing strings** collected. Read top-to-bottom out loud.
+
+### Diagnosis — what jumped out on the read
+
+Applied the 4-question rubric (clarity / consistency / brevity / personality) to each string. Findings by pattern number from the new skill:
+
+| Pattern | Count | Examples |
+|---|---|---|
+| #1 voice drift | 1 | "Got it" (help modal dismiss) vs "Close" (stats modal dismiss) — same action, same surface class, different tone |
+| #2 tense/mood drift | 1 | "Bonus life granted." — passive + formal for a *positive surprise moment* |
+| #3 parallelism break | 1 | `'Sound muted.' : 'Sound on.'` — past-participle vs adverb for a binary-state pair |
+| #4 cryptic shorthand | 1 | "Tapping it = miss + life" — `+` reads as addition; means subtraction of a life |
+| #5 jargon leakage | 1 | "~60s fixed chart" — "chart" reads as genre-internal (rhythm-game dev term) |
+| #6 redundant phrasing | 3 | "in a single run" vs "in a run" (4 achievement descs use the former, 2 use the latter); "60s fixed chart" says chart twice; hook "60-second chart, chase 100% accuracy" comma-splices two ideas |
+| #7 overloaded string | 2 | Hook (above); pause hint "Return to the tab — or press P — to resume" (double em-dash mid-sentence is a stumble) |
+
+Total **10 action items**. A moderately good writing hygiene state (no single catastrophic string, but accumulated drift is measurable).
+
+### Implementation — 10 edits
+
+All edits are single-line or two-line. None touch logic.
+
+1. **Hook copy** (`index.html` L54): `"60-second chart, chase 100% accuracy"` → `"Chase 100% on a 60-second chart."` Verb lands at the end; rhythm reads better; drops the comma-splice.
+2. **Pause hint** (`index.html` L127): `"Return to the tab — or press P — to resume"` → `"Press P or refocus the tab to resume"` — two actions, one sentence, no double em-dash. Also more accurate: I checked the actual bindings (no tap-to-resume exists — only P or tab-focus-return).
+3. **Help hazard bullet** (L137): `"Tapping it = miss + life"` → `"Tap it and you lose a life."` (Recipe B — replaces operator shorthand with verb.)
+4. **Help chart bullet** (L139): `"~60s fixed chart. Chase the % — try for 100% perfect run"` → `"~60-second chart. Chase the percent — aim for a 100% perfect run."` Removes the duplicated "chart"; expands `%` to word in prose.
+5. **Help lives bullet** (L140): `"miss / mistap to lose one. Die fast 3x in a row → next run grants +1 gold life"` → `"miss or mistap to lose one. Die quickly 3 runs in a row → the next run starts with a bonus gold life."` "Die fast" was genuinely ambiguous (fast = how?).
+6. **Stats label** (L160): `"Avg / run"` → `"Avg score"` — the `/` was metadata-y; the value IS an average score.
+7. **Stats dismiss button** (L184): `"Close"` → `"Got it"` — matches help modal; applies Recipe A (normalize sibling surfaces).
+8. **Achievement descs** (`game.js` L884-885, 890-891): `"in a single run"` → `"in a run"` — Recipe C search-and-replace; four descs normalized.
+9. **Mute announce** (`game.js` L1897 + L1955): `'Sound muted.'` → `'Sound off.'` — Recipe A parallelism.
+10. **Bonus life announce** (`game.js` L3654): `'Bonus life granted.'` → `'Bonus life earned.'` — the player earned it (retries, misses); "granted" reads as bureaucratic dispensation.
+
+`node --check game.js` → OK.
+
+### Verification (side-effects sweep)
+
+- **Screen reader pronunciation.** New announce strings (`'Sound off.'` / `'Sound on.'`) both end with a period — SR reads them as equivalent clipped phrases. `'Bonus life earned.'` vs `'Bonus life granted.'` — both read cleanly; no TTS quirk change.
+- **Layout.** `"Got it"` (6 chars) vs `"Close"` (5 chars) — the stats-close button's `.btn` class has generous padding; no overflow risk. Pause hint is 1 word shorter; layout is flex-centered so remaining words re-flow cleanly.
+- **Tests.** No snapshot tests exist in this codebase that assert exact string equality; the greps came back empty on the changed phrases.
+- **Achievement label freeze.** All edits were to *descriptions*, not labels. Labels stayed frozen — "First Pulse", "Combo 25", "Perfect Purity", etc. are untouched. (The skill's "When NOT to use" section explicitly flags this; Sprint 60 honored it.)
+- **Translation surface.** No locales yet. Logged the 10 changed strings in the commit body for future translator triage.
+
+### Skill extraction
+
+Wrote a new skill: [`company/skills/ux/microcopy-audit.md`](../skills/ux/microcopy-audit.md), ~190 lines. Structure follows the meta-skill template (still reusing Sprint 58's template, two audits in a row now):
+
+- **Thesis** — dev writes one-string-at-a-time; player reads the aggregate
+- **7 drift patterns** with symptoms + standard fixes
+- **5-step audit**: enumerate (3 greps) → read-corpus-out-loud → score against 4-question rubric → apply Recipe A/B/C → verify side-effects
+- **3 recipes**: A on/off pair normalization, B operator-shorthand → verb, C pick-one-phrasing-search-and-replace
+- **Common gap patterns** — grep red-flags + safe replacements
+- **When NOT to use** — pre-feature-lock, translation-locked, achievement labels frozen
+- **Cadence** — 20-sprint sweep + spot-check any sprint adding ≥3 strings + *always* before external playtest
+- **Cross-link** — composes with cognitive-load (layout first, then copy), screen-reader-announcements (SR-announce is a subset surface), accessibility (plain-language overlap)
+
+Updated supporting docs:
+- `company/skills/audit-from-the-margin.md` — family table grew 9 → 10; "future additions" list lost one entry (microcopy/copy-as-UI promoted); budget arithmetic 9/180 → 10/200 (still 5%).
+- `company/skills/README.md` — UX section gained microcopy-audit entry; Meta section updated to "**ten** periodic audits".
+
+### Reflection
+
+**What worked.** The "read the corpus out loud" step (audit step 2 in the skill) is the single highest-leverage instruction. Going line-by-line in the code, I couldn't hear the voice drift between "Got it" and "Close" — they were in different files 1000 lines apart. Reading the flat string list top-to-bottom, the mismatch was unmissable within two seconds. The grep-then-list discipline is what makes this audit possible; without it, the audit is just "read the game carefully" which is what every sprint pretends to do and none actually does.
+
+**What I'd do differently.** I scoped the audit to existing strings. A more ambitious pass would have also challenged some of the *well-written* strings — e.g. is "void silenced" the right gameover title? It's atmospheric and on-brand, but does a first-time player who just lost all three lives understand they lost? ("silenced" is poetic; "game over" is functional.) I left this as an open question rather than editing, because the atmosphere contribution is real. But the next microcopy audit (Sprint ~80) should probably look again with fresh eyes.
+
+**Cross-sprint pattern.** Sprints 55 → 56 → 57 → 58 → 59 → 60 form a *six-sprint arc* on the audit-discipline axis. Specifically: S55/S56 tactical pair, S57 recovery-layer, S58 meta, S59 first meta-template use, S60 second meta-template use. Each sprint reused slightly less of the meta-skill's template — not because the template got stale, but because I internalized it. The meta-skill is now *running* in me, not just documented. That's probably the real sign a meta-skill has landed: you stop consulting it, because the shape is automatic.
+
+**The "no new features this sprint" observation.** Sprint 60 shipped zero new mechanics, zero new UI elements, zero new audio. Just 10 re-worded strings and a new skill doc. And yet the game *reads* better. This is the axis-variety directive paying dividends — "다양한 관점에서 개선점을 찾아" explicitly rules out "just bug-hunting," and writing-as-UX is a legitimate axis that would never surface from a bug lens. Six audits running, game feels more polished, no feature debt added.
+
+### Files touched
+
+- `games/001-void-pulse/index.html` — 7 string edits (hook, pause hint, 3 help bullets, stat label, modal dismiss)
+- `games/001-void-pulse/game.js` — 4 string edits (2 mute announce sites, bonus-life announce, 4 achievement descs via one sprint of normalization)
+- `company/skills/ux/microcopy-audit.md` — **NEW**, ~190 lines: the 10th audit
+- `company/skills/audit-from-the-margin.md` — family table 9 → 10; budget math
+- `company/skills/README.md` — UX + Meta entries updated to 10
+- `company/postmortems/001-void-pulse.md` — this section
+
+### Next candidates
+
+- **Gameover-panel cognitive-load audit** — still deferred from Sprint 59. The panel has ~12 elements (NEW BEST, title, score, best, stats grid × 3, streak, achievements, history, ghost strip, leaderboard, tomorrow countdown, share, retry). Almost certainly too dense for a post-failure emotional moment.
+- **Real-device walkthrough** — now 6 sprints deferred. Either do it next, or cross it off the list honestly.
+- **Network-resilience audit** — what happens offline? Referenced in S58 next-candidates; still unscoped.
+- **Color-contrast re-audit** — S51 carryover; would pair naturally with the gameover-panel audit (both "what does the player perceive on this surface").
+- **Write a "voice guide" doc** — the microcopy audit resolved drift *this sprint*, but didn't explicitly name the voice it normalized TO. A one-page "void-pulse voice = lowercase-first, imperative, warm-but-spare" doc would let future sprints author new strings in-voice from the start, rather than auditing them back into voice later.
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

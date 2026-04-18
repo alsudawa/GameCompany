@@ -51,7 +51,7 @@
         <span class="streak-count"><span id="streakStartNum">0</span>-day streak</span>
         <span class="streak-best" id="streakStartBest" hidden>best <span id="streakStartBestNum">0</span></span>
       </div>
-      <p class="hook">Tap on the beat. Dodge the <span style="color:var(--danger);font-weight:600">red</span>. 60-second chart, chase 100% accuracy.</p>
+      <p class="hook">Tap on the beat. Dodge the <span style="color:var(--danger);font-weight:600">red</span>. Chase 100% on a 60-second chart.</p>
       <p id="firstVisitHint" class="first-visit-hint" hidden>First time? Tap white rings · skip red ones · chase 100% accuracy.</p>
       <div class="demo" aria-hidden="true">
         <div class="demo-target"></div>
@@ -124,7 +124,7 @@
       <div class="pause-ring">
         <div id="pauseCountdown" class="pause-countdown" aria-hidden="true">paused</div>
       </div>
-      <p class="pause-hint" id="pauseHint">Return to the tab — or press <kbd>P</kbd> — to resume</p>
+      <p class="pause-hint" id="pauseHint">Press <kbd>P</kbd> or refocus the tab to resume</p>
     </div>
 
     <div id="help" class="overlay hidden help-overlay" role="dialog" aria-modal="true" aria-labelledby="helpTitle" aria-hidden="true">
@@ -134,10 +134,10 @@
           <li><span class="help-key">tap / Space</span><span>when the pulse crosses the ring — on beat (120 BPM)</span></li>
           <li><span class="help-key">center hit</span><span>= <em>perfect</em>: full score, combo grows, chromatic flash</span></li>
           <li><span class="help-key">near hit</span><span>= <em>good</em>: half score, combo grows</span></li>
-          <li><span class="help-key" style="color:var(--danger)">red dashed pulse</span><span>= <em>HAZARD</em>: do NOT tap. Let it pass for +50 bonus. Tapping it = miss + life</span></li>
+          <li><span class="help-key" style="color:var(--danger)">red dashed pulse</span><span>= <em>HAZARD</em>: do NOT tap. Let it pass for +50 bonus. Tap it and you lose a life.</span></li>
           <li><span class="help-key">combo bar</span><span>fills toward the next ×multiplier (cap ×4)</span></li>
-          <li><span class="help-key">chart length</span><span>~60s fixed chart. Chase the % — try for 100% perfect run</span></li>
-          <li><span class="help-key">3 lives</span><span>miss / mistap to lose one. Die fast 3x in a row → next run grants +1 gold life</span></li>
+          <li><span class="help-key">chart length</span><span>~60-second chart. Chase the percent — aim for a 100% perfect run.</span></li>
+          <li><span class="help-key">3 lives</span><span>miss or mistap to lose one. Die quickly 3 runs in a row → the next run starts with a bonus gold life.</span></li>
           <li><span class="help-key">daily mode</span><span><code>?daily=1</code> — same chart for everyone today</span></li>
           <li><span class="help-key">theme picker</span><span>void / sunset / forest — press <kbd>T</kbd> to cycle</span></li>
         </ul>
@@ -157,7 +157,7 @@
           <div class="stat-row"><span class="stat-k">Total play</span><span class="stat-v" id="lsTime">0s</span></div>
           <div class="stat-row"><span class="stat-k">Best score</span><span class="stat-v" id="lsBest">0</span></div>
           <div class="stat-row"><span class="stat-k">Peak combo</span><span class="stat-v" id="lsPeakCombo">0</span></div>
-          <div class="stat-row"><span class="stat-k">Avg / run</span><span class="stat-v" id="lsAvg">—</span></div>
+          <div class="stat-row"><span class="stat-k">Avg score</span><span class="stat-v" id="lsAvg">—</span></div>
           <div class="stat-row"><span class="stat-k">Total score</span><span class="stat-v" id="lsScore">0</span></div>
           <div class="stat-row"><span class="stat-k">Perfects</span><span class="stat-v" id="lsPerfects">0</span></div>
           <div class="stat-row"><span class="stat-k">Hits</span><span class="stat-v" id="lsHits">0</span></div>
@@ -181,7 +181,7 @@
         <div class="stats-actions">
           <button id="statsExport" class="stats-export-btn" type="button" hidden>Copy as text</button>
           <button id="statsReset" class="stats-reset-btn" type="button" hidden>Reset stats</button>
-          <button id="statsPanelClose" class="btn stats-close" type="button">Close</button>
+          <button id="statsPanelClose" class="btn stats-close" type="button">Got it</button>
         </div>
       </div>
     </div>
