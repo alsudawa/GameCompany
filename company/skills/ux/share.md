@@ -110,6 +110,49 @@ Before adding:
 - **Will recipients render the emojis?** Modern devices yes, but some chat platforms strip or re-render. Test in 2–3 target surfaces before committing.
 - **Does it save or add length?** A 30-emoji ladder costs ~30 characters vs a 2-stat summary's ~15. Don't ladder if the stats already tell the story.
 
+### Tier-ladder pattern (void-pulse Sprint 50)
+
+One specific ladder shape that works well for games with a multiplier/level-tier progression: **one cell per tier**, filled-or-unfilled, with a special glyph on the max-tier cell. Seven cells map to seven multiplier tiers:
+
+```js
+function buildTierLadder() {
+  if (state.peakCombo < COMBO_STEP) return '';   // gate: no tier climbed
+  const tiersReached = Math.min(7, Math.floor(state.peakCombo / COMBO_STEP) + 1);
+  const cells = [];
+  for (let i = 0; i < 7; i++) {
+    if (i >= tiersReached) cells.push('⬜');
+    else if (i === 6) cells.push('🌟');      // max-tier slot is starred
+    else cells.push('🟩');
+  }
+  return cells.join('');
+}
+
+// In shareScore:
+const ladder = buildTierLadder();
+const base = headLine +
+  (ladder ? '\n' + ladder : '') +
+  '\n' + shareUrl();
+```
+
+Example outputs:
+- Peak combo 0-4 (no tier climbed): no ladder line
+- Peak combo 5: `🟩🟩⬜⬜⬜⬜⬜` (reached ×1.5)
+- Peak combo 15: `🟩🟩🟩🟩⬜⬜⬜` (reached ×2.5)
+- Peak combo 30+: `🟩🟩🟩🟩🟩🟩🌟` (reached ×4 max)
+
+Why this shape works:
+- **Fixed 7 cells, every time.** Recipients see the same grid shape run-to-run — they can compare at a glance. "Oh, this one climbed two fewer tiers than yours." That's the Wordle trick: fixed grid shape = instant peer comparison.
+- **Max-tier special glyph (🌟) is the brag.** A full `🟩🟩🟩🟩🟩🟩🟩` row would read as "maxed" but without the hero-beat. The ⭐ cell is what gets screenshotted and reshared. Half the reason people share their Wordle is the yellow-to-green aha-cell; equivalent here is the star.
+- **Gated on "climbed at least one tier" (`peakCombo >= COMBO_STEP`).** A one-cell-green ladder for someone who just scored once isn't brag-worthy; it's embarrassing. Omit entirely instead of showing `🟩⬜⬜⬜⬜⬜⬜`. Matches the "only stats with real signal" rule above.
+- **Two-emoji vocabulary (🟩 + ⬜) plus a special glyph.** Three symbols max = universally rendered, visually distinct, no platform degradation. Don't use 4-5 emojis mapping to 4-5 hit-qualities — the palette saturates.
+
+Anti-patterns to avoid in the tier-ladder variant:
+- **Per-event ladder (emoji per pulse event)** → 40+ emojis, unreadable, blows up line length. Aggregate to tiers or time-buckets instead.
+- **Theme-matching ladder colors** → 🟦 for void, 🟥 for sunset, 🟩 for forest. Sounds cute but (a) recipient doesn't know what theme you played, so the color is meaningless context-free; (b) multiplies the emoji vocabulary. Pick one neutral "filled" color (🟩 is the Wordle default for a reason) and stick with it.
+- **Ladder without a head-line.** The ladder is decoration on top of a stat summary, not a replacement. Always pair with the score + % + peak-combo text so the ladder is context-enriching, not context-replacing.
+- **Line-joining without `\n`.** Some share APIs preserve newlines (most do); some strip them (some SMS previews). The worst case is still legible because the ladder is on its own visual row; the best case gets the intended 3-line flex.
+- **Forgetting the ⬜ cells.** A ladder of just `🟩🟩🟩` (3 cells for tier 3) loses the Wordle trick — recipients don't see the "how far to go" the ⬜ cells imply. Fixed grid shape with empty cells is what makes the comparison instant.
+
 ## Gate on `state.score > 0`
 
 Don't offer to share a 0-score run. There's nothing to brag about, and the player typing "I scored 0" reads as mockery.

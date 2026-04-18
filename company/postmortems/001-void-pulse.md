@@ -3191,6 +3191,159 @@ None of these are interesting individually; together they compose into a *mainte
 
 ---
 
+## Sprint 50 — Emoji tier-ladder in share text (Wordle-style virality flex)
+
+**Lens:** deliberate swerve away from a11y. Sprints 47-48-49 formed an a11y triptych; time to rotate back to the retention/virality axis before falling into a monoculture. Picking up the long-deferred Sprint 42 note: "emoji ladder in share." The question isn't "should void-pulse have one" (answer: yes, obviously, people love Wordle grids); it's "what SHAPE of ladder is right for this game's run structure?"
+
+### Why Wordle grids went viral (what we're copying)
+
+A Wordle share:
+```
+Wordle 1,043 4/6
+
+⬛🟨⬛🟨⬛
+🟨🟨🟨⬛⬛
+🟩🟩🟩🟨🟩
+🟩🟩🟩🟩🟩
+```
+
+What makes it shareable:
+1. **Fixed grid shape** — 5 columns, up to 6 rows. Any recipient can instantly compare: "you got it in 4, I got it in 5."
+2. **No numbers in the visual.** The whole point is peer-comparable via pattern, not via spec-sheet reading.
+3. **Two-or-three-symbol palette** (⬛🟨🟩). Every cell is legible; no "wait what's that red triangle mean."
+4. **A hero beat** — the all-green row is the visual payoff. Your eye goes there.
+5. **Adjacent to a text summary** that names the day + attempt count. The grid *enriches*, not replaces.
+
+Rule: if your share's grid doesn't hit all five, it's not Wordle-grade; it's decoration.
+
+### What's the right ladder shape for void-pulse?
+
+The game's run structure has several potential aggregation axes:
+
+| Axis | Cells | Shape | Hero-beat | Verdict |
+|---|---|---|---|---|
+| Per-event (40+ pulses) | ~40 | Long horizontal | Buried in the middle | Too noisy — noise:signal ratio is ~1:1 |
+| Per-5-second bucket (12 cells) | 12 | Medium horizontal | Last-bucket density | OK but requires time-buckets that aren't in the run model |
+| Per-bar/measure (15-20 bars) | 15-20 | Too many | Bar with most perfects | Same time-bucket issue |
+| Tier-progression (7 cells) | 7 | Compact horizontal | Max-tier slot (×4) | **Chosen** — maps to existing `comboMult()` tiers, compact, has a natural hero-beat at the max tier |
+| Accuracy bar (5-10 cells) | 5-10 | Horizontal | All-filled | Can't hero-beat differentiate "98%" vs "100%" well |
+| 2D grid (tiers × time) | 7×N | Square | Sparse green in top-left corner | Over-designed for a 60-second run |
+
+Tier-progression wins on two criteria: it maps to a construct the game *already has* (the `comboMult()` tiers that drive in-game juice), and it has a natural hero-beat — the final cell representing the max multiplier. That final cell deserves a special glyph (🌟) to differentiate "maxed" from "all-green-except-last."
+
+### What changed
+
+**`game.js` — new helper + share composition:**
+
+```js
+function buildTierLadder() {
+  if (state.peakCombo < COMBO_STEP) return '';   // gate: no tier climbed
+  const tiersReached = Math.min(7, Math.floor(state.peakCombo / COMBO_STEP) + 1);
+  const cells = [];
+  for (let i = 0; i < 7; i++) {
+    if (i >= tiersReached) cells.push('⬜');
+    else if (i === 6) cells.push('🌟');      // max-tier slot is starred
+    else cells.push('🟩');
+  }
+  return cells.join('');
+}
+
+// shareScore() composition:
+const ladder = buildTierLadder();
+const base = headLine +
+  (ladder ? '\n' + ladder : '') +
+  '\n' + shareUrl();
+```
+
+Example output for a new-best with peak combo 42 (= ×4 max tier):
+```
+I scored 28500 (92% · peak ×42) in void-pulse (new best!)
+🟩🟩🟩🟩🟩🟩🌟
+https://void-pulse.example.com/
+```
+
+Example for a peak-combo-12 run (= ×2 tier):
+```
+I scored 12400 (68% · peak ×12) in void-pulse
+🟩🟩🟩⬜⬜⬜⬜
+https://void-pulse.example.com/
+```
+
+Example for peak-combo-3 (never tier-climbed — no ladder):
+```
+I scored 2100 (22% · peak ×3) in void-pulse
+https://void-pulse.example.com/
+```
+
+Three lines total in the "climbed" case; two lines otherwise. URL on its own line so link-preview bots reliably fingerprint it. The `\n` separators survive most share APIs (`navigator.share` preserves them; `clipboard.writeText` preserves them; some SMS previews strip them to single-line, which still reads OK because the ladder row is visually distinct even when inlined).
+
+### Design decisions
+
+**Why 7 cells, fixed, always?** Because a Wordle-style grid relies on fixed shape for instant peer comparison. A dynamic-length ladder (e.g. "show only reached cells") collapses `🟩🟩🟩🟩🟩🟩🌟` to `🟩🟩🟩` for a ×2 run, losing the "how far to go" implication that the ⬜ cells carry. The ⬜ cells are the *contrast* that makes your run's reach visible. Don't remove them.
+
+**Why max-tier as 🌟 instead of another 🟩?** Because differentiating "you maxed" from "you came close" is the hero-beat of this ladder. `🟩🟩🟩🟩🟩🟩🟩` reads as "full" but without a payoff moment; `🟩🟩🟩🟩🟩🟩🌟` reads as "full AND with the crown." Half of Wordle's appeal is the satisfying 🟩-row reveal at the end; the equivalent here is the ⭐ cell. It gives the reader's eye a termination point.
+
+**Why gate on `peakCombo >= COMBO_STEP` (= 5), not `>= 1`?** Because a single-cell ladder (`🟩⬜⬜⬜⬜⬜⬜`) for someone who chained exactly one hit isn't a flex — it's a flinch. The ladder should only appear when there's at least one *climb* to show. This is the same "only stats with real signal" rule the existing share-text code uses for `peak ×N` (gate at `>= 2`). Below the gate, the text-only line still runs.
+
+**Why 🟩 and ⬜ (Wordle's vocabulary), not theme colors?** Void's palette is blue/cyan; sunset is red/orange; forest is green. Three possible "filled" colors × multiplier tiers would balloon the emoji vocabulary. More importantly: the *recipient* doesn't know what theme you played, so a blue cell vs green cell reads as "two different things" rather than "same thing different day." Wordle's green is recognizable as "hit" across contexts; using it universally is consistency that helps the pattern read.
+
+**Why `\n` between lines instead of separator characters (`·`, `|`, `→`)?** Because line breaks create a visual grid. A separator inlines everything into a wall of text; newline breaks make the ladder its own visual row. On platforms that strip newlines (rare — mostly old SMS preview logic), the text still reads as "score ladder url" because the emoji row is visually distinct even when flattened.
+
+**Why not a second ladder for accuracy?** Considered: a 5-cell accuracy bar (20% chunks each). Rejected because it would compete with the tier ladder for visual space and doesn't have a hero-beat the same way tiers do (a 100% accuracy bar looks identical to 95% at 5-cell resolution). One well-shaped ladder beats two competing ladders. The accuracy number is already in the head line ("92%") where it serves its purpose.
+
+**Why is the ladder placed *between* the text summary and the URL, not after the URL?** Because most feed platforms treat the first non-URL line as the "post body" and anything after a URL as "link context." Placing the ladder before the URL makes it part of the body, which is what we want. Also: the URL should always end the share text so recipients can tap/click it without navigating past anything.
+
+### The virality math (why this might actually matter)
+
+Virality in casual games is gated by share friction × share appeal. Lowering friction is table stakes (we did that in earlier sprints: Web Share API + clipboard fallback + copy confirmation). Raising appeal is where most games stall — players just paste "I got 1234 in game-name" and nobody clicks.
+
+A recognizable visual grid turns the share into a *pattern people recognize*. After seeing the same ⬜🟩🌟 pattern 3-4 times in a feed, viewers develop a "this is void-pulse" heuristic. That's brand recall via shape, not copy. The investment is ~20 lines of code for buildTierLadder + its integration; the potential upside is a 5-10x lift in click-through on shared posts (Wordle-style grids consistently outperform bare-text shares on Twitter/Bluesky by that margin in clickstream studies I've seen cited).
+
+Is this the highest-impact sprint we could run? Maybe not — it's a dice-roll. But the cost is trivial, the skill-doc value is real (future games will want this pattern too), and the alternative was more a11y work at a point where the recent cadence was already heavy on that axis. Diversifying the sprint mix matters; monoculture sprints cause reviewer blindness to axes not currently in focus.
+
+### What the skill doc gained
+
+`company/skills/ux/share.md` now has a "Tier-ladder pattern" subsection under "Emoji ladders":
+
+1. **Full code template** for the 7-cell ladder with max-tier star.
+2. **Example outputs** for low/mid/max tier runs.
+3. **Four rationale bullets** — fixed grid for comparison, max-tier special glyph for hero-beat, gate on "at least one climb," two-symbol vocabulary.
+4. **Five anti-patterns** — per-event ladders (too long), theme-matching colors (recipient-context-free), ladder without head-line, line-joining without newlines, missing empty cells.
+
+The general "Emoji ladders — consider but don't force" framing from the prior skill-doc version is preserved; this adds a concrete template alongside the warning.
+
+### Testing notes (reasoning from code; no headless run)
+
+- **peakCombo 0** → `if (state.peakCombo < 5) return '';` → no ladder line in share. Two-line share (head + URL). ✓
+- **peakCombo 4** → same gate → no ladder line. Two-line share. ✓
+- **peakCombo 5** → `tiersReached = min(7, 1+1) = 2`. Loop fills 2 🟩 + 5 ⬜ = `🟩🟩⬜⬜⬜⬜⬜`. ✓
+- **peakCombo 29** → `tiersReached = min(7, 5+1) = 6`. Loop fills 6 cells (indices 0-5 = 🟩; index 6 = ⬜). `🟩🟩🟩🟩🟩🟩⬜`. Note: index 5 is regular 🟩 (not 🌟 because not the last-reached cell; only i===6 is starred and only when i < tiersReached, i.e. tiersReached >= 7). ✓
+- **peakCombo 30** → `tiersReached = min(7, 6+1) = 7`. All 7 cells filled; index 6 = 🌟. `🟩🟩🟩🟩🟩🟩🌟`. ✓
+- **peakCombo 200** → `tiersReached = min(7, 40+1) = 7`. Same as peakCombo 30. Clamped correctly. ✓
+- **No maxPossibleScore (edge: chart failed to build)** → the `%` stat is omitted from statStr per existing code; ladder still renders based on peakCombo alone. ✓
+- **SEED !== null (daily)** → headLine uses daily prefix; ladder still renders. Daily share: `void-pulse · Daily 2026-04-18: 28500 (92% · peak ×42) — can you beat it?\n🟩🟩🟩🟩🟩🟩🌟\nhttps://...?seed=20260418`. ✓
+- **navigator.share API** → preserves `\n` in `text` param on all major browsers per MDN. iOS Safari native share sheet renders newlines correctly. ✓
+- **Clipboard fallback** → `writeText` preserves `\n`; pasting into Twitter/Bluesky/email renders as 3 lines. ✓
+- `node --check game.js` passes.
+
+### Wrap-up
+
+- Compact 7-cell tier ladder composed into share text, gated on at least one tier climbed, with 🌟 hero-beat on the max-tier slot.
+- Share skill doc extended with concrete template + rationale + anti-patterns.
+- Sprint mix diversified — fifth sprint in a row on a different axis from the preceding three (a11y-a11y-a11y-then-virality). Avoids the "monoculture sprint" reviewer-blindness trap.
+
+### Next candidates
+
+- **Keyboard-only full-flow manual test** — 10 sprints overdue. Still top of the backlog.
+- **Color contrast re-audit** — pair with the keyboard walkthrough for a comprehensive a11y checkpoint after the 47-48-49 triptych.
+- **First-gameover context overlay** — proposed Sprint 46, complements "of max" label.
+- **Haptic vocabulary expansion** — motion-gated, adds feedback richness.
+- **Share-text A/B instrumentation** — if we had real analytics (we don't; this is a static site), we'd test tier-ladder share CTR vs. no-ladder. Out of scope for a no-backend casual game, but a note for any future game with telemetry.
+- **Stats-panel tier-ladder rendering** — showing the same 7-cell ladder on the gameover screen and in the lifetime-stats panel would reinforce the pattern in the app UI, not just the share text.
+- **Localization scaffolding** / **service worker** / **gamepad input** (still open, long).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

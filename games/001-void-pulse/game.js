@@ -1664,6 +1664,24 @@
     url.searchParams.set('seed', String(SEED));
     return url.toString();
   }
+  // Build a compact 7-cell multiplier-tier ladder as emoji — Wordle-style
+  // visual flex for social feeds. Maps peak combo to which of the 7
+  // multiplier tiers (×1 ×1.5 ×2 ×2.5 ×3 ×3.5 ×4) were reached; the final
+  // ×4 cell uses 🌟 instead of 🟩 so a max run reads visually distinct
+  // from a "all-green except the last" near-max run. Gated on peakCombo
+  // ≥ COMBO_STEP (at least one tier climbed) — below that the run doesn't
+  // have a ladder story to tell, so the line is omitted entirely.
+  function buildTierLadder() {
+    if (state.peakCombo < COMBO_STEP) return '';
+    const tiersReached = Math.min(7, Math.floor(state.peakCombo / COMBO_STEP) + 1);
+    const cells = [];
+    for (let i = 0; i < 7; i++) {
+      if (i >= tiersReached) cells.push('⬜');
+      else if (i === 6) cells.push('🌟');      // max-tier slot is starred
+      else cells.push('🟩');
+    }
+    return cells.join('');
+  }
   function shareScore() {
     // Enrich with run context — % accuracy + peak combo give recipients
     // real signal about the run, not just a bare number. Formatted inline:
@@ -1682,10 +1700,17 @@
     const prefix = SEED !== null
       ? 'void-pulse · Daily ' + formatSeedLabel(SEED) + ': '
       : 'I scored ';
-    const base = prefix + state.score + statStr +
+    // Ladder line sits between the score summary and the URL. Newline-
+    // separated so it wraps as its own visual row in feeds that preserve
+    // line breaks; feeds that collapse whitespace (some SMS previews)
+    // still get a legible single-line version.
+    const ladder = buildTierLadder();
+    const headLine = prefix + state.score + statStr +
       (SEED !== null ? ' — can you beat it?' : ' in void-pulse') +
-      (state.newBestThisRun ? ' (new best!)' : '') +
-      ' ' + shareUrl();
+      (state.newBestThisRun ? ' (new best!)' : '');
+    const base = headLine +
+      (ladder ? '\n' + ladder : '') +
+      '\n' + shareUrl();
     if (canShare) {
       navigator.share({ title: 'void-pulse', text: base }).catch(() => {});
       return;
