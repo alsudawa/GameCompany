@@ -70,6 +70,9 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`ux/reduced-motion-audit.md`](ux/reduced-motion-audit.md) — periodic four-layer audit for `prefers-reduced-motion` drift (CSS animation + CSS transition + JS DOM + canvas/WebGL render-loop), live MQL listener, decision rubric, dampen-don't-delete particles rule
 - [`ux/keyboard-flow-audit.md`](ux/keyboard-flow-audit.md) — periodic tab-order + reachability audit (opacity-0 overlay leak, radiogroup arrow-key contract, page-load initial focus, role="button" paragraphs)
 
+### Data
+- [`data/persistence-defensiveness.md`](data/persistence-defensiveness.md) — `localStorage` corruption-resilient reader pattern (five-question audit per read site + four corruption modes + red-flag patterns + migrate-vs-clamp rubric + 20-sprint audit cadence)
+
 ### QA
 - [`qa/casual-checklist.md`](qa/casual-checklist.md) — pre-ship checklist + multi-perspective sweep (player / mobile / onboarding / retention / distribution)
 

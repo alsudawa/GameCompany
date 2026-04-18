@@ -3579,10 +3579,150 @@ Sprint 51 was a calendar-driven keyboard-flow audit. Sprint 52 is a feedback-dri
 
 ### Next candidates
 
-- **Casual checklist update** — add the "First Band Carries Tune" item identified above.
+- **Casual checklist update** — add the "First Band Carries Tune" item identified above. *(Done as a Sprint 52 hygiene tail commit.)*
 - **Hazard-tap duck listen test** — verify the old duck depth still works with the new master gain.
 - **Color contrast re-audit** — still the last unaudited a11y axis (Sprint 51's "next candidates" list).
 - **Mid/hard pattern density review** — now that the *content* is rich, the *density* may need a second look (e.g. does `mid`'s lead-on-every-quarter outshine `hard`'s identical lead?).
+
+---
+
+## Sprint 53 — `localStorage` corruption resilience (data-integrity lens) (2026-04-18)
+
+### Lens (data-integrity sweep, fresh axis)
+
+After 22 sprints of UX / a11y / audio rotation, swung the audit telescope to a category that hadn't been touched: **what happens when persisted state is corrupted?** Browser `localStorage` is mutable by anyone with devtools and silently inherits cross-version drift between game ships. Every `getItem` followed by `JSON.parse` / `parseInt` / `+` is a contract enforcement point — and *only* the reader can enforce it (the writer's "well-formed" guarantee says nothing about what the next read will see).
+
+This is the kind of lens that doesn't surface bugs from playtesting alone — none of the failure modes here are reproducible without devtools or a stale install. They become real on:
+- Players who linger across version upgrades (schema drift).
+- Players whose browser performs a half-write before crashing (rare, real).
+- Players who poke at storage to "cheat" and then complain when the game breaks.
+- Curious devs / streamers who edit storage to demonstrate the game and accidentally lock themselves out.
+
+### Survey
+
+Scanned all `localStorage`/`JSON.parse` sites in `game.js` — 11 read sites across the file, plus the schema-migration IIFE. Walked each against a five-question audit:
+
+1. Does `JSON.parse` fail safely (try/catch + typed default)?
+2. Did parse return the *shape* expected (`typeof`/`Array.isArray`)?
+3. Are scalar fields the *type* expected (`Number.isFinite` not just `typeof === 'number'`)?
+4. Are values in *range* / consistent with each other (negatives, future dates, invariants)?
+5. Are array elements / nested objects validated per-element?
+
+| Key | Read site | Findings |
+|---|---|---|
+| `BEST_KEY` | `game.js:502` | 🔴 **Bug:** `+(getItem||0)` returns NaN on `"abc"`; NaN propagates to `state.best`, then to `bestScoreEl.textContent` as the string `"NaN"`. |
+| `void-pulse-muted` | `game.js:509` | ✅ String compare against `"1"`. |
+| `HISTORY_KEY` | `game.js:514` | ✅ `Array.isArray` + `typeof === 'number'` filter. |
+| `GHOST_KEY` | `game.js:528` | 🟡 **Partial:** `events` array elements validated but `score`, `duration`, `at` scalars are not — flowed into HUD strings + canvas transforms unchecked. |
+| `SEEN_KEY` | `game.js:552` | ✅ String compare against `"1"`. |
+| `LEADERBOARD_KEY` | `game.js:560` | ✅ `Array.isArray` + per-element typeof filter. |
+| `LIFETIME_KEY` | `game.js:592` | ✅ Best-in-class — typeof + per-field clamp + nested-object merge with defaults. (This is the model the audit doc holds up as canonical.) |
+| `void-pulse-rage` | `game.js:652` | ✅ `Array.isArray` + per-element typeof filter. |
+| `STREAK_KEY` | `game.js:677` | 🟡 **Partial:** `typeof o.streak === 'number'` accepts NaN (since `typeof NaN === 'number'`). Negatives pass through. Future-dated `lastYyyymmdd` would compute "isYesterday" against year-9999 and mis-award streak math. |
+| `THEME_KEY` | `game.js:699` | ✅ Whitelist via `THEMES.includes(t)`. |
+| `ACH_KEY` | `game.js:775` | 🟡 **Partial:** `typeof o === 'object'` accepts arrays (`typeof [] === 'object'`). A tampered `[1,2,3]` array would be returned as the achievements map; new unlocks would be assigned as named properties to the array, then `JSON.stringify` silently drops them on the next write — **all unlocks lost forever** on the next achievement event. |
+| `SCHEMA_KEY` | `game.js:236` | 🟡 **Partial:** `parseInt("abc", 10)` is NaN, and `NaN < SCHEMA_VERSION` is false → migration silently skipped → key never advances → corruption persists every reload. |
+
+5 fixes total: 1 hard bug (NaN HUD), 4 partials with real failure modes.
+
+### Implementation
+
+Five surgical edits, no behavior changes for healthy data:
+
+**Fix 1 — `BEST_KEY` NaN clamp** (`game.js:502`)
+```js
+const n = +(localStorage.getItem(BEST_KEY) || 0);
+return Number.isFinite(n) && n >= 0 ? n : 0;
+```
+HUD now shows `0` for tampered entries instead of `"NaN"`. `state.best` math (Math.max, score>best comparisons) all stay sane.
+
+**Fix 2 — `GHOST_KEY` field validation** (`game.js:528`)
+- Added `typeof parsed !== 'object'` guard alongside the existing `Array.isArray(parsed.events)` check.
+- Switched event-tuple guard from `typeof e[0] === 'number'` to `Number.isFinite(e[0])` — rejects NaN/Infinity that would NaN-poison canvas transforms when the timeline scrubs.
+- Coerce + clamp `score`/`duration`/`at` scalars: `Math.max(0, +parsed.score || 0)`. These flow into HUD strings + progress-bar widths; a tampered `"score": "BIG"` would render as NaN otherwise.
+
+**Fix 3 — `ACH_KEY` array rejection + value normalization** (`game.js:775`)
+```js
+if (!o || typeof o !== 'object' || Array.isArray(o)) return {};
+const out = {};
+for (const id of Object.keys(o)) if (o[id]) out[id] = 1;
+return out;
+```
+The `Array.isArray` reject is the critical fix — closes the silent-loss-of-unlocks failure mode. The value-normalization (`if (o[id]) out[id] = 1`) hardens against a future schema where unlocks might carry richer payloads but the `!unlocked[a.id]` test elsewhere assumes truthy = unlocked.
+
+**Fix 4 — `STREAK_KEY` clamp + future-date reject** (`game.js:677`)
+```js
+const streak = Math.max(0, +o.streak || 0);
+const best   = Math.max(0, +o.best   || 0);
+let last     = Math.max(0, +o.lastYyyymmdd || 0);
+if (last > todayYyyymmdd()) last = 0;
+return { streak, best: Math.max(streak, best), lastYyyymmdd: last };
+```
+- `+o.streak || 0` handles NaN, missing, string-numbers, and negative-zero.
+- Future-date reset means today's daily completion starts a fresh streak rather than chaining off a phantom anchor.
+- `best: Math.max(streak, best)` enforces the `best ≥ streak` invariant — if writer drift ever broke it, reader rebuilds it.
+
+**Fix 5 — `SCHEMA_KEY` parseInt-NaN clamp** (`game.js:234`)
+```js
+const parsed = stored ? parseInt(stored, 10) : 0;
+const v = Number.isFinite(parsed) ? parsed : 0;
+if (v < SCHEMA_VERSION) { /* migrate */ }
+```
+Treat NaN as version 0 so a tampered key gets re-migrated and the key advances to a clean state. Without this, `parseInt("abc")` silently skips migration forever.
+
+### Verification
+
+- `node --check games/001-void-pulse/game.js` → OK after each edit.
+- Mental devtools-paste sweep against the 9-row table from the new skill doc — all five touched read sites now produce the typed default (or a clamped sane value) for every input row.
+- No call-site changes — fixes are purely inside the read functions, so `state.best`, `readGhost()` consumers, achievement evaluation, streak bumps all see the same shape on healthy data and a sane shape on corrupted data.
+
+### Skill extraction
+
+Created `company/skills/data/persistence-defensiveness.md` (new `data/` category — first entry). The doc generalizes the audit framework so it's reusable on every future game:
+
+- **Four corruption modes** — type drift, NaN poisoning, tampered ordering invariants, out-of-range scalars.
+- **Five-question audit** — applied to every `getItem` site, with a code snippet for each guard.
+- **Red-flag patterns** — the four "looks fine, almost works" idioms with safe replacements (`+(x||0)` → `Number.isFinite` clamp; `typeof === 'object'` → `+ !Array.isArray`; `typeof === 'number'` → `Number.isFinite` for NaN; `parseInt → NaN < CONST` → explicit Finite check).
+- **Mental devtools-paste table** — 9 corrupting inputs to walk through for every persisted key.
+- **Migrate-vs-clamp rubric** — when to write back a transformed value vs when defensive read alone is enough.
+- **20-sprint audit cadence** — pairs with reduced-motion / keyboard-flow / SR-coverage on the periodic axis-rotation calendar.
+
+The skill explicitly holds up the existing `readLifetime` (game.js:592) as the canonical "best-in-class" example — defaults + typeof + per-field clamp + nested merge — so future readers see the bar.
+
+Updated `company/skills/README.md` to add a new **Data** section between UX and QA, with `persistence-defensiveness.md` as the inaugural entry.
+
+### Reflection
+
+**What worked.**
+
+- **The audit framework crystallized while doing the work.** I didn't start with the five-question rubric — it emerged after walking the 11 sites and noticing the same shape of guard appeared in the well-defended cases (`readLifetime`, `readBoard`) and was missing in identical patterns in the brittle ones. Naming the questions made the gaps visible. Worth keeping that workflow: do the audit on the actual codebase first, *then* extract the framework with concrete examples.
+- **Catching `typeof [] === 'object'` was the real win.** The achievement-loss failure mode would never have been caught by a casual playtest — it requires (a) someone to put an array in `ACH_KEY`, then (b) play long enough to earn a new achievement, then (c) reload and find unlocks gone. The bug exists in *real* code paths but wouldn't have shown up in QA. This is the genre of bug that a structured corruption-mode audit finds and an unstructured "play the game" pass doesn't.
+- **`readLifetime` as the gold-standard example.** Having one canonical reference inside the doc — pointing at code that already works — turns the skill from abstract advice into a "go look at this and copy it" instruction. Saved the doc from being lecture.
+
+**What I'd do differently.**
+
+- **Should have written tests, not just mental sims.** The "mental devtools-paste table" in the skill doc is a list of 9 corrupting inputs per key. That's begging to be a test file — `tests/persistence.test.js` with one assertion per row per key. The defensive-read functions are pure (one input, one output), trivially testable. Without tests, future edits could regress the guards silently. Out of scope for this sprint (no test infra in this single-file game) but flagging as the next-meta-sprint candidate: bring in vitest with maybe 50 lines of harness, port the table to assertions.
+- **The four "🟡 Partial" findings were originally written by careful authors who *thought* they were defending against tampering** — the GHOST_KEY guard validates events but not scalars; the STREAK_KEY guard checks typeof but not NaN. Defensive code looks right and *is* right against the failure mode the author imagined. The lesson: a *checklist* of named failure modes (the four corruption modes) catches the modes the author didn't think to defend against.
+- **Didn't audit any in-flight write paths.** The audit was reads-only. Write-path bugs (e.g. forgetting to JSON.stringify before setItem, or writing an unintended value during a partial run) can produce the corruption modes the reads then have to handle. A mirrored "writer audit" would close the loop. Adding to next candidates.
+
+**Cross-sprint pattern: data-integrity is a real lens, not just bug-hunting.**
+
+This sprint deliberately rotated *away* from a11y / UX / audio toward a "what could break offline?" axis. None of the five fixes were caught by Sprint 38's QA audit, none by the Sprint 49 reduced-motion sweep, none by Sprint 51's keyboard-flow audit. The lesson: **periodic single-axis audits only catch what's on their axis.** Data integrity needed its own pass; same will be true for performance, security, browser compatibility, and localization. Maintaining a calendar of audit lenses (rotated every 20 sprints) is the right cadence — adding "data integrity" as the 5th item on that calendar (was reduced-motion / keyboard-flow / SR-coverage / casual-checklist / **data integrity**).
+
+### Files touched
+
+- `games/001-void-pulse/game.js` — five defensive-read fixes (BEST, GHOST, ACH, STREAK, SCHEMA migration), all surgical, ~40 lines net.
+- `company/skills/data/persistence-defensiveness.md` — **new file**, the audit framework + red-flag patterns + audit cadence (~200 lines).
+- `company/skills/README.md` — added new **Data** section + index entry.
+- `company/postmortems/001-void-pulse.md` — this section.
+
+### Next candidates
+
+- **Mirrored writer audit** — every `localStorage.setItem` site reviewed for "is the value being stored well-formed for the reader's expectation?" Catches partial-state writes, missing JSON.stringify, etc.
+- **Test harness for defensive reads** — port the 9-row corrupting-input table to assertions; one per key. Even ~50 lines of test infra is a force-multiplier on these guards.
+- **Hazard-tap duck listen test** (carried from Sprint 52).
+- **Color contrast re-audit** (carried from Sprint 51, still open).
+- **Mid/hard pattern density review** (carried from Sprint 52).
 
 ---
 

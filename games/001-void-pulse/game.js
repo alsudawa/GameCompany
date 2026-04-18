@@ -234,7 +234,11 @@
   (function migrateSchema() {
     try {
       const stored = localStorage.getItem(SCHEMA_KEY);
-      const v = stored ? parseInt(stored, 10) : 0;
+      // parseInt("abc", 10) is NaN, and `NaN < SCHEMA_VERSION` is false →
+      // migration silently skipped → key never advances → corruption persists
+      // every reload. Treat NaN as version 0 so a tampered key gets re-migrated.
+      const parsed = stored ? parseInt(stored, 10) : 0;
+      const v = Number.isFinite(parsed) ? parsed : 0;
       if (v < SCHEMA_VERSION) {
         // Wipe anything that keys "best score" — per-seed leaderboards too.
         for (let i = localStorage.length - 1; i >= 0; i--) {
@@ -500,7 +504,15 @@
   window.addEventListener('resize', setupCanvas);
 
   function readBest() {
-    try { return +(localStorage.getItem(BEST_KEY) || 0); } catch { return 0; }
+    // Defensive parse — a corrupted entry like "abc" makes `+("abc")` evaluate
+    // to NaN, which then propagates through `state.best`, `Math.max(best,…)`,
+    // and finally the HUD as the literal string "NaN". Clamp to a safe 0
+    // floor so tampered storage degrades to "no best yet" instead of breaking
+    // every score comparison downstream.
+    try {
+      const n = +(localStorage.getItem(BEST_KEY) || 0);
+      return Number.isFinite(n) && n >= 0 ? n : 0;
+    } catch { return 0; }
   }
   function writeBest(v) {
     try { localStorage.setItem(BEST_KEY, String(v)); } catch {}
@@ -531,12 +543,19 @@
       const raw = localStorage.getItem(GHOST_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      if (!parsed || !Array.isArray(parsed.events)) return null;
+      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.events)) return null;
       // Validate event tuples defensively — older schemas or tampered data
-      // shouldn't crash the render.
+      // shouldn't crash the render. Number.isFinite rejects NaN/Infinity that
+      // would otherwise NaN-poison canvas transforms when the timeline scrubs.
       parsed.events = parsed.events.filter(e =>
-        Array.isArray(e) && typeof e[0] === 'number' && (e[1] === 'p' || e[1] === 'g' || e[1] === 'm')
+        Array.isArray(e) && Number.isFinite(e[0]) && (e[1] === 'p' || e[1] === 'g' || e[1] === 'm')
       );
+      // Also coerce + clamp the scalar fields — these flow into HUD strings
+      // and progress-bar widths; a tampered `"score": "BIG"` would render as
+      // NaN and a negative `duration` would break ratio math.
+      parsed.score    = Math.max(0, +parsed.score    || 0);
+      parsed.duration = Math.max(0, +parsed.duration || 0);
+      parsed.at       = Math.max(0, +parsed.at       || 0);
       return parsed;
     } catch { return null; }
   }
@@ -675,13 +694,24 @@
     return new Date(y, m, dd);
   }
   function readStreak() {
+    const fallback = { streak: 0, best: 0, lastYyyymmdd: 0 };
     try {
       const raw = localStorage.getItem(STREAK_KEY);
       const o = raw ? JSON.parse(raw) : null;
-      if (o && typeof o.streak === 'number' && typeof o.best === 'number'
-          && typeof o.lastYyyymmdd === 'number') return o;
+      if (!o || typeof o !== 'object') return fallback;
+      const streak = Math.max(0, +o.streak || 0);
+      const best   = Math.max(0, +o.best   || 0);
+      let last     = Math.max(0, +o.lastYyyymmdd || 0);
+      // Future-dated `lastYyyymmdd` (clock skew, deliberate tamper, year-9999
+      // garbage) would compute "isYesterday" against a date in the future and
+      // mis-award streak math. Reset the anchor when last > today so today's
+      // completion starts a fresh streak rather than chaining off a phantom.
+      if (last > todayYyyymmdd()) last = 0;
+      // `best` must be at least the current streak — the alternative violates
+      // the invariant the rest of the code assumes (best >= streak).
+      return { streak, best: Math.max(streak, best), lastYyyymmdd: last };
     } catch {}
-    return { streak: 0, best: 0, lastYyyymmdd: 0 };
+    return fallback;
   }
   function writeStreak(o) {
     try { localStorage.setItem(STREAK_KEY, JSON.stringify(o)); } catch {}
@@ -776,7 +806,16 @@
     try {
       const raw = localStorage.getItem(ACH_KEY);
       const o = raw ? JSON.parse(raw) : null;
-      return (o && typeof o === 'object') ? o : {};
+      // typeof [] === 'object' so an Array.isArray reject is required —
+      // otherwise a tampered `[1,2,3]` stored value would be returned and the
+      // first new unlock writes `arr['first-pulse'] = 1` as a named property,
+      // which JSON.stringify silently drops on the next write → unlocks lost
+      // forever. Also normalize all truthy values to 1 so `==='unlocked'` and
+      // similar drift values can't smuggle past the `!unlocked[a.id]` guard.
+      if (!o || typeof o !== 'object' || Array.isArray(o)) return {};
+      const out = {};
+      for (const id of Object.keys(o)) if (o[id]) out[id] = 1;
+      return out;
     } catch { return {}; }
   }
   function writeAchievements(o) {
