@@ -1312,7 +1312,16 @@
     // back in as the visual recovers. cancelScheduledValues + an explicit
     // setValueAtTime anchor ensures an overlapping duck on a second hazard
     // cleanly re-starts the envelope from wherever gain currently sits.
-    duck(amount = 0.35, attackS = 0.03, holdS = 0.09, releaseS = 0.32) {
+    //
+    // Sprint 52 lifted BGM_MASTER_GAIN from 0.26 → 0.36 to compensate for
+    // the new pad+lead voices. That made the *absolute* duck floor louder
+    // (0.35 × 0.36 = 0.126, vs the original 0.35 × 0.26 = 0.091), which
+    // ate into the headroom the hazard SFX transient needs. Re-tune amount
+    // 0.35 → 0.22 so the floor lands at 0.36 × 0.22 = 0.079 — slightly
+    // more aggressive than the original 0.091, an intentional cushion for
+    // the now-melodically-richer music (lead + pad fight harder against
+    // the SFX than the old kick+hat texture did).
+    duck(amount = 0.22, attackS = 0.03, holdS = 0.09, releaseS = 0.32) {
       if (!this.running || this.paused) return;
       if (state.muted) return;
       if (!this.gain || !this.ctx) return;
