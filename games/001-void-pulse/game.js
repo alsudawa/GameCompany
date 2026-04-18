@@ -20,6 +20,17 @@
 // "Continue without reset" lets the player dismiss the overlay if they
 // suspect the error was transient (rare; mostly there for player agency).
 (function installBootErrorFallback() {
+  // Sprint 58 hygiene: ?debug=1 disables the fallback so devs see raw stack
+  // traces in devtools without the overlay obscuring the broken canvas. The
+  // window listeners aren't installed at all in debug mode — errors bubble
+  // to the browser's default behavior. Anyone shipping should NOT visit the
+  // game with ?debug=1 in the URL; it's a dev-only escape hatch.
+  try {
+    if (typeof location !== 'undefined' && /[?&]debug=1(?:&|$)/.test(location.search)) {
+      try { console.info('[void-pulse] boot-error fallback disabled (?debug=1)'); } catch {}
+      return;
+    }
+  } catch {}
   let shown = false;
   function renderFallback(err) {
     try { console.error('[void-pulse boot-error]', err); } catch {}

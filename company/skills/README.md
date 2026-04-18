@@ -8,6 +8,10 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - **Before writing a new utility** — grep the skills folder first; copy-adapt if a match exists.
 - **After shipping a game** — update a skill doc if this project surfaced a new pattern. Date-stamp the addition.
 
+## Meta
+
+- [`audit-from-the-margin.md`](audit-from-the-margin.md) — the meta-discipline behind the eight periodic audits below (shared 5-step shape, 20-sprint cadence, prevent-vs-recover pair pattern, template for adding the ninth audit). **Read this first when starting a new game.**
+
 ## Index
 
 ### Gameplay

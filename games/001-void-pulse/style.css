@@ -261,6 +261,11 @@ html, body {
   text-align: center;
   background: rgba(10, 14, 31, .82);
   backdrop-filter: blur(6px);
+  /* Sprint 58 (touch-gesture follow-up): overlay backdrops are tappable
+     for restart / dismiss-on-backdrop. touch-action: manipulation here
+     drops the historic 300ms double-tap-zoom delay on the backdrop area
+     too, so a player rapidly dismissing modals doesn't trigger zoom. */
+  touch-action: manipulation;
   /* visibility transitions discretely; a .2s delay on the hide side lets the
      opacity fade finish before the element is yanked from the a11y tree + tab
      order. On the visible side, `.overlay.visible` overrides the transition

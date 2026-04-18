@@ -99,6 +99,9 @@ Correctness passes miss whole bug classes. Every QA session should rotate throug
 - [ ] `pointerdown.preventDefault()` on canvas prevents long-press context menu / text selection
 - [ ] `touch-action: none` on canvas (no scroll hijack on mobile)
 - [ ] HUD overlays (mute button, stats) are reachable by thumb on small screens
+- [ ] **Every tappable element ≥ 44 × 44 CSS px** (iOS HIG / Android Material). Audit `.btn`, `.icon-btn`, share/reset/export pills, theme swatches, link-styled buttons, and any `<p tabindex="0" role="button">` text-as-button. *(See `mobile/tap-target-audit.md` for the 5-step framework + Recipe A/B fixes.)*
+- [ ] **Touch gesture defenses present.** `html, body { overscroll-behavior: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; user-select: none }`. Buttons + non-canvas tappables have `touch-action: manipulation`. Non-`<button>` overlays (`<div>` w/ pointerdown) call `e.preventDefault()` + check `e.isPrimary`. *(See `mobile/touch-gesture-audit.md` for the seven-conflict catalog.)*
+- [ ] **Boot-error fallback installed** at the top of `game.js` before the main IIFE. `window.addEventListener('error')` + `unhandledrejection` render an inline-styled overlay with a Reset & Reload button (clears storage + strips query string). *(See `data/boot-error-fallback.md`.)*
 
 ### Onboarding
 - [ ] First 5s is visibly easier than the "intro" waypoint — new players get 2–3 free taps before difficulty kicks in

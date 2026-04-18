@@ -4335,6 +4335,124 @@ This is now the third deliberate cross-sprint *pair* on top of the seven-strong 
 
 ---
 
+## Sprint 58 — Audit-from-the-margin meta-skill + housekeeping (Apr 18, 2026)
+
+### Lens
+
+Sprint 55, 56, and 57 reflections all converged on the same next candidate: a **meta-skill** that names the discipline the eight individual audits in this folder share. Three independent reflections is a strong signal — overdue. Sprint 58's primary deliverable is the meta-skill itself; secondary is closing three small loose ends that previous sprints surfaced as next-candidates but didn't get to. Bundling them keeps the sprint substantive (real code changes) and demonstrates the audit-discipline being applied in practice.
+
+### Survey
+
+The audit family at start of Sprint 58 had eight members:
+1. `ux/reduced-motion-audit.md` (Sprint ~31)
+2. `ux/keyboard-flow-audit.md` (Sprint ~37)
+3. `ux/screen-reader-announcements.md` SR-coverage aspect (Sprint ~28)
+4. `ux/focus-visible-audit.md` (Sprint ~35)
+5. `qa/casual-checklist.md` (Sprint 1+; ongoing)
+6. `data/persistence-defensiveness.md` (Sprint 53)
+7. `mobile/tap-target-audit.md` (Sprint 55)
+8. `mobile/touch-gesture-audit.md` (Sprint 56)
+
+Companion: `data/boot-error-fallback.md` (Sprint 57) — recovery layer, not an audit per se.
+
+All eight share a recognizable 5-step shape (enumerate → score → table → fix-with-recipe → verify side-effects), all share the 20-sprint cadence rationale, several form prevent-vs-recover *pairs* (S53+S57 on data; S55+S56 on mobile input). But there's no single document naming the family or the shape — every postmortem has *re-derived* this structure independently. A new audit added in two sprints would re-derive again.
+
+The meta-skill captures: the family roster, the shared 5-step shape, the 20-sprint cadence rationale, the prevent-vs-recover pair pattern, a template for adding the ninth audit, and three anti-patterns ("just audited that," checklist-theater, audit creep) that decay the discipline over time.
+
+### Implementation
+
+Four pieces, in priority order:
+
+**1. The meta-skill (`company/skills/audit-from-the-margin.md`, ~225 lines).** Top-level "Meta" section in the skills README (above the index — this doc should be read first when starting any new game). Sections:
+- The thesis (one-line: dev's environment is the most-generous environment in player population)
+- The current 8-member family table with what's at the margin
+- The shared 5-step audit shape with worked examples for each step
+- The 20-sprint cadence with three converging-forces rationale
+- The prevent-vs-recover pair pattern with three pair examples
+- A copy-paste-ready template for writing the ninth audit
+- Three anti-patterns (decay modes)
+- How this transfers across games
+
+**2. `?debug=1` flag for boot-error fallback (game.js).** Three lines added inside `installBootErrorFallback`:
+
+```js
+if (typeof location !== 'undefined' && /[?&]debug=1(?:&|$)/.test(location.search)) {
+  try { console.info('[void-pulse] boot-error fallback disabled (?debug=1)'); } catch {}
+  return;
+}
+```
+
+Wrapped in try/catch so even the *opt-out* path can't itself crash the boot. Documented in inline comment.
+
+**3. `touch-action: manipulation` on `.overlay` (style.css).** Sprint 56 added the property to per-element selectors but missed the overlay containers themselves. A player rapidly dismissing modals (tap backdrop → next overlay opens → tap that backdrop → ...) could trigger iOS double-tap-zoom on the backdrop area. Added the property + comment cross-linking back to Sprint 56.
+
+**4. Tap-target line + touch-gesture line + boot-error line in `qa/casual-checklist.md`.** Sprint 55 next-candidate said "add tap-target line to QA checklist" — extended to also include the touch-gesture and boot-error checks since they're the same Mobile/Visual section. Three new bullets cross-link to the corresponding skill docs.
+
+### Verification
+
+- `node --check game.js` — clean.
+- The `?debug=1` regex `/[?&]debug=1(?:&|$)/` matches `?debug=1`, `?debug=1&foo`, `?foo=1&debug=1`, `?foo=1&debug=1&bar` — but not `?xdebug=1` (the leading `[?&]` blocks substring matches). Tested against ~6 mental URL variants.
+- Skills README now opens with the Meta section. The audit family is discoverable in two scans (Meta section → audit-from-the-margin doc → table of 8 audits).
+- Casual-checklist's Mobile/Visual section now references three skill docs — the discoverability chain is complete.
+
+### Skill extraction
+
+The meta-skill IS the skill extraction this sprint. But the housekeeping fixes also produced two small *meta*-lessons worth recording in this postmortem:
+
+- **The `?debug=1` flag pattern is itself reusable.** Any defensive code that obscures errors during dev ("Reset & Reload" overlay, automatic crash recovery, retry loops) benefits from an opt-out flag. Pattern: `if (location.search includes('debug=1')) return;` near the top of the install function. Should generalize this to the boot-error skill as a "Recommended dev-flag" section in a future revision.
+
+- **Audits often discover sibling audits.** Sprint 56 (touch-gesture) added `touch-action: manipulation` to per-element selectors but missed `.overlay`. Sprint 58 housekeeping caught it. The per-element vs container distinction is the kind of thing that an audit's Step 5 (verify side-effects) is *supposed* to catch but didn't. Worth flagging in the touch-gesture skill: "Step 5 should explicitly enumerate parent containers of the per-element fixes."
+
+### Reflection
+
+**What worked well.**
+
+Naming the discipline clarifies what's already there. The eight individual audits had felt like a *coincidence of separate sprints*; once written down with a shared 5-step shape and prevent-vs-recover pair pattern, they're obviously *one discipline with eight applications*. This is the kind of insight that's only available *after* enough instances exist to abstract from — five sprints would have been too few to see the shape clearly; eight is just enough.
+
+The meta-skill's placement in the README (top-level Meta section, above the per-category index) is the load-bearing UX choice. If it had been buried under, say, "QA," nobody would find it. As the entry point, it ensures every new game's producer reads it first and can make audit-cadence decisions deliberately rather than by accident.
+
+The three housekeeping fixes (debug flag, overlay touch-action, casual-checklist lines) are the perfect demonstration that the meta-skill *cashes out* — Sprint 58 isn't pure documentation, it's also the moment three Sprint-55/56/57 next-candidates close. The discipline is the work.
+
+**What I'd do differently next time.**
+
+1. **The audit family table should auto-update.** I hand-curated the 8-member list. In two sprints when audit #9 lands, the meta-skill needs a manual edit to add it. Probably can't be automated cheaply in a vanilla-JS folder, but worth at least adding a "see also: skills README's audit cadence section" cross-link so additions only require updating the README in one place.
+
+2. **No mention of audit-vs-feature ratio.** The cost section says ~5% of sprints go to dedicated cross-cutting audits, but I didn't justify *why* 5% (vs 10% or 2%). Currently this is a derived number (8 audits × 1 sprint each ÷ 160 sprints / 20-sprint cadence). If the audit family grows to 12, the ratio creeps to ~7.5% — fine — but at 20 audits it's 12.5% which starts to feel heavy. Should add a note: "if the audit family grows past 10, reconsider whether some can merge or move to lighter spot-check cadence."
+
+3. **The "anti-patterns" section is short.** Three anti-patterns is a starting set; in a year of running audits, more will emerge. Should treat the section as live and append over time, dated.
+
+4. **Did not actually try the `?debug=1` flag in a real browser.** Same critique as Sprint 56 (deferred real-device check) and Sprint 57 (didn't trigger a real crash). The verification debt is accumulating; should make a "real-device + real-debug-flag walkthrough sprint" the next-candidate list eventually.
+
+**Cross-sprint pattern: discipline crystallization.**
+
+The sequence Sprint 53 → 54 → 55 → 56 → 57 → 58 is itself a meta-pattern. Each sprint:
+- Picked a deliberately distinct lens
+- Implemented the substantive fix
+- Wrote up a skill capturing the *transferable* pattern
+- Wrote a postmortem reflection naming the cross-sprint connection
+- Identified next-candidates that fed the *next* sprint's choice
+
+By Sprint 58 the connections were dense enough that a meta-skill was overdue. The lesson generalizes: *do enough deliberate variety in a row, and the meta-pattern becomes visible*. Don't try to write the meta-skill on Sprint 1. Don't put it off past Sprint 10. The Goldilocks zone is "after you have enough specific instances to abstract from — but before the abstraction calcifies into the *only* shape you can see."
+
+### Files touched
+
+- `games/001-void-pulse/game.js` — 8 lines added inside `installBootErrorFallback` (the `?debug=1` opt-out path).
+- `games/001-void-pulse/style.css` — 5 lines added to `.overlay` (touch-action: manipulation + comment).
+- `company/skills/audit-from-the-margin.md` — **NEW**, ~225 lines: the meta-skill.
+- `company/skills/README.md` — added Meta section (top-of-file).
+- `company/skills/qa/casual-checklist.md` — three new Mobile/Visual bullets cross-linking to tap-target + touch-gesture + boot-error skills.
+- `company/postmortems/001-void-pulse.md` — this section.
+
+### Next candidates
+
+- **Real-device walkthrough sprint** — pull the game up on iOS Safari + Android Chrome, verify all five recent sprints (perf, mobile pair, boot-error fallback, debug flag) end-to-end. This has been deferred for 4 sprints in a row; time to actually do it.
+- **Sprint-counter / audit-tracker doc** — a `company/audit-log.md` that tracks "last ran audit X at sprint Y" so the 20-sprint cadence is a checkable invariant rather than a vibe. Lightweight, ~one row per audit per pass.
+- **Cognitive-load audit** — the still-uncovered axis: does a brand-new player understand what to do in 3 seconds? Probably the natural ninth audit.
+- **Network-resilience audit** — what does the game do offline? After a service worker is added (separate concern), does the boot path still work? Open lens.
+- **Carried backlog**: stats-panel + gameover render perf sweep (S54), mirrored writer audit (S53), color contrast re-audit (S51).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |
