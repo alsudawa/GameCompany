@@ -74,6 +74,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 
 ### Data
 - [`data/persistence-defensiveness.md`](data/persistence-defensiveness.md) — `localStorage` corruption-resilient reader pattern (five-question audit per read site + four corruption modes + red-flag patterns + migrate-vs-clamp rubric + 20-sprint audit cadence)
+- [`data/boot-error-fallback.md`](data/boot-error-fallback.md) — top-level fallback overlay for uncaught exceptions (window.onerror + unhandledrejection + inline-styled Reset & Reload that strips query string + idempotent shown-flag + a11y-labelled alertdialog)
 
 ### QA
 - [`qa/casual-checklist.md`](qa/casual-checklist.md) — pre-ship checklist + multi-perspective sweep (player / mobile / onboarding / retention / distribution)

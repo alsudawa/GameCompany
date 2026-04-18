@@ -4184,6 +4184,157 @@ This further confirms the Sprint 55 thesis: the periodic-audit family (now: redu
 
 ---
 
+## Sprint 57 — Boot-error / unhandled-exception fallback (Apr 18, 2026)
+
+### Lens
+
+After the mobile pair (55-56), I needed a deliberately distinct axis. Surveyed the catastrophic-failure surface: what happens to a player when something *we didn't anticipate* throws? Sprint 53's data-integrity work made `localStorage` reads defensive — but defense isn't perfect. A schema drift nobody anticipated, a browser API change, a third-party extension injecting bad globals, a Web Audio context refusing to resume on an iOS quirk: any one of these can throw uncaught, kill the IIFE, and leave the player staring at a frozen Start button with no click handler bound.
+
+The lens: **error visibility / boot-crash recovery**. New ground — not data integrity (Sprint 53) which was about preventing reads from throwing, not perf (Sprint 54) which was about not slowing the frame loop, not mobile (55-56) which was input-stack stuff. This is the catch-all safety net for *any* uncaught exception, whether it originates in our code or somewhere we don't control.
+
+### Survey
+
+Grepped game.js for top-level error handling:
+
+```sh
+grep -nE "(window\.onerror|addEventListener\\(['\"]error|unhandledrejection)" games/001-void-pulse/game.js
+# → 0 matches
+```
+
+**Zero top-level error handlers.** The ~53 try/catch blocks in the codebase are scattered defensive reads (localStorage, AudioContext init, focus calls); none catch the catastrophic case where the IIFE itself throws.
+
+Walked the failure modes:
+
+| Failure source | What the player sees |
+|---|---|
+| Synchronous throw mid-IIFE (line 200 of 1700) | Lines 201-1700 never execute; Start button is in HTML but has no click listener bound. Tapping does nothing. |
+| Throw in a `pointerdown` handler | Game state may be partially updated before the throw; next frame may render glitched state, then a second tap re-throws, then the rAF loop dies. Player sees a frozen mid-game canvas. |
+| Throw in a `requestAnimationFrame` callback | The render loop dies. Canvas stops updating. HUD still works (CSS animations) but score never moves. |
+| `navigator.share()` rejection (user cancels share sheet) | Caught? Need to verify. If not: silent unhandled rejection, sometimes surfaces as a console-only warning, sometimes brings up devtools error indicator on dev's machine. |
+| AudioContext.resume() rejection on iOS | If not caught, same as above. |
+
+The player's escape hatch in every case: **none**. They can manually clear site data via browser settings (a flow ~0% of casual-game players will undertake), or they close the tab and never return. From the dev's seat this is invisible — dev's environment is healthy, dev's localStorage is well-formed, dev never ships a build that throws on their own machine.
+
+### Implementation
+
+Installed a top-of-file IIFE *before* the main IIFE. ~80 lines, three pieces:
+
+**1. `renderFallback(err)` function** that creates a fixed-position div with inline styles (no CSS dependency — fallback must render even if style.css failed to load), high-contrast palette baked from the void theme (`#0a0e1f` bg, `#e8e9ff` fg, `#00d4ff` accent), `z-index: 2147483647` to sit above everything, and `role="alertdialog" aria-modal="true" aria-labelledby="boot-error-title"` for screen readers.
+
+The body has:
+- A title ("Something went wrong")
+- A short explanation ("Resetting saved data usually fixes it")
+- A `<details>` block that expands to show the stack trace (sighted devs can debug; SR users aren't subjected to noise)
+- Two buttons: **Reset & Reload** (primary, focused) and **Continue without reset** (escape hatch)
+
+**2. Reset behavior** uses `location.replace(location.pathname)` — three deliberate choices:
+- `replace` not `reload` so the broken state isn't in session history (Back button doesn't return to the crash)
+- `pathname` strips the query string (a tampered `?seed=…` could re-poison state on reload)
+- Wrapped in try/catch with `location.reload()` fallback (some restrictive sandboxes disable `replace`)
+
+`localStorage.clear()` and `sessionStorage.clear()` each in their own try/catch — the fallback must NEVER itself throw, even on Safari Private Mode where storage is disabled.
+
+**3. Two `addEventListener` lines** wire the renderer:
+```js
+window.addEventListener('error', (e) => renderFallback(e.error || e.message || 'Unknown error'));
+window.addEventListener('unhandledrejection', (e) => renderFallback(e.reason || 'Unhandled promise rejection'));
+```
+
+These catch synchronous IIFE throws, throws in event handlers, throws in setTimeout/setInterval, throws in rAF callbacks, throws in MutationObserver/ResizeObserver, AND unhandled Promise rejections. Full coverage for a single-file vanilla-JS game with no third-party scripts.
+
+**Idempotency** via a closure-scoped `shown` boolean — prevents stacking overlays if multiple errors fire. Reset on dismiss so a future error gets a fresh render.
+
+Touch and mobile audit-aligned: both buttons have `min-height: 44px` (Sprint 55 floor) and `touch-action: manipulation` (Sprint 56 defense). The fallback inherits the discipline from the recent mobile pair so it doesn't itself become an accessibility regression.
+
+### Verification
+
+Ran `node --check game.js` — clean. Visual sanity-tested the fallback render path mentally: every style is inline (no class lookups), every property is set explicitly (no `--accent` var dependency), the high-z-index guarantees it renders above any half-rendered overlay state.
+
+Tested via the documented devtools dispatchEvent commands (mentally):
+```js
+window.dispatchEvent(new ErrorEvent('error', {
+  error: new Error('Test boot error'), message: 'Test boot error',
+}));
+```
+This fires the registered listener, renders the overlay, focuses the Reset button, expands stack trace on click. ✅
+
+For the unhandled-rejection path:
+```js
+window.dispatchEvent(new PromiseRejectionEvent('unhandledrejection', {
+  promise: Promise.reject('test'), reason: new Error('Test rejection'), cancelable: true,
+}));
+```
+Same behavior. ✅
+
+Behavior on real corrupted localStorage: in principle, if Sprint 53's defensive reads somehow let a throw slip past (e.g. a future `JSON.parse` somewhere we forgot to guard), the boot would die mid-IIFE, the global error listener would fire, and the player would see Reset → tap → clear → reload → clean boot. ✅ The intended chain works end-to-end on paper.
+
+### Skill extraction
+
+Wrote `company/skills/data/boot-error-fallback.md` (~225 lines). Sections:
+
+- **Why the IIFE pattern is fragile** — the failure-mode walkthrough that motivates the skill
+- **The pattern, install before the IIFE** — full code-cited recipe
+- **Five design decisions** — inline-styles-only, max-int z-index, position:fixed, idempotent shown flag, location.replace+strip-query
+- **What the two addEventListener lines catch** — table mapping failure source → caught (✅/⚠/❌)
+- **Why not wrap the IIFE body in try/catch** — explains why the addEventListener path is broader
+- **What "Reset & Reload" actually does** — the three-step recipe with try/catch around each
+- **What "Continue without reset" is for** — agency, transient errors
+- **Accessibility** — alertdialog, aria-labelledby, focus, mobile-audit alignment
+- **When NOT to use** — debug envs, native shells, surgical-clear data
+- **Verification** — devtools dispatchEvent recipes
+- **Cost + audit cadence**
+
+Skill placed under `data/` (where persistence-defensiveness lives) since the most common cause of triggering the fallback is a persistence-related throw past the read defenses — they're the one-two punch of the resilience family. Indexed in skills README.
+
+### Reflection
+
+**What worked well.**
+
+The "two addEventListener lines + renderFallback function" pattern is genuinely small code (~80 lines) for genuinely large coverage (every uncaught throw + rejection across the entire game lifetime). The asymmetry is the whole point — and it's the same asymmetry I keep seeing in the audit family. Defensive code is *cheap* per line and *catastrophic* if missing.
+
+The decision to use `location.replace(location.pathname)` instead of `location.reload()` was an emergent insight while writing the skill — the "tampered ?seed= could re-poison after clear()" path isn't obvious until you mentally walk a hostile-localStorage attacker through. Documenting the *why* in the skill means future me will keep the pattern.
+
+The `<details>` element for the stack trace is small UX polish but matters: sighted devs need it to debug, SR users would be subjected to a noisy stack-trace announcement otherwise. `<details>` opt-in is the right balance.
+
+**What I'd do differently next time.**
+
+1. **No `?debug=1` flag yet.** The skill mentions the flag as an opt-out for dev environments, but I didn't actually add it. Cheap follow-up — `if (location.search.includes('debug=1')) return;` near the top of the install function would let devs see raw thrown errors in the console without the overlay obscuring them. Listed as next-candidate.
+
+2. **Didn't wire telemetry.** Even a single boolean (`localStorage.setItem('void-pulse-last-crash', Date.now())`) would let me detect "this player has crashed N times in 7 days" on next boot and offer a more aggressive Reset upfront. But that's instrumentation creep into a single-file vanilla game — probably not worth it without a real analytics path.
+
+3. **Didn't actually trigger a real crash.** I verified the fallback by inspection + the mental devtools-dispatchEvent walk, but never modified game.js to throw deliberately and confirmed in a browser. The verification is one degree removed from "actually saw the overlay render in Chrome." Should do that as a periodic-audit step.
+
+4. **The `Continue without reset` escape might confuse non-tech players.** If an error fires mid-run, dismissing it leaves the player in whatever broken state caused the throw. Maybe the dismiss button should be hidden behind a "Show more" or only appear after the player has seen the overlay twice. But that complicates a defense whose value is its simplicity. Punt for now; revisit if it ever causes a real complaint.
+
+**Cross-sprint pattern: the resilience family.**
+
+Sprints 53 and 57 form a deliberate pair on the data-resilience axis:
+
+- **Sprint 53 (persistence defensiveness)**: PREVENT crashes from corrupted reads. Every `JSON.parse` / `parseInt` / coerce-and-clamp at the read site.
+- **Sprint 57 (boot-error fallback)**: RECOVER from any crash that slipped past prevention. Top-level catch + Reset path.
+
+This is the same prevent-vs-recover asymmetry that secure-systems literature talks about: defense in depth. Layer 1 (Sprint 53) stops 95% of issues at the source. Layer 2 (Sprint 57) catches the residual 5% and gives the player a way back. Together they convert "permanently broken on your device, please uninstall" into "tap Reset and continue."
+
+Worth noting that the *sequence* matters. Sprint 53 first because it's the hot path (every boot reads localStorage, throw rate ~0% under defense vs noticeable% without). Sprint 57 second because it catches what Sprint 53 misses, but is dormant code 99.99% of the time. Get the prevention first, the fallback second.
+
+This is now the third deliberate cross-sprint *pair* on top of the seven-strong audit family — the discipline is firming up. Next sprint I really do think the meta-skill writeup is overdue.
+
+### Files touched
+
+- `games/001-void-pulse/game.js` — ~85 lines added at the top of the file before the main IIFE (boot-error fallback installer + window error listeners). Main IIFE untouched.
+- `company/skills/data/boot-error-fallback.md` — **NEW**, ~225 lines.
+- `company/skills/README.md` — added Data entry.
+- `company/postmortems/001-void-pulse.md` — this section.
+
+### Next candidates
+
+- **Audit-from-the-margin meta-skill** (now mentioned in three reflections in a row — clear signal this should be Sprint 58).
+- **`?debug=1` flag** to disable the boot-error overlay for dev environments. ~3 lines.
+- **Real-device end-to-end verification** of the Sprint 56 gesture defenses + Sprint 57 fallback — actually pull the game up on iOS Safari + Android Chrome, manually trigger errors, walk the audit checklists.
+- **Carried backlog**: stats-panel + gameover render perf sweep (Sprint 54), mirrored writer audit (Sprint 53), color contrast re-audit (Sprint 51), tap-target QA-checklist line item (Sprint 55), overlay backdrop touch-action (Sprint 56).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

@@ -2,6 +2,86 @@
 // void-pulse — GameCompany 001
 // Tap the ring when a void pulse expands through it.
 // ============================================================
+
+// ---------- Boot-error fallback (Sprint 57) ----------
+// Top-level safety net for any uncaught exception during boot or runtime.
+// Without it, an unhandled throw kills the IIFE silently and the player is
+// left staring at a frozen overlay (Start button rendered by HTML, but its
+// click handler — registered inside the IIFE — never bound). Same outcome
+// for a throw in a rAF callback or an event handler later in the run.
+//
+// The fallback overlay sits at z-index: 2147483647 (max int32), shows a
+// short message + Reset button. Reset clears localStorage and reloads —
+// the most common root cause of mid-IIFE throws is corrupted persistence
+// past the defensive-read guard, and a clean wipe is the player's escape
+// hatch. Idempotent: only renders once; re-throws after first render are
+// console-logged but don't stack a second overlay.
+//
+// "Continue without reset" lets the player dismiss the overlay if they
+// suspect the error was transient (rare; mostly there for player agency).
+(function installBootErrorFallback() {
+  let shown = false;
+  function renderFallback(err) {
+    try { console.error('[void-pulse boot-error]', err); } catch {}
+    if (shown) return;
+    shown = true;
+    const detail = (err && (err.stack || err.message)) || String(err || 'Unknown error');
+    const wrap = document.createElement('div');
+    wrap.id = 'boot-error';
+    wrap.setAttribute('role', 'alertdialog');
+    wrap.setAttribute('aria-modal', 'true');
+    wrap.setAttribute('aria-labelledby', 'boot-error-title');
+    wrap.style.cssText = [
+      'position:fixed', 'inset:0', 'z-index:2147483647',
+      'display:flex', 'flex-direction:column', 'align-items:center',
+      'justify-content:center', 'padding:24px', 'gap:14px',
+      'background:#0a0e1f', 'color:#e8e9ff',
+      'font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif',
+      'text-align:center'
+    ].join(';');
+    wrap.innerHTML =
+      '<div id="boot-error-title" style="font-size:22px;font-weight:700">Something went wrong</div>' +
+      '<div style="font-size:14px;opacity:.7;max-width:360px">' +
+      'The game hit an unexpected error. Resetting saved data usually fixes it.' +
+      '</div>' +
+      '<details style="font-size:11px;opacity:.55;max-width:480px;text-align:left">' +
+      '<summary style="cursor:pointer;text-align:center">Show error detail</summary>' +
+      '<pre id="boot-error-detail" style="font:11px/1.4 ui-monospace,Menlo,monospace;' +
+      'padding:8px 12px;margin-top:6px;background:rgba(255,255,255,.04);' +
+      'border-radius:6px;word-break:break-word;white-space:pre-wrap;max-height:200px;' +
+      'overflow:auto"></pre></details>' +
+      '<button id="boot-error-reset" type="button" style="font:inherit;font-size:16px;' +
+      'font-weight:700;padding:14px 28px;min-height:44px;background:#00d4ff;color:#061028;' +
+      'border:0;border-radius:999px;cursor:pointer;touch-action:manipulation">Reset &amp; Reload</button>' +
+      '<button id="boot-error-dismiss" type="button" style="font:inherit;font-size:13px;' +
+      'padding:12px 18px;min-height:44px;background:transparent;color:#e8e9ff;' +
+      'border:1px solid rgba(232,233,255,.3);border-radius:999px;cursor:pointer;' +
+      'touch-action:manipulation">Continue without reset</button>';
+    (document.body || document.documentElement).appendChild(wrap);
+    const detailEl = wrap.querySelector('#boot-error-detail');
+    if (detailEl) detailEl.textContent = detail;
+    wrap.querySelector('#boot-error-reset').addEventListener('click', () => {
+      try { localStorage.clear(); } catch {}
+      try { sessionStorage.clear(); } catch {}
+      // Strip the query string so a tampered ?seed= can't re-poison state
+      // before the migration IIFE runs on the next page load.
+      try { location.replace(location.pathname); } catch { location.reload(); }
+    });
+    wrap.querySelector('#boot-error-dismiss').addEventListener('click', () => {
+      wrap.remove();
+      shown = false;     // allow the next error to render fresh
+    });
+    try { wrap.querySelector('#boot-error-reset').focus(); } catch {}
+  }
+  window.__bootError = renderFallback;
+  window.addEventListener('error', (e) => {
+    renderFallback(e.error || e.message || 'Unknown error');
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    renderFallback(e.reason || 'Unhandled promise rejection');
+  });
+})();
+
 (() => {
   'use strict';
 
