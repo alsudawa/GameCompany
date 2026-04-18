@@ -337,10 +337,22 @@
     });
   }
 
-  // Detect reduced motion once — used to gate haptics + anim-heavy effects
+  // Detect reduced motion — used to gate haptics + anim-heavy effects
   // beyond what CSS @media (prefers-reduced-motion) already disables.
-  const reducedMotion = typeof window.matchMedia === 'function' &&
+  // Kept as `let` + MQL listener so mid-session OS toggles propagate (matches
+  // the prefers-color-scheme handling pattern nearby). All callers re-read
+  // the value each call, so mutation is safe.
+  let reducedMotion = typeof window.matchMedia === 'function' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  try {
+    const mqMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const onMotionChange = (e) => { reducedMotion = e ? e.matches : mqMotion.matches; };
+    if (typeof mqMotion.addEventListener === 'function') {
+      mqMotion.addEventListener('change', onMotionChange);
+    } else if (typeof mqMotion.addListener === 'function') {
+      mqMotion.addListener(onMotionChange);   // Safari <14
+    }
+  } catch {}
   function haptic(ms) {
     if (reducedMotion) return;
     if (navigator.vibrate) navigator.vibrate(ms);
@@ -2307,7 +2319,14 @@
   }
 
   // ---------- Particles ----------
+  // Reduced-motion variant: emit half the count with zero velocity. The
+  // particles still appear at the hit location and fade via the existing
+  // life-decay path, preserving a visual ack without kinetic outward motion.
+  // Feedback preservation > strict motion elimination — "did my tap
+  // register?" is answered by the static pop + audio even when the burst
+  // is stationary.
   function spawnBurst(x, y, color, n, speed) {
+    if (reducedMotion) { n = Math.max(1, Math.ceil(n / 2)); speed = 0; }
     let spawned = 0;
     for (const p of particles) {
       if (p.active) continue;
@@ -2325,12 +2344,20 @@
   }
 
   function updateParticles(dt) {
+    // Under reduced-motion, burst particles are spawned with zero velocity
+    // (see spawnBurst) and we also skip position/gravity integration here so
+    // they stay pinned to the hit location and fade out in place. Without
+    // this skip, gravity would still pull them down over 0.5-0.8s, producing
+    // the very downward drift the reduced-motion setting asks us to avoid.
+    const skipMotion = reducedMotion;
     for (const p of particles) {
       if (!p.active) continue;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.vy += 450 * dt;   // light gravity
-      p.vx *= 0.98;
+      if (!skipMotion) {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 450 * dt;   // light gravity
+        p.vx *= 0.98;
+      }
       p.life -= dt;
       if (p.life <= 0) p.active = false;
     }
@@ -2829,7 +2856,13 @@
     // adaptive-quality drop (see ADAPTIVE_BUDGET_MS) — the vignette below
     // still provides depth.
     if (renderStarfield) {
-      const twT = state.t * 1.2;
+      // Freeze the twinkle phase under reduced-motion so each star settles
+      // on its per-star phase offset as a static brightness. The field is
+      // still visible with varied brightness across stars — we drop the
+      // oscillation over time, not the distribution across space. Gentle
+      // opacity cycling is low-risk, but vestibular-disorder users ask
+      // for stillness as a category and we honor that.
+      const twT = reducedMotion ? 0 : state.t * 1.2;
       ctx.fillStyle = getVar('--fg');
       for (const s of stars) {
         const tw = 0.5 + 0.5 * Math.sin(twT + s.phase);
@@ -2861,7 +2894,11 @@
     // inner hint ring
     ctx.save();
     ctx.translate(CENTER_X, CENTER_Y);
-    const popScale = 1 + state.targetPopT * 1.4;
+    // Target-ring pop is the one canvas-scale transform left. Under
+    // reduced-motion, freeze at 1× so the ring stays stable on tap —
+    // audio + score increment remain as feedback, and the perfectFlash
+    // chromatic aberration is already gated at its own call site.
+    const popScale = reducedMotion ? 1 : (1 + state.targetPopT * 1.4);
     const tensionBoost = state.tensionFlash ? 0.18 : 0;
     ctx.globalAlpha = 0.18;
     ctx.strokeStyle = getVar('--accent');

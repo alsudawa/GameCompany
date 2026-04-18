@@ -2974,6 +2974,223 @@ The new section is distinct from the earlier "tap-anywhere modals" section becau
 
 ---
 
+## Sprint 49 — `prefers-reduced-motion` four-layer audit (drift sweep)
+
+**Lens:** same structural shape as Sprint 47's SR announcement audit, but applied to motion sensitivity. The game has 23 `@keyframes` blocks, ~25 `transition:` rules, 6+ JS motion gates, and a canvas render loop. Initial reduced-motion coverage from Sprints 1-15 was complete *for its era*; 30+ subsequent juice sprints silently accumulated drift. This sprint is the explicit audit sweep.
+
+### The drift map — four layers of motion in this codebase
+
+Motion in a web game lives in **four distinct layers**, each with its own guard mechanism:
+
+1. **CSS `@keyframes` + `animation:`** — 23 keyframe blocks, all guarded (some in the same sweeping `.shake, .pop, .flash, .new-best, #score.beaten-best, .pause-countdown` block; most via dedicated per-feature guards).
+2. **CSS `transition:`** — ~25 lines. Short opacity/color transitions are safe under reduced-motion by W3C guidance; transform transitions need guards.
+3. **JavaScript-driven DOM motion** — not currently used in void-pulse directly (we use class-swap triggers + the `retriggerClass` helper to re-fire CSS animations).
+4. **Canvas / WebGL render-loop motion** — the sneakiest layer. Motion lives in math, not declarative properties. `ctx.scale(popScale, popScale)` where `popScale = 1 + state.targetPopT * 1.4` is motion. No `@keyframes` to grep for.
+
+The audit walked each layer and surfaced drift in layers 2, 3 (infrastructure), and 4.
+
+### Drift found & fixed
+
+**Layer 4 gap #1: `popScale` canvas-scale transform on target ring**
+
+```js
+// BEFORE
+ctx.translate(CENTER_X, CENTER_Y);
+const popScale = 1 + state.targetPopT * 1.4;   // 1 → 2.4× over 0.24s
+ctx.scale(popScale, popScale);
+```
+
+The target ring scales from 1× to 2.4× on each successful hit. A full-viewport scale of the primary game element is motion by any definition. Under reduced-motion, the surrounding feedback (perfectFlash chromatic aberration, comboBloom, shake) is all guarded — but this pop was not.
+
+Fix:
+```js
+const popScale = reducedMotion ? 1 : (1 + state.targetPopT * 1.4);
+```
+
+The ring now stays stable under reduced-motion. Audio + score increment provide feedback; the chromatic aberration (also gated) remains off as already-documented. Feedback is not lost — it's relocated to non-motion channels.
+
+**Layer 4 gap #2: particle burst velocity integration**
+
+```js
+// BEFORE — spawnBurst always fires full-count with outward velocity
+function spawnBurst(x, y, color, n, speed) {
+  let spawned = 0;
+  for (const p of particles) {
+    // ... full physics: random angle × 0.5-0.8 × speed velocity ...
+    const s = speed * (0.5 + Math.random() * 0.8);
+    p.vx = Math.cos(a) * s;
+    p.vy = Math.sin(a) * s;
+    // ...
+  }
+}
+// updateParticles always integrates:
+p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 450 * dt;  // gravity
+```
+
+A burst of 24 particles flying outward + falling under gravity is absolutely motion. Not in the CSS audit because it's canvas-drawn.
+
+The nuance: this is **functional feedback** ("you scored a perfect"). Stripping it entirely would remove a visual ack that reduced-motion users still deserve. The right move is **dampen, don't delete**:
+
+```js
+// AFTER — halve count, zero velocity, and skip physics integration
+function spawnBurst(x, y, color, n, speed) {
+  if (reducedMotion) { n = Math.max(1, Math.ceil(n / 2)); speed = 0; }
+  // ... existing spawn logic ...
+}
+function updateParticles(dt) {
+  const skipMotion = reducedMotion;
+  for (const p of particles) {
+    if (!p.active) continue;
+    if (!skipMotion) {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 450 * dt;
+      p.vx *= 0.98;
+    }
+    p.life -= dt;
+    if (p.life <= 0) p.active = false;
+  }
+}
+```
+
+Under reduced-motion: particles appear at the hit location (same count reduced), fade over the same 0.5-0.8s window, and don't move. Visual ack preserved, kinetic motion eliminated. Gravity is skipped too — without this skip, zero-velocity particles would still drift downward over their lifetime.
+
+**Layer 4 gap #3: starfield twinkle oscillation**
+
+```js
+// BEFORE
+const twT = state.t * 1.2;
+for (const s of stars) {
+  const tw = 0.5 + 0.5 * Math.sin(twT + s.phase);
+  ctx.globalAlpha = 0.18 + tw * 0.22;
+  // draw star
+}
+```
+
+40 background stars with opacity oscillating via sine wave, phase-offset per star, at 1.2 rad/sec. Gentle, but it IS time-varying motion.
+
+```js
+// AFTER
+const twT = reducedMotion ? 0 : state.t * 1.2;
+```
+
+Under reduced-motion, `twT` freezes at 0. Each star's `sin(0 + s.phase)` evaluates to `sin(s.phase)` — a static value unique to that star. The field is still visible with **spatial variation** (different stars at different brightness) but without **temporal variation** (no oscillation over time). This is the right resolution of "keep the visual identity, drop the motion."
+
+**Layer 3 infrastructure gap: `const` locks in page-load preference**
+
+```js
+// BEFORE
+const reducedMotion = typeof window.matchMedia === 'function' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+```
+
+The original flag was a one-time snapshot at script load. If a user toggles their OS "Reduce motion" setting mid-session, nothing updates. Compare: `prefers-color-scheme` already has a live MQL listener in the codebase, applying changes immediately.
+
+```js
+// AFTER
+let reducedMotion = ...;
+try {
+  const mqMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const onMotionChange = (e) => { reducedMotion = e ? e.matches : mqMotion.matches; };
+  if (typeof mqMotion.addEventListener === 'function') {
+    mqMotion.addEventListener('change', onMotionChange);
+  } else if (typeof mqMotion.addListener === 'function') {
+    mqMotion.addListener(onMotionChange);   // Safari <14
+  }
+} catch {}
+```
+
+- **`const` → `let`** — the listener mutates.
+- **Both `addEventListener` and `addListener`** — the MediaQueryList API predates `addEventListener` on MQL objects; Safari <14 only has the deprecated `addListener`. Ship both.
+- **Callers re-read each invocation** — `reducedMotion` is checked at the top of each `spawnBurst`, inside each `updateParticles` frame, inside each render frame for canvas gates. No snapshot-in-closure trap.
+
+The CSS layer doesn't need a JS listener — browsers re-evaluate `@media` queries on preference change automatically. This listener is only for the JS-driven motion layer.
+
+### Drift NOT fixed (considered and deliberately kept)
+
+- **Overlay `.2s opacity ease` transitions** — short opacity transitions are exempt under W3C guidance. Keeping them produces a subtle fade-in/out that's calming, not vestibular-triggering.
+- **Combo meter `width .14s ease-out` transition** — functional progress feedback. Filling conveys essential state (distance to next multiplier). Keeping.
+- **Pulse ring expansion (r=0 → TARGET_R)** — the pulse IS the core mechanic. Removing it would break gameplay. Not motion-sensitivity, gameplay-integrity.
+- **Button `transform .08s ease` on hover/active** — tiny, fast, gameplay-feel, not vestibular-triggering. The W3C notes "some motion is essential"; micro-interactions are in that bucket.
+- **`transition: all .15s` on stats-reset/export buttons** — technically a footgun but currently no transforms apply to these buttons (only background/color/border changes). Flagged in skill doc as a pattern to avoid; not fixed here because it's not producing motion today.
+
+### Skill doc — new file `company/skills/ux/reduced-motion-audit.md`
+
+A periodic-audit framework, not game-specific:
+
+1. **The four layers** (CSS animation, CSS transition, JS DOM, canvas/WebGL) — each with its own grep command for inventory, guard pattern, common gotchas.
+2. **Decision rubric** — three questions (functional? large-area/fast? alternative channel?) with three answers each. Mapped to keep/reduce/skip.
+3. **Dampen-don't-delete particles rule** — halve count + zero velocity + skip physics, instead of no-emit. Preserves functional feedback while removing kinetic motion.
+4. **`prefers-reduced-motion` live-listener pattern** — const-vs-let rationale, Safari <14 fallback, why per-call reads beat closures.
+5. **Common audit mistakes** — `const` snapshot trap, `transition: all` footgun, forgetting Safari compat, snapshot-in-closure, disabling-progress-bars.
+6. **Sprint-cadence recommendation** — audit every 20 sprints of juice/polish. Drift accumulates at ~1 per 3-4 animation-adding sprints; 20 sprints gets you 5-7 gaps worth a dedicated audit day.
+
+The skill doc also captures a **meta-rule about audit sprints**: single-axis audits with a dedicated reviewer focus catch more drift than per-sprint reviewer checklists. The reason is attention — a reviewer scanning for "feel, theme, perf" won't spontaneously ask "does this pass the reduced-motion gate?" The gate needs a dedicated review pass periodically.
+
+Added to `company/skills/README.md` index under `ux/` alongside screen-reader-announcements and modal-focus-trap. The three together cover the major accumulating-drift a11y axes: SR announcements, focus management, and motion sensitivity.
+
+### Design decisions
+
+**Why dampen particles instead of skipping them entirely?** Because particle bursts ARE the visual confirmation of "that tap scored." Under reduced-motion, if we also strip the particles, a successful tap produces: score number ticks up (tiny HUD update), audio note plays. That's two channels of feedback, both subtle. Adding a static particle flash at the hit location restores a third channel — visually present, visually temporary, kinetically absent. Same information density, different motion profile.
+
+**Why halve the count AND zero the velocity?** Halving alone keeps 12 particles in one spot — visually dense. Zero-velocity alone keeps 24 particles all piled at one pixel location with overlapping alpha — muddy. The combination gives 12 distinct fading dots spread across the hit moment, which reads as "one crisp burst" rather than "reduced confetti."
+
+**Why skip physics integration in `updateParticles` even when spawnBurst zeroed velocity?** Because gravity (`p.vy += 450 * dt`) still applies per frame. Over a 0.8s particle lifetime, accumulated gravity would translate the particle ~140px downward even starting from zero velocity. That's exactly the downward drift the reduced-motion setting asks us to avoid. Skipping the integration block is the cleanest solution — zero motion input AND zero motion integration.
+
+**Why keep the starfield but freeze its twinkle?** The starfield is atmospheric — it gives the "void" theme its identity. Removing it would flatten the aesthetic AND reduce visual anchoring (the background becomes a flat color, which is visually restless for some users). Freezing twT at 0 preserves the per-star brightness variation (spatial character) without per-frame oscillation (temporal character). It's the same pattern as Sprint 45's peak-tier ambient: keep the state indicator; drop the breathing.
+
+**Why `let reducedMotion` instead of `get reducedMotion()` via a helper function?** Either works, but the `let` with listener mutation matches the existing `prefers-color-scheme` pattern nearby (`let currentTheme; onSystemThemeChange()`). Consistency beats minor API preference. Reviewers maintaining the code see one reactive-flag pattern, not two.
+
+**Why not gate CSS animations via the JS reducedMotion flag?** Because the CSS `@media (prefers-reduced-motion: reduce)` block already does exactly this, reactively, and the browser handles the live toggle automatically. Duplicating into JS would create a second source of truth that could drift. The JS flag only exists for the layers CSS can't reach (canvas + future DOM manipulation).
+
+**Why a dedicated skill doc instead of extending `accessibility.md`?** Because reduced-motion specifically benefits from a periodic-audit framework that's too long to live inside a general a11y doc. The audit has its own rhythm (every 20 sprints), its own four-layer taxonomy, its own dampen-don't-delete rule. Separating it makes it easier to find + reuse when spinning up game #2 or #3.
+
+### The meta-pattern: periodic single-axis a11y audits
+
+Three sprints in a row now reinforce the same structural pattern:
+
+- **Sprint 47** — SR announcement audit. Sprint 27 established the pattern; 20 sprints of drift; dedicated re-audit found 5 gaps.
+- **Sprint 48** — pause dialog a11y (closes the loop on Sprint 47's live-region plug).
+- **Sprint 49** — reduced-motion audit. 30+ sprints of drift; dedicated re-audit found 4 gaps + 1 infrastructure weakness.
+
+The pattern: **accumulating-drift a11y axes need periodic single-axis re-audit sprints**. The same axes a sighted/motion-tolerant reviewer can overlook are the ones that drift fastest. Build a calendar of re-audit sprints the same way you'd build a security patching cadence.
+
+Projected re-audit calendar for void-pulse (if development continued):
+- Every 10 sprints: SR announcement re-audit
+- Every 15 sprints: focus management + keyboard-only flow re-audit
+- Every 20 sprints: reduced-motion re-audit
+- Every 20 sprints: color contrast re-audit
+- Every 25 sprints: ARIA role/label comprehensiveness
+
+None of these are interesting individually; together they compose into a *maintenance shape* that keeps a11y from rotting. The skill doc's "Sprint-cadence suggestion" section captures this for game #2 onward.
+
+### Testing notes (reasoning from code flow + spec)
+
+- **prefers-reduced-motion: no-preference (default)** — all new guards short-circuit via `reducedMotion === false`. No behavior change. Starfield twinkles normally, particles fly normally, target pop scales normally. ✓
+- **prefers-reduced-motion: reduce (set at load)** — `reducedMotion === true` immediately. Particle bursts emit half-count static dots. Target ring stays 1× on tap. Starfield stars have fixed brightness per-star. ✓
+- **Live toggle during run** — OS setting toggled while a run is active. MQL listener fires; `reducedMotion` flips. Next frame's render reads the new value. Particles already in flight continue their existing trajectory (no state migration — they just fade out); new bursts spawned after the toggle are dampened. Target ring stops popping on next tap. ✓
+- **Safari <14 fallback** — `mqMotion.addListener` is called instead of `addEventListener`. Same callback, same mutation behavior. ✓
+- **Pair with existing CSS reduced-motion block** — CSS continues to handle `.shake`, `.pop`, `.flash`, `.new-best`, `#score.beaten-best`, `.pause-countdown`, `.demo-pulse`, `.demo-label`, etc. No JS-CSS conflict; each layer owns its own elements.
+- `node --check game.js` passes. CSS brace count unchanged (no CSS edits this sprint).
+
+### Wrap-up
+
+- Four reduced-motion drift sites plugged (target pop scale, particle velocity, starfield twinkle, const-locked flag).
+- New skill doc (`reduced-motion-audit.md`) captures the four-layer audit framework, decision rubric, dampen-don't-delete rule, and cadence recommendation.
+- Sprint-cadence discipline documented: periodic single-axis a11y re-audits belong in the team rhythm, not ad-hoc reviews.
+- Sprints 47-48-49 together complete an a11y re-audit triptych: SR announcements → dialog semantics → motion sensitivity. Each used the same lens-from-angle-prior-sprints-missed tactic.
+
+### Next candidates
+
+- **Keyboard-only full-flow manual test** — now 9 sprints overdue. The a11y triptych (47-48-49) is logically followed by a keyboard-only end-to-end walk-through to catch remaining focus-flow, tab-order, or escape-hatch gaps.
+- **Color contrast re-audit** — another accumulating-drift axis. The prefers-contrast media query has a block; but 20+ sprints of new UI elements might have introduced contrast issues.
+- **Emoji ladder in share** — deferred from Sprint 42.
+- **First-gameover context overlay** — proposed in Sprint 46.
+- **Haptic vocabulary expansion** — `navigator.vibrate` currently fires on miss + new-best only. Could add a pattern-language (rhythmic buzzes for combo milestones, gentle ticks for perfects) — but ONLY with the reduced-motion gate keeping it quiet for motion-sensitive users.
+- **Localization scaffolding** / **service worker** / **gamepad input** (still open, long).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |
