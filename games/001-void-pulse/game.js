@@ -1111,21 +1111,56 @@
   // three-state bus (normal/beaten/duck) and the mute suspend apply uniformly.
   //
   // Pattern grids: 1 = hit, 0 = rest. One bar = 8 eighth-note slots.
+  // Sprint 52 redesign: added `pad` + `lead` instruments and rewrote bands so
+  // the player hears actual music (not just kick+hat metronome) from bar 1.
+  // Warm now opens with a soft pad pulse + a single sparse lead pickup; easy
+  // brings in bass + a rising lead figure; mid/hard/climax stack toward
+  // densest layering. Each band still preserves the original drum signature
+  // so the dramatic arc (warm→climax) reads identically.
   const BGM_PATTERN = {
-    warm:   { kick:[1,0,0,0,0,0,0,0], snare:[0,0,0,0,0,0,0,0], hat:[1,0,1,0,1,0,1,0], bass:[0,0,0,0,0,0,0,0], motif:[0,0,0,0,0,0,0,0] },
-    easy:   { kick:[1,0,0,0,1,0,0,0], snare:[0,0,0,0,0,0,0,0], hat:[1,0,1,0,1,0,1,0], bass:[0,0,0,0,0,0,0,0], motif:[0,0,0,0,0,0,0,0] },
-    mid:    { kick:[1,0,0,0,1,0,0,0], snare:[0,0,0,0,1,0,0,1], hat:[1,1,1,1,1,1,1,1], bass:[1,0,0,0,1,0,0,0], motif:[0,0,0,0,0,0,0,0] },
-    hard:   { kick:[1,0,0,1,1,0,0,0], snare:[0,0,0,0,1,0,0,1], hat:[1,1,1,1,1,1,1,1], bass:[1,0,1,0,1,0,1,0], motif:[0,0,0,1,0,0,0,0] },
-    climax: { kick:[1,0,1,0,1,0,1,0], snare:[0,0,1,0,1,0,1,0], hat:[1,1,1,1,1,1,1,1], bass:[1,1,1,1,1,1,1,1], motif:[1,0,0,1,0,1,0,0] },
-    out:    { kick:[1,0,0,0,1,0,0,0], snare:[0,0,0,0,0,0,0,0], hat:[1,0,0,0,1,0,0,0], bass:[0,0,0,0,0,0,0,0], motif:[0,0,0,0,0,0,0,0] },
+    warm:   { kick:[1,0,0,0,0,0,0,0], snare:[0,0,0,0,0,0,0,0], hat:[1,0,1,0,1,0,1,0], bass:[0,0,0,0,0,0,0,0], pad:[1,0,0,0,1,0,0,0], lead:[0,0,1,0,0,0,0,0], motif:[0,0,0,0,0,0,0,0] },
+    easy:   { kick:[1,0,0,0,1,0,0,0], snare:[0,0,0,0,0,0,0,0], hat:[1,0,1,0,1,0,1,0], bass:[1,0,0,0,1,0,0,0], pad:[1,0,0,0,1,0,0,0], lead:[1,0,0,1,0,0,1,0], motif:[0,0,0,0,0,0,0,0] },
+    mid:    { kick:[1,0,0,0,1,0,0,0], snare:[0,0,0,0,1,0,0,1], hat:[1,1,1,1,1,1,1,1], bass:[1,0,0,0,1,0,0,0], pad:[1,0,0,0,1,0,0,0], lead:[1,0,1,0,1,0,1,0], motif:[0,0,0,0,0,0,0,0] },
+    hard:   { kick:[1,0,0,1,1,0,0,0], snare:[0,0,0,0,1,0,0,1], hat:[1,1,1,1,1,1,1,1], bass:[1,0,1,0,1,0,1,0], pad:[1,0,0,0,1,0,0,0], lead:[1,0,1,0,1,0,1,0], motif:[0,0,0,1,0,0,0,0] },
+    climax: { kick:[1,0,1,0,1,0,1,0], snare:[0,0,1,0,1,0,1,0], hat:[1,1,1,1,1,1,1,1], bass:[1,1,1,1,1,1,1,1], pad:[1,0,1,0,1,0,1,0], lead:[1,0,1,0,1,0,1,0], motif:[1,0,0,1,0,1,0,0] },
+    out:    { kick:[1,0,0,0,1,0,0,0], snare:[0,0,0,0,0,0,0,0], hat:[1,0,0,0,1,0,0,0], bass:[0,0,0,0,0,0,0,0], pad:[1,0,0,0,0,0,0,0], lead:[1,0,0,0,0,0,0,0], motif:[0,0,0,0,0,0,0,0] },
   };
   // A natural minor-7 motif phrase cycled by slot index — hypnotic, sits under
   // the ring's cyan/magenta palette without fighting the SFX frequency range.
   const BGM_MOTIF_SEMITONES = [0, 3, 7, 10];  // A C E G
   // Hard-phase bass walks 0 → -2 → -5 → 0 across its 4 bars for harmonic
-  // motion; other bands stay on the root so the music doesn't muddy the chart.
+  // motion ON TOP OF the chord progression — the walk is added to the bar's
+  // chord root so the bass is melodic within the chord, not just static.
   const BGM_BASS_WALK_HARD = [0, -2, -5, 0];
-  const BGM_MASTER_GAIN = 0.26;   // submix under Sfx.master; leaves headroom for taps
+  // Per-bar chord progression (semitones from A). Indexed by absolute bar.
+  // Total length must match BAND_SCHEDULE.length (30 bars).
+  // 0 = Am (root), -4 = F major (relative VI), 3 = C major (relative III),
+  // -2 = G major (relative VII). The classic Am-F-C-G "four-chord" loop —
+  // immediately recognizable, emotionally open, low cognitive load. Warm
+  // opens with two bars of root + one F lift so the player orients before
+  // motion starts; mid/hard cycle the full 4-chord; climax oscillates Am↔F
+  // for urgency; out resolves to the root.
+  const BGM_CHORD_PROGRESSION = [
+    0, 0, -4,                   // warm   (3 bars)
+    0, -4, 3, -2, 0, -4,        // easy   (6 bars)
+    0, -4, 3, -2, 0, -4, 3, -2, // mid    (8 bars)
+    0, -4, 3, -2, 0, -4,        // hard   (6 bars)
+    0, -4, 0, -4,               // climax (4 bars)
+    0, 0, 0,                    // out    (3 bars)
+  ];
+  // Lead melody — 4-bar phrase where each bar is one slot of the chord
+  // progression. Indexed by [bar % 4][slot]. Notes are semitones relative to
+  // the bar's chord root (so lead transposes WITH the chord change). Mostly
+  // chord tones (root=0, third=3, fifth=7) with passing tones for motion.
+  // The A-A-C-A pattern in slots 0-3 of bar 0 is the rhythmic hook —
+  // immediately memorable, repeats across cycles for ear-anchoring.
+  const BGM_LEAD_SEQUENCE = [
+    [0, 0, 3, 0, 0, 3, 0, 0],   // bar 0: tonic statement (A-A-C-A-A-C-A-A in chord-relative)
+    [0, 0, 3, 0, 5, 3, 0, 0],   // bar 1: passing tone on slot 4 (D in chord-relative)
+    [-2, 0, 3, 0, 0, 3, 0, -2], // bar 2: dip below root for melodic contour
+    [2, 0, 3, 0, 0, 3, 2, 0],   // bar 3: lift above root, cadence shape
+  ];
+  const BGM_MASTER_GAIN = 0.36;   // submix under Sfx.master (0.55); was 0.26 — bumped so the new lead/pad layers are present, still headroom for SFX
   const BGM_LOOKAHEAD_S = 0.25;
   const BGM_TICK_MS = 60;
   const BGM_EIGHTH_S = 0.25;       // 120 BPM, 8th note
@@ -1251,20 +1286,34 @@
       const band = this.bands[bar];
       const pat = BGM_PATTERN[band];
       if (!pat) return;
+      // Chord root for this bar — drives bass + pad + lead transposition so
+      // the harmonic motion (Am→F→C→G) propagates through every melodic layer.
+      const chordSemis = BGM_CHORD_PROGRESSION[bar] | 0;
       if (pat.kick[slot])  this._kick(whenT);
       if (pat.snare[slot]) this._snare(whenT);
       if (pat.hat[slot])   this._hat(whenT);
       if (pat.bass[slot]) {
-        let semis = 0;
+        let semis = chordSemis;
         if (band === 'hard') {
-          // Find first hard bar in the schedule so the walk always starts
-          // from the first hard bar regardless of schedule length changes.
+          // In the hard band, layer the 4-bar walk on top of the chord root
+          // so the bass moves WITHIN the chord (root → -2 → -5 → root) for
+          // extra rhythmic interest beyond the chord progression itself.
           let hardStart = this.bands.indexOf('hard');
           if (hardStart < 0) hardStart = bar;
           const hbi = bar - hardStart;
-          semis = BGM_BASS_WALK_HARD[((hbi % 4) + 4) % 4] | 0;
+          semis += BGM_BASS_WALK_HARD[((hbi % 4) + 4) % 4] | 0;
         }
         this._bass(whenT, semis);
+      }
+      if (pat.pad && pat.pad[slot]) {
+        this._pad(whenT, chordSemis);
+      }
+      if (pat.lead && pat.lead[slot]) {
+        // Lead reads from the 4-bar melody loop, transposed to the bar's
+        // chord. cycleBar = bar % 4 cycles through the four melodic shapes.
+        const cycleBar = ((bar % 4) + 4) % 4;
+        const leadSemis = BGM_LEAD_SEQUENCE[cycleBar][slot] | 0;
+        this._lead(whenT, leadSemis + chordSemis);
       }
       if (pat.motif[slot]) {
         this._motif(whenT, BGM_MOTIF_SEMITONES[slot % BGM_MOTIF_SEMITONES.length]);
@@ -1345,6 +1394,46 @@
       g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
       o.connect(g).connect(this.gain);
       o.start(t); o.stop(t + 0.24);
+    },
+    // Pad — sustained chord anchor. Triangle wave through a highpass to drop
+    // sub-bass mud (kick lives below 80Hz; pad above). Soft attack-sustain-
+    // decay so the pad reads as held harmony, not percussive blip. One pad
+    // pulse per kick keeps the texture warm without crowding the mix.
+    _pad(t, semis) {
+      const ctx = this.ctx;
+      const freq = 55 * Math.pow(2, semis / 12);   // A1 = 55Hz, same octave as bass
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      const hpf = ctx.createBiquadFilter();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.08, t + 0.03);   // 30ms attack
+      g.gain.setValueAtTime(0.08, t + 0.10);                 // hold ~70ms
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28); // ~180ms decay
+      hpf.type = 'highpass';
+      hpf.frequency.value = 80;
+      o.connect(hpf).connect(g).connect(this.gain);
+      o.start(t); o.stop(t + 0.3);
+    },
+    // Lead — articulate melody line, sine wave at A3 baseline (220Hz). Quick
+    // attack so each note pops, but short total duration so successive 8th-
+    // notes don't overlap into mush. Sine is intentionally "unforgiving" —
+    // wrong notes would stand out, so the BGM_LEAD_SEQUENCE is built from
+    // chord tones with sparing passing tones.
+    _lead(t, semis) {
+      const ctx = this.ctx;
+      const freq = 220 * Math.pow(2, semis / 12);  // A3 = 220Hz
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.14, t + 0.008);  // 8ms snap
+      g.gain.setValueAtTime(0.14, t + 0.055);                // ring ~47ms
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18); // decay
+      o.connect(g).connect(this.gain);
+      o.start(t); o.stop(t + 0.19);
     },
   };
 

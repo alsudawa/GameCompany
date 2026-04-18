@@ -178,6 +178,109 @@ Keep it in a minor key — it sits under SFX (which tend to be bright/neutral) w
 
 Use a **walking bass** on the second-hardest band (not the peak). It signals "things are getting serious" without maxing the texture before the climax arrives.
 
+## Sounding like *music*, not a metronome (Sprint 52 upgrade)
+
+<!-- added: 2026-04-18 (001-void-pulse, sprint 52) -->
+
+The pattern table above gives you a tight rhythmic chart. By itself it sounds like a **drum machine**, not a song. Two layers turn it into music; both are cheap (1 oscillator each per fired slot) and snap onto the existing scheduler.
+
+### 1. Per-bar chord progression — one array, indexed by bar
+
+Add a chord-root array the same length as `BAND_SCHEDULE`. Each entry is a transposition in semitones from the tonic.
+
+```js
+// Am-F-C-G classic four-chord loop (semitones from A)
+//   0 = Am (root)   -4 = F major (♭VI)   3 = C major (♭III)   -2 = G major (♭VII)
+const BGM_CHORD_PROGRESSION = [
+  0, 0, -4,                    // warm   3 bars: settle + one lift
+  0, -4, 3, -2, 0, -4,         // easy   6 bars
+  0, -4, 3, -2, 0, -4, 3, -2,  // mid    8 bars: full cycle ×2
+  0, -4, 3, -2, 0, -4,         // hard   6 bars
+  0, -4, 0, -4,                // climax 4 bars: oscillate Am↔F for urgency
+  0, 0, 0,                     // out    3 bars: resolve to root
+];
+```
+
+In `_playSlot` look up `chordSemis = BGM_CHORD_PROGRESSION[bar] | 0` once and pass it to **every melodic voice** (bass, pad, lead). Now the harmony moves — even though the rhythmic chart is unchanged.
+
+> **Length invariant.** `BGM_CHORD_PROGRESSION.length === BAND_SCHEDULE.length`. Encode the bar-band mapping in a comment so the next editor doesn't drift them apart.
+
+> **Where the bass walk goes.** If you previously had a per-bar bass walk (e.g. `[0,-2,-5,0]` for the hard band), keep it as a *layer on top* of the chord root — `semis = chordSemis + walk[hbi % 4]` — so the bass moves *within* the current chord rather than ignoring the progression.
+
+### 2. Pad + lead — the two layers that make it sound composed
+
+Both are **gated by the pattern table** (extend each band with `pad:[…]` and `lead:[…]` 8-slot bitmaps), and both transpose with `chordSemis`. The lead also reads from a separate per-cycle melody loop.
+
+```js
+// Lead = 4-bar phrase, indexed by [bar % 4][slot]. Notes are RELATIVE to the
+// current chord root, so the lead transposes with the chord. Stick to chord
+// tones (0=root, 3=♭3rd, 7=5th) plus 1–2 passing tones per phrase — sine
+// waves are unforgiving, wrong notes stand out.
+const BGM_LEAD_SEQUENCE = [
+  [0, 0, 3, 0, 0, 3, 0, 0],    // bar 0: tonic statement (the rhythmic hook)
+  [0, 0, 3, 0, 5, 3, 0, 0],    // bar 1: passing tone for motion
+  [-2, 0, 3, 0, 0, 3, 0, -2],  // bar 2: dip below root for contour
+  [2, 0, 3, 0, 0, 3, 2, 0],    // bar 3: lift above root, cadence shape
+];
+
+// In _playSlot:
+if (pat.pad && pat.pad[slot])  this._pad(whenT, chordSemis);
+if (pat.lead && pat.lead[slot]) {
+  const cycleBar = ((bar % 4) + 4) % 4;
+  this._lead(whenT, BGM_LEAD_SEQUENCE[cycleBar][slot] + chordSemis);
+}
+```
+
+**Pad voice — sustained chord anchor.** Triangle wave, root pitch, highpass at 80Hz to keep out of kick territory. Soft attack-hold-decay (~30ms / 70ms / 180ms) reads as "held harmony", not blip.
+
+```js
+_pad(t, semis) {
+  const ctx = this.ctx;
+  const freq = 55 * Math.pow(2, semis / 12);   // A1 baseline
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  const hpf = ctx.createBiquadFilter();
+  o.type = 'triangle'; o.frequency.setValueAtTime(freq, t);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.08, t + 0.03);
+  g.gain.setValueAtTime(0.08, t + 0.10);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+  hpf.type = 'highpass'; hpf.frequency.value = 80;
+  o.connect(hpf).connect(g).connect(this.gain);
+  o.start(t); o.stop(t + 0.30);
+},
+```
+
+**Lead voice — articulate melody.** Sine wave at A3 (220Hz). Snap attack (8ms), short ring (47ms), quick decay so successive 8th-notes don't slur into mush.
+
+```js
+_lead(t, semis) {
+  const ctx = this.ctx;
+  const freq = 220 * Math.pow(2, semis / 12);
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(freq, t);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.14, t + 0.008);
+  g.gain.setValueAtTime(0.14, t + 0.055);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+  o.connect(g).connect(this.gain);
+  o.start(t); o.stop(t + 0.19);
+},
+```
+
+### 3. Rebalance the master gain when you add layers
+
+Adding pad + lead on top of an existing 5-voice mix raises the perceived loudness ~30%. Re-floor `BGM_MASTER_GAIN` (we went 0.26 → 0.36; calibrate against a hazard-tap SFX hit so the duck still has audible headroom).
+
+### 4. The "first 18 seconds" rule
+
+The earliest, calmest band (`warm` in our case) is the player's first impression of the soundtrack. If it has only `kick + hat`, it sounds like a metronome — players ask *"why isn't BGM playing?"*. Always seed the warm band with **at least one melodic voice** (a single sparse pad pulse + one lead pickup is enough). The drums-only sound is fine for an *intro tag* (≤ 1 bar), not for 6+ seconds.
+
+### 5. Cost ceiling unchanged
+
+Pad + lead are 1 oscillator each; the existing 5-voice ceiling rises to ~6 concurrent on a climax downbeat — well under the 10-osc Web Audio comfort threshold for low-end mobile.
+
 ## Cost
 
 Peak 4 concurrent oscillators (kick + snare + bass + motif on a climax downbeat). Across a 60s run with the reference pattern table: ~1100 oscillator allocations (all short-lived, GC-friendly). On Chrome desktop: inaudible CPU. On iOS Safari low-end: keep below ~0.5% CPU per check.

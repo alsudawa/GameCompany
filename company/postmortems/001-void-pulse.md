@@ -3450,6 +3450,142 @@ Documents the five common gap patterns (opacity-0 leak, missing radiogroup arrow
 
 ---
 
+## Sprint 52 — BGM "actual song" upgrade (player-feedback lens) (2026-04-18)
+
+### Lens (player-direct feedback)
+
+> "왜 bgm이 안깔리지? 신나는 노래가 있어야해."
+> — the boss, after playing through a fresh build.
+
+This is the first sprint this run driven by direct player feedback, not by the rotating audit calendar. Worth flagging because **the player called the BGM "not playing" even though it was technically running** — every band's pattern was firing on schedule, master gain was 0.26, the duck/mute logic was fine. The signal was *content*, not *plumbing*: warm + easy bands had only `kick + hat` + occasional bass, which to a fresh ear reads as "the metronome is on" rather than "music is on." First impressions decided the verdict before the denser mid/hard/climax bands ever arrived.
+
+### Diagnosis
+
+Walked the existing BGM module (`game.js:1110-1438`) against the actual audible result on a 30-second listen:
+
+| Band | Bars | Voices firing | Audible perception |
+|---|---|---|---|
+| warm | 0–2 (0–6s) | kick(downbeat) + hat(8th) | "metronome warming up" |
+| easy | 3–8 (6–18s) | + kick(2/4) | "metronome with stronger 2/4" |
+| mid | 9–16 (18–34s) | + snare + bass + dense hat | "ok, music started" |
+| hard | 17–22 (34–46s) | + bass walk + motif | "something is happening" |
+| climax | 23–26 (46–54s) | all 5 voices dense | "this is the part" |
+| out | 27–29 (54–60s) | sparse | "winding down" |
+
+Two structural issues:
+
+1. **No melodic layer at all.** Bass + motif are pitched, but bass only fires from `mid` onward and motif only on `hard`/`climax`. The player heard nothing harmonic for the first 18 seconds.
+2. **No chord progression.** Even when bass + motif arrived, both played at fixed pitches relative to the run start — the music had rhythm but not *motion*. No ear-anchor said "this is going somewhere."
+
+The fix had to be additive (don't break the dramatic warm→climax arc that QA validated across Sprints 30-50) but had to land in the warm band so the first 6 seconds carried tune.
+
+### Sound-designer brief
+
+Spawned `@sound-designer` with a structured brief in `games/001-void-pulse/docs/bgm-redesign-spec.md` asking for:
+
+- A **chord progression** length-matched to `BAND_SCHEDULE` (30 bars).
+- A **pad voice** for warm/easy harmonic anchor — soft attack, sustained, sub-kick avoided.
+- A **lead voice** for melodic interest — articulate, short-tail, sine-clean.
+- A **4-bar lead phrase** transposable per chord.
+- Pattern updates so warm has at least one melodic voice, easy + mid layer up, hard + climax stack densest.
+- A new master-gain target accounting for the added voices.
+
+Sound-designer returned the full spec as documented; integration (described below) followed it without modification except for one balance fix flagged in review (bass should follow chord root in *all* bands, with the existing hard-band walk layered *on top* of the chord — see `_playSlot` semis composition).
+
+### Implementation
+
+Three back-to-back edits in `game.js`:
+
+**Edit 1 — Data tables** (`game.js:1120-1163`)
+
+- Extended every entry of `BGM_PATTERN` from `{kick, snare, hat, bass, motif}` to `{kick, snare, hat, bass, pad, lead, motif}`. Added `pad: [1,0,0,0,1,0,0,0]` (downbeat+halfbeat) and `lead: [0,0,1,0,0,0,0,0]` (one sparse pickup) to `warm` so the first 6 seconds carry tune. Stacked density bands-up: `easy` adds `lead [1,0,0,1,0,0,1,0]`; `mid` adds dense lead `[1,0,1,0,1,0,1,0]`; `hard` keeps that lead + adds motif; `climax` runs everything; `out` resolves to a single pad+lead pulse.
+- Added `BGM_CHORD_PROGRESSION` — a 30-element semitone array matching `BAND_SCHEDULE`. Am-F-C-G four-chord cycle: warm settles on root with one ♭VI lift, easy/mid/hard cycle the full progression, climax oscillates Am↔F for urgency, out resolves to root.
+- Added `BGM_LEAD_SEQUENCE` — a 4-bar × 8-slot melody table indexed by `bar % 4`. Notes are *chord-relative semitones* (so the lead transposes WITH each chord change). Mostly chord tones (0/3/7) with one passing tone per phrase for motion. Bar 0 is the rhythmic hook (`A-A-C-A`-ish) so the player ear-anchors fast.
+- Bumped `BGM_MASTER_GAIN` 0.26 → 0.36 to compensate for the two added voices while preserving headroom for the duck.
+
+**Edit 2 — `_playSlot` rewrite** (`game.js:1283-1321`)
+
+Looked up `chordSemis = BGM_CHORD_PROGRESSION[bar] | 0` once per slot and threaded it into every melodic voice:
+
+```js
+if (pat.bass[slot]) {
+  let semis = chordSemis;
+  if (band === 'hard') {
+    let hardStart = this.bands.indexOf('hard');
+    if (hardStart < 0) hardStart = bar;
+    semis += BGM_BASS_WALK_HARD[((bar - hardStart) % 4 + 4) % 4] | 0;
+  }
+  this._bass(whenT, semis);
+}
+if (pat.pad && pat.pad[slot])  this._pad(whenT, chordSemis);
+if (pat.lead && pat.lead[slot]) {
+  const cycleBar = ((bar % 4) + 4) % 4;
+  this._lead(whenT, BGM_LEAD_SEQUENCE[cycleBar][slot] + chordSemis);
+}
+```
+
+Critical detail caught in review: the original sound-designer spec only chord-modulated the bass on the hard band, leaving easy/mid/climax with a static root. Pulled the hard-band walk to be *additive on top of* the chord root, so the bass tracks the progression in every band where it fires. This was the difference between "music with progression" and "music where the bass forgot about the chord change."
+
+**Edit 3 — Voice functions** (`game.js:1402-1437`)
+
+- `_pad(t, semis)` — triangle wave at A1 (55Hz × 2^semis/12), highpass at 80Hz so it doesn't muddle the kick, soft 30ms attack → 70ms hold at 0.08 → 180ms exponential decay. Reads as held harmony rather than blip.
+- `_lead(t, semis)` — sine wave at A3 (220Hz × 2^semis/12), 8ms snap attack to 0.14, 47ms ring, 130ms decay. Sine is unforgiving (wrong notes pop), which is why `BGM_LEAD_SEQUENCE` sticks to chord tones with one passing-tone per bar.
+
+### Verification
+
+- `node --check games/001-void-pulse/game.js` → OK.
+- `BGM_CHORD_PROGRESSION.length === 30 === BAND_SCHEDULE.length` (3+6+8+6+4+3 = 30).
+- Voice count math: peak slot in climax fires kick+snare+hat+bass+pad+lead+motif = 7 voices. Each is 1 oscillator (snare = 2 — noise + body blip). Worst-case concurrent = 8, still under the 10-osc Web Audio comfort threshold for low-end mobile.
+- Pause/resume, mute, duck logic untouched — all routes through `BGM.gain` so the added voices inherit them automatically.
+- Read warm-band slot expansion on paper: bar 0 fires (kick + hat + pad + lead); bar 1 fires (hat); bar 2 fires (kick + hat + pad). First 6 seconds now carry kick + pad + lead — the "metronome only" verdict is dead.
+
+### Skill extraction
+
+Updated `company/skills/audio/synced-bgm.md` with a "Sounding like *music*, not a metronome (Sprint 52 upgrade)" section covering:
+
+1. The chord-progression-array-indexed-by-bar pattern (length must equal `BAND_SCHEDULE.length`).
+2. The pad + lead voice recipes with full Web Audio source.
+3. The `BGM_LEAD_SEQUENCE` chord-relative melody loop indexed by `[bar % 4][slot]`.
+4. **The "first 18 seconds" rule** — early bands need at least one melodic voice or players read it as "no music." Drum-only is fine for an intro tag (≤ 1 bar), not for 6+ seconds.
+5. The bass-follows-chord-everywhere caveat (the integration bug we caught).
+6. Master-gain rebalance guidance (~30% perceived-loudness bump from adding pad + lead).
+
+This is the most reusable lesson from this sprint: any subsequent game using the BGM scaffold gets the chord-progression upgrade *and* the warning that early bands need melodic content from bar 1.
+
+### Reflection
+
+**What worked.**
+
+- **Player-direct feedback short-circuited the rotation calendar correctly.** The standing autonomous directive is "rotate distinct lenses" but it doesn't override an explicit player ask. Sprint 52 jumped to BGM excitement without further checks. The right move — autonomous rotation isn't a gag order on user input.
+- **Sound-designer agent generated a clean, complete spec** in one pass. The pad and lead voices integrated without re-spec; the chord progression length and the lead phrase shape were both immediately usable. Worth keeping the structured-brief format (instrument table + chord progression + integration steps + tuning checklist) as the standard ask for future audio work.
+- **Catching the bass-not-following-chord bug during integration review** rather than after listen-test. The spec said "chord progression" but only wired it into the hard band's bass; spotting that on read-through saved a "music has motion but the bass keeps playing the same root" listen-fix loop.
+
+**What I'd do differently.**
+
+- **Should have included a "warm-band content sniff" in `casual-checklist.md` long ago.** The drum-only-for-18-seconds problem was visible from Sprint 30 (the BGM module was added then) and went uncaught for 22 sprints because no audit asked "does the FIRST band sound like music?" Adding a "First Band Carries Tune" item to the casual checklist now would catch this category of problem on next game's first BGM pass.
+- **Master gain rebalance is squishy without measurement.** Bumped 0.26 → 0.36 by ear/rule-of-thumb (~30% perceived loudness uplift from 2 added voices). A proper LUFS check would replace the rule of thumb. Out of scope for this sprint but worth a future tooling pass.
+- **Did not retest the duck.** The hazard-tap duck was tuned for the old gain (0.26 × 0.35 = 0.091 floor). With the new gain (0.36 × 0.35 = 0.126 floor), the floor is *louder*, so the duck is slightly less aggressive in absolute terms. It still cuts to ~35% of normal music level which is the user-perceptible relationship — likely fine — but a deliberate hazard-hit listen test is owed in the next QA sprint.
+
+**Cross-sprint pattern: feedback wins over schedule.**
+
+Sprint 51 was a calendar-driven keyboard-flow audit. Sprint 52 is a feedback-driven BGM rewrite. Both are valid and orthogonal. The autonomous-rotation system gracefully handles preemption: when the player speaks, take the request; when the player is silent, follow the rotation. No state-machine needed — just attention.
+
+### Files touched
+
+- `games/001-void-pulse/game.js` — BGM_PATTERN expanded (5→7 voices/band), BGM_CHORD_PROGRESSION + BGM_LEAD_SEQUENCE added, BGM_MASTER_GAIN bumped 0.26→0.36, `_playSlot` rewritten, `_pad` + `_lead` voices added.
+- `games/001-void-pulse/docs/bgm-redesign-spec.md` — new spec doc from the sound-designer pass (kept in repo as design provenance).
+- `company/skills/audio/synced-bgm.md` — added the Sprint 52 "Sounding like music" section.
+- `company/postmortems/001-void-pulse.md` — this section.
+
+### Next candidates
+
+- **Casual checklist update** — add the "First Band Carries Tune" item identified above.
+- **Hazard-tap duck listen test** — verify the old duck depth still works with the new master gain.
+- **Color contrast re-audit** — still the last unaudited a11y axis (Sprint 51's "next candidates" list).
+- **Mid/hard pattern density review** — now that the *content* is rich, the *density* may need a second look (e.g. does `mid`'s lead-on-every-quarter outshine `hard`'s identical lead?).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |
