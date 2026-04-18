@@ -66,6 +66,7 @@
 
 - [ ] If a bonus SFX stacks on a primary SFX (e.g. heartbeat + score), check that the master gain doesn't clip at the peak — run a 20-combo simulation mentally: is the loudest moment still pleasant?
 - [ ] Verify the pitch ceiling for combo-pitched SFX — past a cap (e.g. combo 12 at 1.06×) the frequency should clamp, not keep climbing into inaudible ranges.
+- [ ] **First band carries tune.** If your BGM has difficulty bands (warm → climax), the *earliest* band must include at least one melodic voice (pad / lead / motif). Drum-only-for-the-first-6-seconds reads as "no music is playing" to a fresh ear — players will ask "왜 BGM이 안깔리지?" before the denser bands ever arrive. Drum-only is fine as a ≤ 1-bar intro tag, not as the dominant texture of bars 1–6. *(Surfaced 001-void-pulse sprint 52 — see `audio/synced-bgm.md` § "Sounding like music, not a metronome".)*
 
 <!-- added: 2026-04-17 (001-void-pulse sprint 2) -->
 
