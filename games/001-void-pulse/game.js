@@ -1665,8 +1665,28 @@
     state.lastTapMs = now;
     judgeTap();
   }
-  canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); handleInputAction(); });
-  gameoverEl.addEventListener('pointerdown', handleInputAction);
+  // Sprint 56 (touch-gesture audit):
+  //  - e.isPrimary filter ignores secondary fingers in a multi-touch event.
+  //    Two fingers landing simultaneously fire two pointerdown events ~5ms
+  //    apart; TAP_DEBOUNCE_MS already swallows the second, but isPrimary is
+  //    the explicit-intent guard (also covers stylus + mouse + touch in one
+  //    line). Without it, a player resting their thumb on the screen edge
+  //    while tapping with another finger could double-fire.
+  //  - preventDefault on the gameover overlay matches the canvas — without
+  //    it, iOS treats overlay backdrop taps as candidate text-selection /
+  //    long-press anchors. Direct button children (share, statsBtn) call
+  //    e.stopPropagation() in their own listeners, so this never blocks
+  //    their click handlers.
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!e.isPrimary) return;
+    e.preventDefault();
+    handleInputAction();
+  });
+  gameoverEl.addEventListener('pointerdown', (e) => {
+    if (!e.isPrimary) return;
+    e.preventDefault();
+    handleInputAction();
+  });
 
   btnStart.addEventListener('click', (e) => {
     e.stopPropagation();

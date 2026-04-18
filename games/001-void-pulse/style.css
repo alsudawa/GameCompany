@@ -49,7 +49,17 @@ html, body {
   color: var(--fg);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   user-select: none;
+  -webkit-user-select: none;
+  /* Sprint 56: explicit gesture-conflict defenses for mobile.
+       - tap-highlight-color transparent: no flash on tappable elements
+       - touch-callout none: suppress iOS long-press preview menu (rings,
+         numbers, share button shouldn't summon image/link/text panels)
+       - overscroll-behavior none: kill iOS Safari pull-to-refresh + Android
+         Chrome rubber-band bounce, both of which can fire mid-run when a
+         player swipes near the screen edge by accident */
   -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
   overflow: hidden;
 }
 
@@ -1567,6 +1577,28 @@ html, body {
 }
 .swatch-name { color: var(--fg); opacity: .7; }
 .theme-swatch[aria-checked="true"] .swatch-name { opacity: 1; color: var(--accent); }
+
+/* ---------- Touch gesture defenses (Sprint 56) ----------
+   touch-action: manipulation tells the browser "this element supports tap
+   and pan, but NOT double-tap-zoom or pinch-zoom-on-element". The practical
+   effect on iOS: removes the historic 300ms click-delay (mostly gone in
+   modern Safari with viewport meta, but belt-and-braces) and prevents a
+   rapid re-tap from invoking the system zoom gesture. On the canvas the
+   stronger touch-action: none is already set (line 70) since pan would
+   conflict with tap-timing. Buttons/links use 'manipulation' so users on
+   accessibility zoom (pinch elsewhere on the page) aren't blocked from
+   activating UI; the gesture only loses double-tap-zoom semantics. */
+.btn,
+.icon-btn,
+.share-btn,
+.theme-swatch,
+.ghost-link-btn,
+.stats-reset-btn,
+.stats-export-btn,
+.daily-link,
+.retry-hint {
+  touch-action: manipulation;
+}
 
 /* ---------- Focus-visible keyboard rings (Sprint 35) ----------
    Outline-based rings for all interactive elements that previously

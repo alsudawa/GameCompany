@@ -46,6 +46,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`mobile/haptics.md`](mobile/haptics.md) — `navigator.vibrate()` patterns + reduced-motion gating
 - [`mobile/pwa-lite-install.md`](mobile/pwa-lite-install.md) — manifest + apple-touch-icon + dynamic theme-color for add-to-home-screen (no service worker needed)
 - [`mobile/tap-target-audit.md`](mobile/tap-target-audit.md) — 44×44px tap-target floor audit (5-step framework + four shrink patterns + Recipe A/B fixes + sibling-offset re-check + 20-sprint periodic sweep)
+- [`mobile/touch-gesture-audit.md`](mobile/touch-gesture-audit.md) — touch-action / overscroll / touch-callout / tap-highlight + isPrimary multi-touch filter + preventDefault on non-button overlays (seven gesture conflicts catalog + standard CSS+JS blocks + decision rubric for `none` vs `manipulation`)
 
 ### UX
 - [`ux/retention.md`](ux/retention.md) — run-end stats, NEW BEST gating, mute persistence
