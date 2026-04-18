@@ -68,6 +68,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`ux/screen-reader-announcements.md`](ux/screen-reader-announcements.md) — single polite live region + tier-change gating + `aria-atomic` composed gameover line + `prefers-contrast` pass + `sr-only` clip utility
 - [`ux/modal-focus-trap.md`](ux/modal-focus-trap.md) — Tab/Shift+Tab focus trap + focus-restore-to-trigger for modals (live-query focusables + `offsetParent` filter for CSS-hidden + body/detached fallbacks + selector constant)
 - [`ux/reduced-motion-audit.md`](ux/reduced-motion-audit.md) — periodic four-layer audit for `prefers-reduced-motion` drift (CSS animation + CSS transition + JS DOM + canvas/WebGL render-loop), live MQL listener, decision rubric, dampen-don't-delete particles rule
+- [`ux/keyboard-flow-audit.md`](ux/keyboard-flow-audit.md) — periodic tab-order + reachability audit (opacity-0 overlay leak, radiogroup arrow-key contract, page-load initial focus, role="button" paragraphs)
 
 ### QA
 - [`qa/casual-checklist.md`](qa/casual-checklist.md) — pre-ship checklist + multi-perspective sweep (player / mobile / onboarding / retention / distribution)

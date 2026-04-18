@@ -3344,6 +3344,112 @@ The general "Emoji ladders — consider but don't force" framing from the prior 
 
 ---
 
+## Sprint 51 — Keyboard-only flow audit (tab order, reachability, widget contracts)
+
+**Lens:** the long-overdue (10 sprints) keyboard-only full-flow walkthrough, finally pulled to the top of the queue. The Sprint 47-48-49 a11y triptych covered SR announcements, dialog semantics, and reduced-motion. What was missing: a deliberate end-to-end test of "can a keyboard-only user reach every control I expect them to, and *only* those, in the right order?" That's distinct from the SR audit (what AT *speaks*), distinct from the focus-visible audit (whether you can *see* focus), and distinct from the modal trap audit (whether focus stays inside an open dialog).
+
+This was framed as the functional sibling of the visual `focus-visible-audit`. Sprint 35 made every focus ring visible; Sprint 51 made sure the right elements *get* focus in the first place.
+
+### Three drift gaps surfaced
+
+**Gap A — `.overlay.hidden` was opacity-only, leaving dismissed-overlay buttons tabbable.**
+
+The original CSS:
+```css
+.overlay.hidden  { opacity: 0; pointer-events: none; }
+.overlay.visible { opacity: 1; pointer-events: auto; }
+```
+
+`pointer-events: none` blocked clicks. Nothing blocked Tab. During gameplay, every button inside `#overlay`, `#gameover`, `#help`, `#statsPanel` was still in the tab sequence, even though invisible. A keyboard user cycling Tab during play would land focus rings on nothing, repeatedly.
+
+The most insidious version: focus from `#start` (autofocus) was retained AFTER the player clicked it and the overlay faded. They could press Space again and the dormant `#start` button would *fire its click handler* (which calls `start()`, which is a no-op when already running — so this happened to be harmless, but only by coincidence).
+
+**Fix:** added `visibility: hidden` to `.overlay.hidden`, with a delayed visibility transition so the opacity fade still plays:
+
+```css
+.overlay {
+  transition: opacity .2s ease, visibility 0s linear .2s;
+}
+.overlay.hidden  { opacity: 0; pointer-events: none; visibility: hidden; }
+.overlay.visible { opacity: 1; pointer-events: auto; visibility: visible;
+                   transition: opacity .2s ease, visibility 0s linear 0s; }
+```
+
+Visibility is one of the few CSS properties that transitions discretely. Hide-side delay = 200ms (fade completes first, then snap to hidden). Show-side delay = 0 (snap visible, then fade up). Result: visual fade preserved, tab-leak closed. Zero JS changes.
+
+Considered `inert` attribute (more semantic, also blocks a11y tree). Skipped because it would require touching every `.classList.add/remove('hidden')` site (10+ places) for what a single CSS rule resolves. Recorded as alternative in the new skill doc for projects with a centralized show/hide helper.
+
+**Gap B — Theme picker `role="radiogroup"` declared the contract but didn't fulfill it.**
+
+The picker was three `<button class="theme-swatch" role="radio">` children inside a `role="radiogroup"`. `aria-checked` was correctly synced. But:
+- All three buttons had the default `tabindex` (effectively 0 — they're `<button>`), so Tab visited each in turn instead of treating the group as one tab-stop.
+- No arrow-key handling. ArrowRight/ArrowDown/Left/Up/Home/End all did nothing.
+
+Screen-reader users would hear "void, radio button, checked, 1 of 3" on focus, then reach for arrow keys per their training, get nothing, and have to learn the picker's idiosyncratic-to-this-app pattern. ARIA contract violation.
+
+**Fix:** roving tabindex (only the checked radio gets `tabindex="0"`; others are `tabindex="-1"`) plus a keydown handler on the picker that handles Right/Down/Left/Up/Home/End with selection-follows-focus semantics. The `applyTheme()` function (which already synced `aria-checked`) was extended to also rewrite `tabindex` on every theme change, so the next Tab from outside the group always lands on the active swatch.
+
+Selection-follows-focus was the right choice for a theme picker — applying a theme is cheap (one CSS variable swap) and the user benefits from immediate preview. Documented the alternative (focus-without-selection for destructive options) in the skill doc.
+
+**Gap C — No initial focus on page load.**
+
+The first Tab from a fresh page landed on `#mute` (the first DOM-order tab-stop, a chrome FAB sitting top-right). The `#start` button — the obvious primary CTA — was reachable only after Tab × 1.
+
+Pressing Space without first Tab-ing did work (the global keydown handler catches Space anywhere when `!state.running && !state.over` and calls `start()`), but only because of that fallback path. A user who Tabbed first to "scan what's reachable" got a confusing journey.
+
+**Fix:** added `autofocus` to `#start` in HTML, plus a JS backup that calls `btnStart.focus()` after init *only if* `document.activeElement === document.body` (so we don't yank focus back if the user clicked a chrome button before the script ran). The `activeElement === body` guard is the critical part — without it, autofocus can be hostile.
+
+### Why the keyboard contract violations matter even when the game is "playable"
+
+A common defense: "the game is playable with a mouse, the keyboard is a bonus." That misses the audience:
+- **Power users** Tab around UIs reflexively as a mode of "what's here?" exploration. Broken Tab order = a sloppy app.
+- **Motor-impairment users** rely on Tab + Space because pointer aim is hard or impossible. The `<p role="button">` retry-hint that activates on Space (via the global keydown fallthrough) is fine for them — the Tab order to *reach* it must work.
+- **Screen reader users** combine AT navigation with Tab/Arrow. A `radiogroup` that ignores arrows isn't broken to a sighted user (they'll just click) but is broken to AT users who've trained on the contract.
+- **Mobile-keyboard / Bluetooth-keyboard users** on tablets — increasingly common, especially on iPads with hardware keyboards.
+
+A casual game targeting "anyone with 60 seconds to kill" has all four of these in its audience. The fix surface is small (one CSS rule, one `tabindex` attribute swap, one arrow-key handler, one `autofocus`) — the cost-to-coverage ratio is excellent.
+
+### Pattern extracted to skills
+
+`company/skills/ux/keyboard-flow-audit.md` (new). Frames the audit as four questions:
+1. **Reachability** — can the user reach interactive controls?
+2. **Unreachability** — are dismissed/hidden controls *unreachable*? (the more commonly missed gap)
+3. **Order** — does Tab visit elements in a sensible order?
+4. **Widget contract** — do declared ARIA roles fulfill their keyboard contract?
+
+Documents the five common gap patterns (opacity-0 leak, missing radiogroup arrows, no initial focus, modal-close-doesn't-restore-opener, `<p role="button">` activation), with full code templates. Prescribes a 20-sprint cadence that staggers with the reduced-motion-audit (also 20) and SR-announcement-audit (10) so a11y axes don't pile up on the same sprint.
+
+### Decisions that didn't make it
+
+- **Reorder DOM so #mute / #helpBtn come AFTER the overlay.** Would put the primary content earlier in tab order without needing autofocus. Rejected — too invasive (DOM reorganization risks layout regressions), and the autofocus + activeElement-guard is a one-liner with the same effective UX.
+- **Add a "skip to main content" link.** Standard a11y pattern for content-heavy sites. Rejected — overkill for a game with one screen and a handful of tab-stops; the autofocus does the same job here.
+- **Trap focus inside `#overlay` on boot.** Rejected — boot is intentionally non-modal; the user might *want* to reach mute/help before starting. Trap is for dialogs, not the main UI.
+- **Switch to `inert` instead of CSS visibility.** Considered. Skipped due to scattered show/hide call sites — visibility approach was a one-block CSS edit. Re-evaluate if we ever centralize show/hide through a single helper.
+
+### Verification
+
+- Manual keyboard walk: page-load Tab lands on Start → Tab cycles overlay buttons → Space starts → Tab during gameplay only reaches mute + help (no leak into hidden modals) → P pauses → Tab traps inside pause dialog → P resumes → run completes → focus lands on retry-hint → Tab → share → Tab wraps to retry-hint → Space retries.
+- Theme picker: arrow keys cycle and apply themes; Tab from outside lands on active swatch; Tab from picker leaves the group cleanly.
+- Modal flow: Help (?, S) opens, Tab traps, Esc closes, focus restores to opener. Same for Stats.
+- `node --check game.js` passes.
+
+### Wrap-up
+
+- Three keyboard drift gaps closed: overlay tab-leak (CSS), radiogroup arrow contract (HTML+JS), boot initial focus (HTML+JS).
+- New skill doc (`keyboard-flow-audit.md`) captures the four-question framework, five gap patterns, decision rubric, sprint cadence.
+- Sprints 47-48-49-51 now form a complete a11y quad: SR-speaks → modal-traps → motion-respects → keyboard-reaches. Sprint 50 was the deliberate axis-rotation interleaved between.
+
+### Next candidates
+
+- **Color contrast re-audit** — the last unaudited a11y axis from the original quad list. Worth pairing with a high-contrast OS-mode test pass.
+- **First-gameover context overlay** — proposed Sprint 46, still open.
+- **Haptic vocabulary expansion** — motion-gated, adds feedback richness.
+- **Stats-panel tier-ladder rendering** — reinforce Sprint 50's pattern in the app UI.
+- **BGM excitement** — sprint 52 brought forward by player feedback ("왜 BGM이 안깔리지? 신나는 노래가 있어야해" — first 18s of warm/easy bands have only kick+hat; reads as "no music"). Will need a sound-designer pass for melodic layer + denser low-band patterns.
+- **Localization scaffolding** / **service worker** / **gamepad input** (still open, long).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |

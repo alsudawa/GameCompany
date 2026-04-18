@@ -251,11 +251,19 @@ html, body {
   text-align: center;
   background: rgba(10, 14, 31, .82);
   backdrop-filter: blur(6px);
-  transition: opacity .2s ease;
+  /* visibility transitions discretely; a .2s delay on the hide side lets the
+     opacity fade finish before the element is yanked from the a11y tree + tab
+     order. On the visible side, `.overlay.visible` overrides the transition
+     so visibility snaps in immediately while opacity fades up. */
+  transition: opacity .2s ease, visibility 0s linear .2s;
   z-index: 20;
 }
-.overlay.hidden  { opacity: 0; pointer-events: none; }
-.overlay.visible { opacity: 1; pointer-events: auto; }
+/* `visibility: hidden` is the crucial addition — opacity:0 alone leaves the
+   children tabbable (invisible focus rings during gameplay when #overlay +
+   #gameover are dismissed). visibility removes them from the tab sequence
+   and a11y tree alongside the fade. */
+.overlay.hidden  { opacity: 0; pointer-events: none; visibility: hidden; }
+.overlay.visible { opacity: 1; pointer-events: auto; visibility: visible; transition: opacity .2s ease, visibility 0s linear 0s; }
 
 .title {
   font-size: clamp(28px, 5vw, 48px);

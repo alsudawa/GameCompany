@@ -1383,11 +1383,18 @@
     document.documentElement.dataset.theme = t;
     invalidateThemeCaches();
     syncThemeColorMeta();
-    // Sync the radio-group aria state if the picker has already rendered.
+    // Sync the radio-group aria state + roving tabindex if the picker has
+    // already rendered. Roving tabindex is the ARIA-mandated pattern for
+    // radiogroup: only the currently-checked radio is in the tab sequence
+    // (tabindex=0); the others are tabindex=-1 and reachable only via arrow
+    // keys. Keeps Tab from spraying three tab-stops across one semantic
+    // control.
     if (themePickerEl) {
       const buttons = themePickerEl.querySelectorAll('.theme-swatch');
       for (const b of buttons) {
-        b.setAttribute('aria-checked', b.dataset.themeId === t ? 'true' : 'false');
+        const isChecked = b.dataset.themeId === t;
+        b.setAttribute('aria-checked', isChecked ? 'true' : 'false');
+        b.setAttribute('tabindex', isChecked ? '0' : '-1');
       }
     }
   }
@@ -1445,6 +1452,35 @@
       // Bonus: pulse the target ring so the player sees the color shift on
       // canvas, not just on overlay chrome. Proves the swap reaches the game.
       state.targetPopT = 1;
+    });
+    // Arrow-key navigation within the radiogroup — ARIA-mandated pattern:
+    // Right/Down → next radio, Left/Up → previous, Home/End → first/last.
+    // Each arrow move also *selects* the focused radio (standard radiogroup
+    // semantics), so keyboard users can A/B-browse themes just by arrowing.
+    // Space/Enter on a swatch still works via the native button click path.
+    themePickerEl.addEventListener('keydown', (e) => {
+      const key = e.key;
+      if (key !== 'ArrowRight' && key !== 'ArrowDown' &&
+          key !== 'ArrowLeft'  && key !== 'ArrowUp'   &&
+          key !== 'Home' && key !== 'End') return;
+      const btns = Array.from(themePickerEl.querySelectorAll('.theme-swatch'));
+      if (btns.length === 0) return;
+      const active = document.activeElement;
+      const i = btns.indexOf(active);
+      let next;
+      if (key === 'Home') next = 0;
+      else if (key === 'End') next = btns.length - 1;
+      else if (key === 'ArrowRight' || key === 'ArrowDown') {
+        next = i < 0 ? 0 : (i + 1) % btns.length;
+      } else {
+        next = i < 0 ? btns.length - 1 : (i - 1 + btns.length) % btns.length;
+      }
+      e.preventDefault();
+      const target = btns[next];
+      Sfx.init(); Sfx.click();
+      setTheme(target.dataset.themeId);   // applyTheme() also rewrites tabindex
+      state.targetPopT = 1;
+      try { target.focus(); } catch {}
     });
   }
 
@@ -3509,6 +3545,19 @@
   }
 
   updateLivesUI();
+
+  // Boot-time initial focus — belt-and-braces to the `autofocus` attribute on
+  // #start. Some browsers ignore autofocus on non-form buttons or lose it to
+  // a focus-stealing third party; this sets it explicitly after layout. Only
+  // runs when the start overlay is still visible (skip if the player was
+  // deep-linked into an already-mid-run state by e.g. a hot reload). Focus
+  // is moved only if nothing else has grabbed it yet (activeElement === body).
+  try {
+    if (overlay && overlay.classList.contains('visible') &&
+        btnStart && (document.activeElement === document.body || document.activeElement === null)) {
+      btnStart.focus({ preventScroll: true });
+    }
+  } catch {}
 
   // Expose for debugging / console tweaks
   window.__game = { state, pulses, particles, start, gameover };

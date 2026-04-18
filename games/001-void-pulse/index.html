@@ -60,15 +60,15 @@
         <div class="demo-label demo-label-tap">TAP</div>
         <div class="demo-label demo-label-skip">SKIP</div>
       </div>
-      <button id="start" class="btn">Tap to start</button>
+      <button id="start" class="btn" autofocus>Tap to start</button>
       <p class="kbhint">or press <kbd>Space</kbd> · <kbd>M</kbd> mute · <kbd>P</kbd> pause · <kbd>T</kbd> theme · <kbd>S</kbd> stats · <kbd>?</kbd> help</p>
       <button id="statsBtn" class="ghost-link-btn" type="button" aria-label="Lifetime stats">Lifetime stats →</button>
       <a id="dailyLink" class="daily-link" href="?daily=1" hidden>Try today's daily →</a>
       <a id="freeLink"  class="daily-link" href="./" hidden>← Back to free play</a>
       <div id="themePicker" class="theme-picker" role="radiogroup" aria-label="Color theme">
-        <button type="button" class="theme-swatch" data-theme-id="void"   role="radio" aria-checked="true"  title="Void (cyan)"><span class="swatch-ring swatch-void"></span><span class="swatch-name">void</span></button>
-        <button type="button" class="theme-swatch" data-theme-id="sunset" role="radio" aria-checked="false" title="Sunset (amber)"><span class="swatch-ring swatch-sunset"></span><span class="swatch-name">sunset</span></button>
-        <button type="button" class="theme-swatch" data-theme-id="forest" role="radio" aria-checked="false" title="Forest (teal)"><span class="swatch-ring swatch-forest"></span><span class="swatch-name">forest</span></button>
+        <button type="button" class="theme-swatch" data-theme-id="void"   role="radio" aria-checked="true"  tabindex="0"  title="Void (cyan)"><span class="swatch-ring swatch-void"></span><span class="swatch-name">void</span></button>
+        <button type="button" class="theme-swatch" data-theme-id="sunset" role="radio" aria-checked="false" tabindex="-1" title="Sunset (amber)"><span class="swatch-ring swatch-sunset"></span><span class="swatch-name">sunset</span></button>
+        <button type="button" class="theme-swatch" data-theme-id="forest" role="radio" aria-checked="false" tabindex="-1" title="Forest (teal)"><span class="swatch-ring swatch-forest"></span><span class="swatch-name">forest</span></button>
       </div>
     </div>
 
