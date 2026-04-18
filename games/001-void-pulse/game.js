@@ -802,7 +802,17 @@
     { id: 'perfect-purity',  label: 'Perfect Purity',  desc: '20+ perfects in a run, zero goods',          test: c => c.perfectCount >= 20 && c.hitCount === c.perfectCount, midRun: true },
     { id: 'flawless-60',     label: 'Flawless 60',     desc: 'Survive 60 seconds with zero misses',        test: c => c.duration >= 60 && c.missCount === 0,               midRun: true },
   ];
-  function readAchievements() {
+  // In-memory cache for the unlocked map. Sprint 54 — `readAchievements()` is
+  // called once per frame from `evaluateMidRunAchievements`, and each call was
+  // doing `localStorage.getItem` (sync I/O) + `JSON.parse` + per-key
+  // normalization. At 60-144Hz that's pure waste once the unlocks are stable
+  // (the eval loop's `!unlocked[a.id]` check short-circuits, but only after
+  // we've paid for the read). Cache lazily on first call; keep in sync via
+  // `writeAchievements`. Devtools tampering mid-session is the only divergence
+  // case and the in-memory copy correctly wins (game state shouldn't follow
+  // hostile mutation mid-run).
+  let _achCache = null;
+  function _readAchievementsFromStorage() {
     try {
       const raw = localStorage.getItem(ACH_KEY);
       const o = raw ? JSON.parse(raw) : null;
@@ -818,7 +828,14 @@
       return out;
     } catch { return {}; }
   }
+  function readAchievements() {
+    if (_achCache === null) _achCache = _readAchievementsFromStorage();
+    return _achCache;
+  }
   function writeAchievements(o) {
+    _achCache = o;   // both eval functions mutate the returned map in place;
+                     // the same reference becomes the cache so subsequent reads
+                     // see the unlock without re-parsing storage.
     try { localStorage.setItem(ACH_KEY, JSON.stringify(o)); } catch {}
   }
   function evaluateAchievements(ctx) {
@@ -839,18 +856,24 @@
   // *just* unlocked on this call, so the caller can toast them.
   // Called from the frame loop (cheap: 4 tests once per frame), not tied
   // to individual score events — keeps the hot path simple.
+  // Hoisted scratch array — reused across frames to avoid the `[]` allocation
+  // that the per-frame caller would otherwise pay even when nothing unlocks.
+  // Safe because the caller iterates synchronously and `showAchievementToast`
+  // only enqueues references to the ach objects (the array's storage slot is
+  // freely re-usable on the next frame).
+  const _midRunJustNow = [];
   function evaluateMidRunAchievements(ctx) {
     const unlocked = readAchievements();
-    const justNow = [];
+    _midRunJustNow.length = 0;
     for (const a of ACHIEVEMENTS) {
       if (!a.midRun) continue;
       if (!unlocked[a.id] && a.test(ctx)) {
         unlocked[a.id] = 1;
-        justNow.push(a);
+        _midRunJustNow.push(a);
       }
     }
-    if (justNow.length) writeAchievements(unlocked);
-    return justNow;
+    if (_midRunJustNow.length) writeAchievements(unlocked);
+    return _midRunJustNow;
   }
   // Toast queue: if two achievements unlock on the same frame (unlikely but
   // possible — e.g., score-2500 + combo-100 on the same perfect tap), show
@@ -2713,19 +2736,25 @@
     // Mid-run achievement evaluation: 4 rare-tier tests, cheap enough to run
     // each frame. Gated off the deathcam so the end-of-run stats page handles
     // normal unlocks; toasts fire only while the player is actually playing.
+    // Sprint 54 — mutate a hoisted scratch context object instead of creating
+    // a fresh literal per frame; pairs with the cached `_achCache` and the
+    // hoisted `_midRunJustNow` array to drive the per-frame allocation count
+    // on this path to zero.
     if (!state.deathCam) {
-      const justUnlocked = evaluateMidRunAchievements({
-        score: state.score,
-        peakCombo: state.peakCombo,
-        perfectCount: state.perfectCount,
-        hitCount: state.hitCount,
-        missCount: state.missCount,
-        duration: state.t,
-        streak: 0,
-      });
+      _midRunCtx.score        = state.score;
+      _midRunCtx.peakCombo    = state.peakCombo;
+      _midRunCtx.perfectCount = state.perfectCount;
+      _midRunCtx.hitCount     = state.hitCount;
+      _midRunCtx.missCount    = state.missCount;
+      _midRunCtx.duration     = state.t;
+      _midRunCtx.streak       = 0;
+      const justUnlocked = evaluateMidRunAchievements(_midRunCtx);
       for (const ach of justUnlocked) showAchievementToast(ach);
     }
   }
+  // Hoisted scratch object for the per-frame midrun achievement context. See
+  // the call site in `update()` for why this beats a per-frame object literal.
+  const _midRunCtx = { score:0, peakCombo:0, perfectCount:0, hitCount:0, missCount:0, duration:0, streak:0 };
 
   // HUD diff-tracking — avoids DOM churn when values haven't changed.
   let lastDisplayedScore = 0;
@@ -2734,6 +2763,13 @@
   let lastComboFillPct = -1;
   let lastComboActive = false;
   let lastComboTier = null;
+  // Sprint 54 — diff-guard the combo text path. -1 sentinel so the first frame
+  // with combo === 0 still triggers the initial textContent clear.
+  let lastDisplayedCombo = -1;
+  let lastDisplayedComboMult = -1;
+  // Sprint 54 — milestone font string cached by canvas width (the only input).
+  let _milestoneFont = '';
+  let _milestoneFontW = -1;
 
   // ---------- Pause (visibility / blur) ----------
   // Opener-focus snapshot so resume restores to wherever the player was — a
@@ -3195,8 +3231,15 @@
     if (state.comboMilestoneFade > 0) {
       ctx.globalAlpha = state.comboMilestoneFade;
       ctx.fillStyle = getVar('--accent');
-      const fontPx = Math.min(72, Math.floor(W * 0.1));
-      ctx.font = `700 ${fontPx}px system-ui, -apple-system, sans-serif`;
+      // Cache the font string keyed by W — fontPx only changes on resize, so
+      // rebuilding the template literal every frame during the milestone
+      // (~30 frames at 60Hz) was 30 throwaway strings per milestone.
+      if (W !== _milestoneFontW) {
+        const fontPx = Math.min(72, Math.floor(W * 0.1));
+        _milestoneFont = '700 ' + fontPx + 'px system-ui, -apple-system, sans-serif';
+        _milestoneFontW = W;
+      }
+      ctx.font = _milestoneFont;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(state.comboMilestoneText, CENTER_X, CENTER_Y);
@@ -3225,11 +3268,20 @@
       Sfx.setBus(beaten ? 'beaten' : 'normal');
     }
     const m = comboMult();
-    if (state.combo > 0) {
-      const multStr = m > 1 ? '×' + (m % 1 === 0 ? m : m.toFixed(1)) + ' ' : '';
-      hudCombo.textContent = multStr + state.combo;
-    } else {
-      hudCombo.textContent = '';
+    // Diff-guard the combo HUD update — without this, the multStr template
+    // concat + the textContent assignment fired every frame even when the
+    // displayed value was identical. At 144Hz that's 288 string allocations
+    // per second on the hottest visible HUD element. Since combo can only
+    // change on a tap (judgeTap path), the guard skips ~99% of frames.
+    if (state.combo !== lastDisplayedCombo || m !== lastDisplayedComboMult) {
+      if (state.combo > 0) {
+        const multStr = m > 1 ? '×' + (m % 1 === 0 ? m : m.toFixed(1)) + ' ' : '';
+        hudCombo.textContent = multStr + state.combo;
+      } else {
+        hudCombo.textContent = '';
+      }
+      lastDisplayedCombo = state.combo;
+      lastDisplayedComboMult = m;
     }
     // Tier-tint the combo text so the multiplier progression is visible at
     // a glance — reuses the state-tint pattern (graphics/state-tint.md).

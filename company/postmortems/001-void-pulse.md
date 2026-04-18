@@ -3726,6 +3726,185 @@ This sprint deliberately rotated *away* from a11y / UX / audio toward a "what co
 
 ---
 
+## Sprint 54 — per-frame allocation regression sweep (perf lens) (2026-04-18)
+
+### Lens (perf budget — overdue periodic audit)
+
+The `graphics/perf-budget.md` skill exists since Sprint 10 but the codebase has grown ~40 sprints since the last formal sweep. game.js is now 3,700+ lines; the rAF loop calls into update() + render() + N helper functions, every one of which is a candidate for per-frame allocation regression. Time for a "how much have we leaked back into the hot path?" audit.
+
+This is the perf equivalent of the Sprint 49 reduced-motion drift sweep — same shape, different axis. Periodic single-axis audits catch slow drift that integration testing doesn't.
+
+### Survey
+
+Ran a structured walk through every function called during a single frame:
+
+1. `frame()` → `update(dt)` → `render(alpha)`
+2. inside `update`: chart spawn, pulse motion loop, beat-indicator tick, particle update, ambient update, **midrun achievement eval**.
+3. inside `render`: starfield, ambient, vignette (cached), target ring, pulse loop, perfect flash, combo bloom, hazard wash, particles, milestone text, **HUD textContent updates**.
+
+For each, asked: "what allocates per frame, and is it necessary?"
+
+| Path | Per-frame allocations | Hot? | Status |
+|---|---|---|---|
+| Starfield draw | 0 (pre-allocated star pool) | yes | ✅ clean |
+| Vignette gradient | 0 (bucket cache from Sprint 10) | yes | ✅ clean |
+| Pulse motion loop | 0 (mutates pool slots in place) | yes | ✅ clean |
+| `findJudgePulse` | 0 | yes | ✅ clean |
+| `setLineDash` heartbeat | 0 (`HEARTBEAT_DASH`/`NO_DASH` hoisted Sprint 10) | yes | ✅ clean |
+| Particle update | 0 | yes | ✅ clean |
+| Ambient update | 0 | yes | ✅ clean |
+| Combo bloom radial gradient | 1 `CanvasGradient` + 3 strings, but only during 0.35s window | warm | ⚠️ acceptable (rare event) |
+| Hazard wash radial gradient | 1 + 2 strings during 0.28s | warm | ⚠️ acceptable (rare event) |
+| Score `textContent` | diff-guarded (Sprint pre-existing) | yes | ✅ clean |
+| **Combo HUD textContent** | **1 string concat + 1 textContent write per frame, unconditionally** | **yes** | 🔴 regression |
+| Combo meter width | diff-guarded by `lastComboFillPct` | yes | ✅ clean |
+| Combo tier toggle | diff-guarded by `lastComboTier` | yes | ✅ clean |
+| Milestone font string | template literal per frame during the ~0.5s milestone | warm | 🟡 small leak |
+| **`evaluateMidRunAchievements` ctx object** | **1 `{score,peakCombo,…}` literal per frame** | **yes** | 🔴 regression |
+| **`evaluateMidRunAchievements` justNow array** | **1 `[]` per frame** | **yes** | 🔴 regression |
+| **`readAchievements()` inside the eval** | **1 `localStorage.getItem` + 1 `JSON.parse` + 1 normalized map per frame** | **yes** | 🔴 **biggest regression** |
+
+Five gaps total. The biggest one — `readAchievements()` doing **synchronous localStorage I/O on every frame** — is the kind of bug that "looks fine" on a dev MacBook (sub-ms cost) and gets murderous on low-end Android (30-100µs per `getItem` ÷ 6.94ms frame budget at 144Hz = ~1.5% of budget, *just for the storage read*, before the JSON.parse). Compounding: Sprint 53's defensive-read hardening added more work to readAchievements (the `Array.isArray` reject + per-key normalization loop), so the per-frame cost is *worse than it was a sprint ago*.
+
+### Implementation
+
+Five surgical edits, all preserve behavior:
+
+**Fix 1 — Cache `readAchievements()` in memory** (game.js:805)
+
+```js
+let _achCache = null;
+function _readAchievementsFromStorage() { /* the old defensive read */ }
+function readAchievements() {
+  if (_achCache === null) _achCache = _readAchievementsFromStorage();
+  return _achCache;
+}
+function writeAchievements(o) {
+  _achCache = o;   // both eval functions mutate the returned map in place
+  try { localStorage.setItem(ACH_KEY, JSON.stringify(o)); } catch {}
+}
+```
+
+The eval functions already mutate the returned map in place (`unlocked[a.id] = 1`), so the cache is naturally always coherent — `writeAchievements(unlocked)` is for *persistence*, not cache-sync. Devtools tampering mid-session won't be reflected until reload, which is the right behavior (game state shouldn't follow hostile mutation mid-run).
+
+**Fix 2 — Hoisted `_midRunJustNow` scratch array** (game.js:842)
+
+```js
+const _midRunJustNow = [];
+function evaluateMidRunAchievements(ctx) {
+  const unlocked = readAchievements();
+  _midRunJustNow.length = 0;     // reset, don't reallocate
+  for (const a of ACHIEVEMENTS) { /* … */ _midRunJustNow.push(a); }
+  if (_midRunJustNow.length) writeAchievements(unlocked);
+  return _midRunJustNow;
+}
+```
+
+Safe because the caller iterates synchronously via `for…of`, and `showAchievementToast` enqueues references to the ach *objects* (not array slots).
+
+**Fix 3 — Hoisted `_midRunCtx` scratch object** (game.js:2719)
+
+```js
+const _midRunCtx = { score:0, peakCombo:0, perfectCount:0, hitCount:0, missCount:0, duration:0, streak:0 };
+
+if (!state.deathCam) {
+  _midRunCtx.score        = state.score;
+  _midRunCtx.peakCombo    = state.peakCombo;
+  // … mutate fields …
+  const justUnlocked = evaluateMidRunAchievements(_midRunCtx);
+  for (const ach of justUnlocked) showAchievementToast(ach);
+}
+```
+
+Together with fixes 1 and 2, the per-frame allocation count on the midrun-achievement path is now **zero** (was: 1 object + 1 array + 1 read result + JSON.parse internals).
+
+**Fix 4 — Combo HUD diff-guard** (game.js:3232)
+
+```js
+let lastDisplayedCombo = -1;
+let lastDisplayedComboMult = -1;
+
+if (state.combo !== lastDisplayedCombo || m !== lastDisplayedComboMult) {
+  if (state.combo > 0) { hudCombo.textContent = multStr + state.combo; }
+  else { hudCombo.textContent = ''; }
+  lastDisplayedCombo = state.combo;
+  lastDisplayedComboMult = m;
+}
+```
+
+Combo can only change on a tap (in `judgeTap`) — between taps the value is constant, so the guard skips ~99% of frames. At 144Hz, eliminates ~140 string allocations + ~140 textContent writes per second on a steady combo state.
+
+**Fix 5 — Milestone font cache** (game.js:3201)
+
+```js
+let _milestoneFont = '';
+let _milestoneFontW = -1;
+
+if (W !== _milestoneFontW) {
+  const fontPx = Math.min(72, Math.floor(W * 0.1));
+  _milestoneFont = '700 ' + fontPx + 'px system-ui, -apple-system, sans-serif';
+  _milestoneFontW = W;
+}
+ctx.font = _milestoneFont;
+```
+
+Only fires inside the 0.5s milestone window, so impact is small (~30 throwaway strings per milestone), but the pattern is reusable.
+
+### Verification
+
+- `node --check games/001-void-pulse/game.js` → OK after all five edits.
+- Reasoned through behavior: cached achievements + scratch arrays both rely on synchronous consumption (verified by reading `showAchievementToast`, which only enqueues refs). Combo guard sentinels (-1) chosen so the first frame still triggers an initial textContent clear.
+- No call-site signature changes — `evaluateMidRunAchievements(ctx)` still takes a single object, just the *same* object now.
+- Functional smoke walk: combo unlock paths + tier-tint + ambient peak still trigger via the existing `lastComboTier` path which was already diff-guarded; the new `lastDisplayedCombo` guard sits in front of it but doesn't interfere.
+
+### Skill extraction
+
+Updated `company/skills/graphics/perf-budget.md` with four new pattern sections:
+
+1. **"Memoize `localStorage` reads called from the frame loop"** — the biggest lesson. Includes the lazy-cache + sync-on-write pattern, the coherence rule (when does the cache need explicit sync), the devtools-tampering trade-off, and a checklist of common hot-path culprits in casual games.
+2. **"Diff-guard HUD `textContent` writes"** — paired sentinel-value + change-check pattern. Cross-references the existing score-HUD pattern (already in the file) as the model to follow for other HUD elements.
+3. **"Hoist scratch context + result objects out of the frame loop"** — the synchronous-consumption safety rule made explicit. Documents both the easy form (when caller iterates immediately) and the failure mode (when the array is queued for later use).
+4. **"Cache template-literal canvas font strings"** — the smaller pattern, demoted in priority but documented for reusability.
+
+The skill now reads as a complete defensive checklist for "what to grep for when re-auditing a mature codebase's hot path."
+
+### Reflection
+
+**What worked.**
+
+- **The biggest finding (`readAchievements` per-frame I/O) was caused by a *prior sprint*.** Sprint 23 added the rare-tier achievements + the per-frame midrun eval. That change was correct in isolation — `readAchievements` was cheap at the time. Sprint 53's defensive-read hardening *amplified* the cost (added the Array.isArray reject + per-key normalization loop) without anyone re-auditing the hot path. The audit-rotation cadence catches exactly this: a fix in lens A makes a perf gap in lens B worse, and only a periodic perf sweep finds it.
+- **Reading the entire frame call graph end-to-end** was the only way to find these. Spot-grep wouldn't have caught the localStorage call (it's two levels deep from the frame entry point). The structured walk-through took ~10 minutes and produced a complete table — well worth it.
+- **Sentinel values for diff guards are a one-line pattern that costs nothing to add.** Every HUD element should have one; finding the missing ones is purely a code-review sweep.
+
+**What I'd do differently.**
+
+- **Should have measured before AND after.** The fixes are *certainly* improvements (fewer allocations, less I/O, diff-guarded writes), but the postmortem can't quote a "saved X ms/frame" number because no measurement infra exists. The dev FPS overlay (perf-budget.md § "Dev FPS overlay") is gated on `?fps=1` — would have been the right tool to use here. Adding a "before/after measurement" requirement to the perf-audit lens is the next-meta improvement: any perf sprint must include the ?fps=1 walk-through in the postmortem. Tooling note for next time.
+- **Stat-page render path was out of scope.** I audited the *gameplay* hot path (frame loop). The stats-panel and gameover-overlay render paths were not surveyed. Open question: do those have similar `readLifetime()`-per-render leaks? Probably yes, but the impact is much smaller (those panels don't render at 60Hz — they render once on open). Worth a follow-up sweep but lower priority than the gameplay loop.
+- **No automated regression test.** Same gap as Sprint 53. A perf-regression test would assert "function X allocates 0 objects when called 60 times" via a `weakRef` count or similar harness. Out of scope without test infra; flagged as a meta-meta candidate.
+
+**Cross-sprint pattern: defensive code can leak perf.**
+
+Sprint 53 added defensive parsing to `readAchievements` (correct fix). Sprint 54 found that the same function is called per frame and its now-heavier read is a performance hit. **Both are right in their lens. Neither is the other's fault.** The lesson is structural: when adding work to a function, ask "where is this called from?" If it's called from a hot path, either (a) cache the result, or (b) make the work conditional on the input changing. This becomes the "perf-aware defensive code" rule worth writing into perf-budget.md eventually.
+
+The other cross-cutting pattern: **every periodic single-axis audit makes prior work concrete.** Sprint 53's audit was theoretical until Sprint 54 found a concrete cost. Skills compound — the Sprint 54 perf doc now documents the trade-off so the *next* defensive-read sprint pre-emptively considers caching, instead of having to wait another 20 sprints for a perf audit to surface it.
+
+### Files touched
+
+- `games/001-void-pulse/game.js` — five perf fixes: in-memory ach cache, scratch ctx + scratch array for midrun eval, combo HUD diff-guard, milestone font cache. ~50 lines net.
+- `company/skills/graphics/perf-budget.md` — four new pattern sections (~140 lines added).
+- `company/postmortems/001-void-pulse.md` — this section.
+
+### Next candidates
+
+- **Stats-panel + gameover render perf sweep** — the audit only covered the gameplay frame loop. Open the panels and walk those code paths the same way.
+- **Add a "perf-aware defensive code" cross-cutting rule** to either perf-budget.md or persistence-defensiveness.md — formalize the Sprint 53→54 lesson.
+- **Wire up the `?fps=1` overlay walkthrough** as a requirement for future perf sprints (postmortem must include before/after FPS measurements).
+- **Mirrored writer audit** (carried from Sprint 53).
+- **Hazard-tap duck listen test** (carried from Sprint 52).
+- **Color contrast re-audit** (carried from Sprint 51, still open).
+
+---
+
 ## Credits
 
 | Role | Agent | Model |
