@@ -40,7 +40,7 @@ cp -r company/templates "games/${NEW_ID}-placeholder"  # will be renamed after P
    - new utility function? → add to relevant skill doc with a code block
    - design principle that worked? → append to `skills/gameplay/*`
    - art trick that landed? → append to `skills/graphics/*`
-9. **Producer** → updates root `README.md` catalog (append new game card)
+9. **Producer** → updates root `README.md` catalog (append new game card) **AND** root `index.html` landing page (append new game card under `.games`). Both are required — `README.md` for the repo reader, `index.html` for the Pages visitor. A ship without both is orphaned.
 
 ## Stage 6 · Ship (orchestrator)
 
@@ -50,6 +50,15 @@ git commit -m "ship: <id>-<slug> — <one-line hook>"
 git push -u origin <branch>
 ```
 
+Then open a PR to `main` and merge. **The `main` push auto-publishes to GitHub Pages** via `.github/workflows/pages.yml`. See [`skills/distribution/github-pages.md`](skills/distribution/github-pages.md) for the workflow contract and the one-time Settings → Pages activation.
+
+Pre-merge gate — **root `index.html` must already link the new game's folder** (Producer's Stage 5 step 9). Orphaned ships don't appear on the Pages catalog.
+
+Post-merge verification:
+1. Actions tab → `Deploy to GitHub Pages` should go green in 1–2 min.
+2. Load `https://alsudawa.github.io/GameCompany/` — new game card appears.
+3. Click the card — game loads and plays.
+
 ## Anti-patterns (do not do)
 
 - ❌ Skipping postmortem because "it worked"
@@ -57,3 +66,5 @@ git push -u origin <branch>
 - ❌ Creating per-role commits (noisy history)
 - ❌ Adding external assets (`<img src>`, `<audio src>`) — violates "no deps"
 - ❌ Letting one agent write another's file (QA must not edit code; Artist must not edit `game.js`)
+- ❌ Updating only `README.md` but forgetting the root `index.html` catalog — the new game ships to Pages but is unreachable from the landing page
+- ❌ Merging to `main` without Pages Actions workflow on the branch — first ship on a new repo must include `.github/workflows/pages.yml` and `.nojekyll`
