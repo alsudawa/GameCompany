@@ -14,6 +14,7 @@ const FILES = {
   gem3:        'assets/gem-t3.svg',
   projectile:  'assets/projectile.svg',
   bomb:        'assets/bomb.svg',
+  orbSpirit:   'assets/orb-spirit.svg',
 };
 
 export const sprites = {};

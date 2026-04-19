@@ -229,32 +229,28 @@ function drawParticles(ctx) {
 function drawOrbits(ctx) {
   const n = player.orbitCount;
   if (n <= 0) return;
+  // Pulsing breathe scale + counter-rotation make the orb feel alive,
+  // not bullet-like. Sprite is a runic magic-circle SVG.
+  const breathe = 1 + Math.sin(state.t * 4.5) * 0.07;
+  const baseD = 36 * breathe;
+  // Spin sigil counter to its orbital motion so the runes look anchored.
+  const spin = -state.orbitAng * 1.4;
   ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.shadowColor = '#8feaff';
-  ctx.shadowBlur = 18;
   for (let i = 0; i < n; i++) {
     const orb = pools.orbits[i];
-    // trailing ghost
-    const tx = orb.x - Math.cos(state.orbitAng + (i * Math.PI * 2) / n - 0.12) * 6;
-    const ty = orb.y - Math.sin(state.orbitAng + (i * Math.PI * 2) / n - 0.12) * 6;
-    ctx.globalAlpha = 0.35;
+    // soft outer glow halo, pulsing
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.35 + 0.18 * Math.sin(state.t * 5 + i);
     ctx.fillStyle = '#8feaff';
+    ctx.shadowColor = '#8feaff';
+    ctx.shadowBlur = 24;
     ctx.beginPath();
-    ctx.arc(tx, ty, 7, 0, Math.PI * 2);
+    ctx.arc(orb.x, orb.y, baseD * 0.7, 0, Math.PI * 2);
     ctx.fill();
-    // core
+    ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
-    ctx.fillStyle = '#e8faff';
-    ctx.beginPath();
-    ctx.arc(orb.x, orb.y, 8, 0, Math.PI * 2);
-    ctx.fill();
-    // halo
-    ctx.globalAlpha = 0.5;
-    ctx.fillStyle = '#8feaff';
-    ctx.beginPath();
-    ctx.arc(orb.x, orb.y, 5, 0, Math.PI * 2);
-    ctx.fill();
+    // sprite — rotates so the runes spin
+    drawSprite(ctx, sprites.orbSpirit, orb.x, orb.y, baseD, false, spin + i * (Math.PI / 6));
   }
   ctx.restore();
 }

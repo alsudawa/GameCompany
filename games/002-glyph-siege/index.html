@@ -23,14 +23,40 @@
       <div id="xpbar"><div id="xpfill"></div></div>
     </div>
 
-    <button id="muteBtn" class="iconbtn" aria-label="toggle sound" title="mute (M)">♪</button>
-    <button id="pauseBtn" class="iconbtn iconbtn-alt" aria-label="pause" title="pause (Esc)">‖</button>
+    <div id="iconbar">
+      <button id="muteBtn" class="iconbtn" aria-label="toggle sound" title="mute (M)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 L6 9 H3 v6 h3 l5 4 z"/><path d="M16 9 a4 4 0 0 1 0 6"/><path d="M19 6 a8 8 0 0 1 0 12"/></svg>
+      </button>
+      <button id="pauseBtn" class="iconbtn" aria-label="pause" title="pause (Esc)">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+      </button>
+    </div>
 
     <div id="joypad" aria-label="virtual joystick" role="presentation">
       <div id="joyknob"></div>
     </div>
     <button id="bombBtn" class="bombbtn hidden" aria-label="detonate bomb" title="bomb (B)">
-      <span class="glyph">💣</span><span class="count">0</span>
+      <svg class="glyph" viewBox="0 0 24 24" aria-hidden="true">
+        <defs>
+          <radialGradient id="bb-glow" cx="50%" cy="55%" r="55%">
+            <stop offset="0%" stop-color="#fff5d8" stop-opacity="0.85"/>
+            <stop offset="100%" stop-color="#ff7a4c" stop-opacity="0"/>
+          </radialGradient>
+          <radialGradient id="bb-body" cx="38%" cy="32%" r="70%">
+            <stop offset="0%" stop-color="#5a5f78"/>
+            <stop offset="60%" stop-color="#1a1f3a"/>
+            <stop offset="100%" stop-color="#04061a"/>
+          </radialGradient>
+        </defs>
+        <circle cx="12" cy="14" r="11" fill="url(#bb-glow)"/>
+        <circle cx="12" cy="14" r="7" fill="url(#bb-body)" stroke="#000" stroke-width="0.8"/>
+        <ellipse cx="9.5" cy="11.5" rx="2" ry="1.4" fill="#ffffff" opacity="0.35"/>
+        <rect x="10.5" y="5.5" width="3" height="2.4" rx="0.6" fill="#2a1a0e" stroke="#000" stroke-width="0.5"/>
+        <path d="M12 5.5 Q14 3 13 1" fill="none" stroke="#8a6a3a" stroke-width="0.9" stroke-linecap="round"/>
+        <circle cx="13" cy="1" r="1.4" fill="#ffd36d"/>
+        <circle cx="13" cy="1" r="0.55" fill="#ffffff"/>
+      </svg>
+      <span class="count">0</span>
     </button>
 
     <div id="countdown" class="countdown hidden" aria-hidden="true"></div>
