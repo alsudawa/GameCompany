@@ -1,5 +1,5 @@
 import { state, player, pools } from './state.js';
-import { UPGRADES, XP_TABLE, PLAYER_SPEED_BASE, PLAYER_PICKUP_R_BASE, WEAPON_INTERVAL_BASE } from './constants.js';
+import { UPGRADES, XP_TABLE, ORBIT_MAX, NOVA_TIERS } from './constants.js';
 import { Sfx } from './sfx.js';
 
 // SVG icon set — inline to avoid files. 24×24 viewBox.
@@ -8,7 +8,9 @@ const ICONS = {
   bolt:   `<svg viewBox="0 0 24 24" fill="#7cf6ff"><path d="M13 2 L4 14 L11 14 L10 22 L20 9 L13 9 Z"/></svg>`,
   fan:    `<svg viewBox="0 0 24 24" fill="none" stroke="#7cf6ff" stroke-width="2" stroke-linecap="round"><path d="M12 20 L6 8"/><path d="M12 20 L12 6"/><path d="M12 20 L18 8"/></svg>`,
   wing:   `<svg viewBox="0 0 24 24" fill="none" stroke="#7cf6ff" stroke-width="2" stroke-linecap="round"><path d="M4 18 Q12 4 20 10"/><path d="M7 14 Q12 10 16 12"/></svg>`,
-  orbit:  `<svg viewBox="0 0 24 24" fill="none" stroke="#7cf6ff" stroke-width="2"><circle cx="12" cy="12" r="3" fill="#7cf6ff"/><ellipse cx="12" cy="12" rx="9" ry="4"/></svg>`,
+  magnet: `<svg viewBox="0 0 24 24" fill="none" stroke="#7cf6ff" stroke-width="2" stroke-linecap="round"><path d="M6 4 L6 13 a6 6 0 0 0 12 0 L18 4"/><path d="M6 4 L10 4 M14 4 L18 4" stroke-width="2.4"/></svg>`,
+  aura:   `<svg viewBox="0 0 24 24" fill="none" stroke="#7cf6ff" stroke-width="2"><circle cx="12" cy="12" r="2.5" fill="#7cf6ff"/><circle cx="12" cy="12" r="6" opacity=".55"/><circle cx="12" cy="12" r="10" opacity=".3" stroke-dasharray="2 3"/></svg>`,
+  burst:  `<svg viewBox="0 0 24 24" fill="none" stroke="#d4a8ff" stroke-width="2"><circle cx="12" cy="12" r="3" fill="#d4a8ff"/><circle cx="12" cy="12" r="7" opacity=".55"/><circle cx="12" cy="12" r="11" opacity=".3"/></svg>`,
   heart:  `<svg viewBox="0 0 24 24" fill="#ff5d73"><path d="M12 21s-7-4.5-9.5-9A5 5 0 0 1 12 7 5 5 0 0 1 21.5 12c-2.5 4.5-9.5 9-9.5 9Z"/></svg>`,
 };
 
@@ -18,6 +20,18 @@ function applyUpgrade(id) {
   if (id === 'DMG')    player.damage += 1;
   if (id === 'RATE')   player.fireInterval = Math.max(0.15, player.fireInterval * 0.85);
   if (id === 'MULTI')  player.projCount = Math.min(5, player.projCount + 1);
+  if (id === 'ORBIT')  player.orbitCount = Math.min(ORBIT_MAX, player.orbitCount + 1);
+  if (id === 'NOVA') {
+    const tier = NOVA_TIERS[player.ranks.NOVA];
+    if (tier) {
+      const prevInterval = player.novaInterval;
+      player.novaInterval = tier.interval;
+      player.novaMaxR = tier.maxR;
+      player.novaDamage = tier.damage;
+      // first unlock: set CD to half interval so player sees a pulse soon
+      player.novaCd = prevInterval === 0 ? tier.interval * 0.35 : Math.min(player.novaCd, tier.interval);
+    }
+  }
   if (id === 'SPD')    player.speed = player.speed * 1.15;
   if (id === 'MAGNET') player.pickupR = player.pickupR * 1.5;
   if (id === 'VIT')    { player.hpMax += 2; player.hp = player.hpMax; }

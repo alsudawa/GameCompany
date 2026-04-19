@@ -137,4 +137,15 @@ export const Sfx = {
   spawnTick(){ this._tone(520, 0.035, 'sine', 0.04); },
   newBest()  { this._tone(1047, 0.35, 'triangle', 0.2, 0.005, true, 0.4); },
   countdown(n){ this._tone(440 + n * 120, 0.15, 'triangle', 0.2); },
+  nova() {
+    // whoosh: fast up-slide sine + noise-ish sawtooth
+    this._slide(180, 420, 0.22, 'sine', 0.2);
+    this._slide(80, 40, 0.28, 'sawtooth', 0.12);
+  },
+  bomb() {
+    // big boom: descending sawtooth + short bass thump
+    this._slide(520, 60, 0.55, 'sawtooth', 0.3);
+    this._tone(45, 0.5, 'sine', 0.22);
+  },
+  bombPickup() { this._tone(880, 0.12, 'triangle', 0.2, 0.002, true, 0.35); this._tone(1174, 0.14, 'triangle', 0.18, 0.002, true, 0.35); },
 };

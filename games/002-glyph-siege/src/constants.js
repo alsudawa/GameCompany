@@ -61,12 +61,34 @@ export const POOL_GEMS = 120;
 export const POOL_PARTICLES = 480;
 export const POOL_SHOCKS = 40;   // expanding kill rings
 
+// Orbit Spirit (weapon upgrade — orbs rotate around player)
+export const ORBIT_MAX = 4;
+export const ORBIT_RADIUS = 78;
+export const ORBIT_ANG_SPEED = 3.0;          // rad/s
+export const ORBIT_DAMAGE = 1;
+export const ORBIT_HIT_R = 14;               // effective orb hit radius
+export const ORBIT_HIT_COOLDOWN_MS = 380;    // same-enemy re-hit delay per orb
+
+// Nova Pulse (weapon upgrade — periodic expanding AOE ring)
+export const NOVA_MAX = 4;
+export const NOVA_EXPAND_MS = 380;           // how long the ring takes to reach maxR
+export const NOVA_TIERS = [
+  null,                                        // rank 0: disabled
+  { interval: 6.0, maxR: 110, damage: 2 },
+  { interval: 4.5, maxR: 150, damage: 3 },
+  { interval: 3.0, maxR: 190, damage: 4 },
+  { interval: 2.0, maxR: 230, damage: 5 },
+];
+export const POOL_NOVAS = 4;                 // concurrent active pulses
+
 // Upgrades
 export const UPGRADES = {
-  DMG:    { name: 'Keen Edge',   max: 5, icon: 'blade',  desc: (n) => `Damage ${n}→${n+1}` },
-  RATE:   { name: 'Quick Sigil', max: 5, icon: 'bolt',   desc: (n) => `Fire rate +15%` },
-  MULTI:  { name: 'Echo Ward',   max: 4, icon: 'fan',    desc: (n) => `Projectiles ${n+1}→${n+2}` },
-  SPD:    { name: 'Swift Foot',  max: 4, icon: 'wing',   desc: (n) => `Move speed +15%` },
-  MAGNET: { name: 'Wide Reach',  max: 3, icon: 'orbit',  desc: (n) => `Pickup reach +50%` },
-  VIT:    { name: 'Inner Light', max: 3, icon: 'heart',  desc: (n) => `Max HP +2, full heal` },
+  DMG:    { name: 'Keen Edge',   max: 5,        icon: 'blade',  desc: (n) => `Damage ${n}→${n+1}` },
+  RATE:   { name: 'Quick Sigil', max: 5,        icon: 'bolt',   desc: (n) => `Fire rate +15%` },
+  MULTI:  { name: 'Echo Ward',   max: 4,        icon: 'fan',    desc: (n) => `Projectiles ${n+1}→${n+2}` },
+  ORBIT:  { name: 'Orbit Spirit',max: ORBIT_MAX,icon: 'aura',   desc: (n) => `Orb ${n}→${n+1}` },
+  NOVA:   { name: 'Nova Pulse',  max: NOVA_MAX, icon: 'burst',  desc: (n) => n === 0 ? 'Unlock shockwave ring' : `Faster + bigger (${n}→${n+1})` },
+  SPD:    { name: 'Swift Foot',  max: 4,        icon: 'wing',   desc: (n) => `Move speed +15%` },
+  MAGNET: { name: 'Wide Reach',  max: 3,        icon: 'magnet', desc: (n) => `Pickup reach +50%` },
+  VIT:    { name: 'Inner Light', max: 3,        icon: 'heart',  desc: (n) => `Max HP +2, full heal` },
 };

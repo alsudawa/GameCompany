@@ -4,6 +4,8 @@ import {
   WEAPON_PROJ_RADIUS, WEAPON_FAN_DEG, PLAYER_INVULN_MS, PLAYER_RADIUS,
   BOSS_BASE_HP, BOSS_SPEED, BOSS_RADIUS, BOSS_DMG, BOSS_DASH_COOLDOWN_S,
   BOSS_DASH_TELEGRAPH_MS, BOSS_DASH_DURATION_MS, BOSS_DASH_SPEED,
+  ORBIT_ANG_SPEED, ORBIT_RADIUS, ORBIT_DAMAGE, ORBIT_HIT_R, ORBIT_HIT_COOLDOWN_MS,
+  NOVA_EXPAND_MS,
 } from './constants.js';
 import { Sfx } from './sfx.js';
 
@@ -82,6 +84,22 @@ function updateShocks(dt) {
     s.life -= dt;
     if (s.life <= 0) s.active = false;
   }
+}
+
+// Shared kill effect — used by bolt, orbit, nova, bomb.
+export function killEnemyFx(e) {
+  const def = ENEMY_DEFS[e.type];
+  const sizeTier = def.radius > 15 ? 3 : def.radius > 12 ? 2 : 1;
+  spawnParticles(e.x, e.y, 12 + sizeTier * 4, def.color, 80, 240, 500);
+  spawnParticles(e.x, e.y, 4 + sizeTier, '#ffffff', 120, 280, 250);
+  spawnSmoke(e.x, e.y, 3 + sizeTier, 480);
+  const ringR = 22 + sizeTier * 12;
+  spawnShock(e.x, e.y, ringR, 300, e.type === 'elite' ? '#ffe08a' : '#ffffff', 3);
+  state.shake = Math.max(state.shake, 2 + sizeTier * 1.5);
+  Sfx.kill(sizeTier);
+  spawnGem(e.x + (Math.random() - 0.5) * 10, e.y + (Math.random() - 0.5) * 10, def.gem);
+  state.kills++;
+  e.active = false;
 }
 
 // -------------------- Gems --------------------
@@ -246,23 +264,7 @@ function updateProjectiles(dt) {
         spawnParticles(p.x, p.y, 3, def.color, 40, 120, 200);
         Sfx.hit();
         if (e.hp <= 0) {
-          e.active = false;
-          state.kills++;
-          const color = def.color;
-          const sizeTier = def.radius > 15 ? 3 : def.radius > 12 ? 2 : 1;
-          // POP: fast colored sparks
-          spawnParticles(e.x, e.y, 12 + sizeTier * 4, color, 80, 240, 500);
-          // bright white highlight spark
-          spawnParticles(e.x, e.y, 4 + sizeTier, '#ffffff', 120, 280, 250);
-          // puff of smoke
-          spawnSmoke(e.x, e.y, 3 + sizeTier, 480);
-          // shockwave ring — bigger for tankier kills
-          const ringR = 22 + sizeTier * 12;
-          spawnShock(e.x, e.y, ringR, 300, e.type === 'elite' ? '#ffe08a' : '#ffffff', 3);
-          // kill shake (damped — small, snappy)
-          state.shake = Math.max(state.shake, 2 + sizeTier * 1.5);
-          Sfx.kill(sizeTier);
-          spawnGem(e.x + (Math.random() - 0.5) * 10, e.y + (Math.random() - 0.5) * 10, def.gem);
+          killEnemyFx(e);
           // pierce through the kill
           p.pierce--;
           if (p.pierce < 0) { p.active = false; break; }
@@ -391,12 +393,116 @@ export function updatePlayer(dt) {
   player.rot += dt * 1.2;
 }
 
+// -------------------- Orbit Spirit --------------------
+function updateOrbits(dt) {
+  const n = player.orbitCount;
+  if (n <= 0) return;
+  state.orbitAng += ORBIT_ANG_SPEED * dt;
+  const now = performance.now();
+  for (let i = 0; i < n; i++) {
+    const orb = pools.orbits[i];
+    const a = state.orbitAng + (i * Math.PI * 2) / n;
+    const ox = player.x + Math.cos(a) * ORBIT_RADIUS;
+    const oy = player.y + Math.sin(a) * ORBIT_RADIUS;
+    orb.x = ox; orb.y = oy;
+    // collide with enemies
+    for (let j = 0; j < pools.enemies.length; j++) {
+      const e = pools.enemies[j]; if (!e.active) continue;
+      const dx = e.x - ox, dy = e.y - oy;
+      const rr = e.r + ORBIT_HIT_R;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      if (now - orb.hitTimes[j] < ORBIT_HIT_COOLDOWN_MS) continue;
+      orb.hitTimes[j] = now;
+      e.hp -= ORBIT_DAMAGE;
+      e.flashMs = 80;
+      const def = ENEMY_DEFS[e.type];
+      spawnParticles(ox, oy, 3, def.color, 50, 130, 220);
+      Sfx.hit();
+      if (e.hp <= 0) killEnemyFx(e);
+    }
+    // collide with boss (separate timestamp to avoid clashing with enemy slots)
+    if (boss.active) {
+      const dx = boss.x - ox, dy = boss.y - oy;
+      const rr = boss.r + ORBIT_HIT_R;
+      if (dx * dx + dy * dy <= rr * rr && now - (orb.bossHit || 0) >= ORBIT_HIT_COOLDOWN_MS) {
+        orb.bossHit = now;
+        boss.hp -= ORBIT_DAMAGE;
+        boss.flashMs = 80;
+        spawnParticles(ox, oy, 4, '#b98aff', 50, 140, 240);
+        Sfx.hit();
+      }
+    }
+  }
+}
+
+// -------------------- Nova Pulse --------------------
+export function fireNova() {
+  const p = acquire(pools.novas); if (!p) return;
+  p.active = true;
+  p.x = player.x; p.y = player.y;
+  p.t = 0;
+  p.duration = NOVA_EXPAND_MS / 1000;
+  p.maxR = player.novaMaxR;
+  p.damage = player.novaDamage;
+  p.bossHit = false;
+  state.shake = Math.max(state.shake, 4);
+  Sfx.nova && Sfx.nova();
+}
+
+function updateNovas(dt) {
+  // cooldown auto-fire
+  if (player.novaInterval > 0) {
+    player.novaCd -= dt;
+    if (player.novaCd <= 0) {
+      player.novaCd = player.novaInterval;
+      fireNova();
+    }
+  }
+  // expand active pulses and damage enemies crossed by the ring front
+  for (let i = 0; i < pools.novas.length; i++) {
+    const p = pools.novas[i]; if (!p.active) continue;
+    const prevR = p.maxR * (p.t / p.duration);
+    p.t += dt;
+    const curR = p.maxR * Math.min(1, p.t / p.duration);
+    for (let j = 0; j < pools.enemies.length; j++) {
+      const e = pools.enemies[j]; if (!e.active) continue;
+      const dx = e.x - p.x, dy = e.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d >= prevR && d < curR) {
+        e.hp -= p.damage;
+        e.flashMs = 80;
+        const def = ENEMY_DEFS[e.type];
+        spawnParticles(e.x, e.y, 4, def.color, 60, 160, 240);
+        // gentle knockback away from pulse center
+        if (d > 0) {
+          e.x += (dx / d) * 3;
+          e.y += (dy / d) * 3;
+        }
+        if (e.hp <= 0) killEnemyFx(e);
+      }
+    }
+    if (boss.active && !p.bossHit) {
+      const dx = boss.x - p.x, dy = boss.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d < curR && d >= prevR) {
+        boss.hp -= p.damage;
+        boss.flashMs = 80;
+        p.bossHit = true;
+        spawnParticles(boss.x, boss.y, 6, '#d4a8ff', 80, 200, 300);
+      }
+    }
+    if (p.t >= p.duration) p.active = false;
+  }
+}
+
 // -------------------- System tick --------------------
 export function updateAll(dt) {
   updatePlayer(dt);
   updateEnemies(dt);
   updateBoss(dt);
   updateProjectiles(dt);
+  updateOrbits(dt);
+  updateNovas(dt);
   updateGems(dt);
   updateParticles(dt);
   updateShocks(dt);
