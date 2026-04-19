@@ -8,6 +8,7 @@ import { updateAll } from './entities.js';
 import { renderAll } from './render.js';
 import { tickWaves, tickBoss } from './waves.js';
 import { checkLevelUp } from './upgrades.js';
+import { loadAssets } from './assets.js';
 import {
   updateHud, setupUiButtons, showGameOver, hideGameOver, hideStart,
   setMutedUi, runCountdown,
@@ -224,6 +225,13 @@ function boot() {
     try {
       state.best = parseInt(localStorage.getItem(BEST_KEY) || '0', 10) || 0;
     } catch (e) {}
+    // preload SVG sprites — Start button stays visible but disabled until ready
+    doms.start.disabled = true;
+    doms.start.textContent = 'Loading…';
+    loadAssets().then(() => {
+      doms.start.disabled = false;
+      doms.start.textContent = 'Tap to start';
+    });
   } catch (err) {
     showBootError(err && err.message ? err.message : String(err));
   }

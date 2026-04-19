@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <defs>
+    <radialGradient id="pj-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
+      <stop offset="50%" stop-color="#7cf6ff" stop-opacity="0.75"/>
+      <stop offset="100%" stop-color="#7cf6ff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <circle cx="12" cy="12" r="12" fill="url(#pj-glow)"/>
+  <polygon points="12,2 15,11 22,12 15,13 12,22 9,13 2,12 9,11"
+           fill="#ffffff" opacity="0.95"/>
+  <circle cx="12" cy="12" r="3" fill="#ffffff"/>
+</svg>

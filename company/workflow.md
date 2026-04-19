@@ -64,7 +64,7 @@ Post-merge verification:
 - ❌ Skipping postmortem because "it worked"
 - ❌ Keeping spec .md files around after integration
 - ❌ Creating per-role commits (noisy history)
-- ❌ Adding external assets (`<img src>`, `<audio src>`) — violates "no deps"
+- ❌ Adding raster image files (PNG/JPG/WebP) or prerecorded audio (mp3/wav) — those require a non-Claude authoring step; **hand-authored SVG sprite files** are fine and belong in `games/<id>/assets/`
 - ❌ Letting one agent write another's file (QA must not edit code; Artist must not edit `game.js`)
 - ❌ Updating only `README.md` but forgetting the root `index.html` catalog — the new game ships to Pages but is unreachable from the landing page
 - ❌ Merging to `main` without Pages Actions workflow on the branch — first ship on a new repo must include `.github/workflows/pages.yml` and `.nojekyll`

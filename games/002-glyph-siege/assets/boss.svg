@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <radialGradient id="boss-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#d6aaff" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#d6aaff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="boss-body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6d3fa9"/>
+      <stop offset="55%" stop-color="#4a2a78"/>
+      <stop offset="100%" stop-color="#1e0e3a"/>
+    </linearGradient>
+    <linearGradient id="crown" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fff1a8"/>
+      <stop offset="60%" stop-color="#ffd36d"/>
+      <stop offset="100%" stop-color="#a0720a"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#boss-glow)"/>
+  <ellipse cx="64" cy="116" rx="34" ry="5" fill="#000" opacity="0.4"/>
+  <polygon points="64,10 74,36 102,34 84,56 94,84 64,72 34,84 44,56 26,34 54,36"
+           fill="url(#boss-body)" stroke="#190725" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="30,34 36,22 42,32 48,18 54,30 64,14 74,30 80,18 86,32 92,22 98,34
+                    94,36 90,32 84,36 80,30 74,36 68,30 64,36 60,30 54,36 48,30 44,36 38,32 34,36"
+           fill="url(#crown)" stroke="#5a3905" stroke-width="1.8" stroke-linejoin="round"/>
+  <circle cx="40" cy="28" r="2.4" fill="#ff8fb1"/>
+  <circle cx="64" cy="22" r="2.8" fill="#ff8fb1"/>
+  <circle cx="88" cy="28" r="2.4" fill="#ff8fb1"/>
+  <ellipse cx="48" cy="62" rx="10" ry="11" fill="#ffe3f4" stroke="#190725" stroke-width="2"/>
+  <ellipse cx="80" cy="62" rx="10" ry="11" fill="#ffe3f4" stroke="#190725" stroke-width="2"/>
+  <circle cx="48" cy="63" r="5" fill="#0a0b1e"/>
+  <circle cx="80" cy="63" r="5" fill="#0a0b1e"/>
+  <circle cx="46" cy="61" r="1.6" fill="#ffffff"/>
+  <circle cx="78" cy="61" r="1.6" fill="#ffffff"/>
+  <path d="M54 82 Q64 78 74 82 L70 92 L64 86 L58 92 Z"
+        fill="#2a0f3b" stroke="#190725" stroke-width="1.5" stroke-linejoin="round"/>
+  <polygon points="58,84 60,92 62,86" fill="#ffffff"/>
+  <polygon points="66,86 68,92 70,84" fill="#ffffff"/>
+  <ellipse cx="30" cy="80" rx="6" ry="4" fill="#ff8fb1" opacity="0.65"/>
+  <ellipse cx="98" cy="80" rx="6" ry="4" fill="#ff8fb1" opacity="0.65"/>
+</svg>
