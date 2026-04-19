@@ -54,21 +54,22 @@ function updateGems(dt) {
     const g = pools.gems[i];
     if (!g.active) continue;
     // settle velocity
-    g.vx *= 0.9;
-    g.vy *= 0.9;
+    g.vx *= 0.88;
+    g.vy *= 0.88;
     g.bob += dt * 4;
     const dx = player.x - g.x;
     const dy = player.y - g.y;
     const d = Math.hypot(dx, dy);
     if (d < pr) {
-      // magnet
-      const s = 260 + (pr - d) * 2;
-      g.vx += (dx / d) * s * dt;
-      g.vy += (dy / d) * s * dt;
+      // strong magnet: closer = faster, capped
+      const pull = 420 + (pr - d) * 4.5;
+      g.vx += (dx / d) * pull * dt;
+      g.vy += (dy / d) * pull * dt;
     }
     g.x += g.vx * dt;
     g.y += g.vy * dt;
-    if (d < player.r + 6) {
+    // generous collection radius — gems should pop to you like food
+    if (d < player.r + 16) {
       g.active = false;
       const xp = GEM_XP[g.tier] || 1;
       state.xp += xp;

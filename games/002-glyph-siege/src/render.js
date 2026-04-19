@@ -3,19 +3,13 @@ import { W, H, ENEMY_DEFS, BOSS_RADIUS } from './constants.js';
 import { drawJoystick } from './input.js';
 import { sprites, enemySprite, gemSprite } from './assets.js';
 
-// Sprite pixel sizes (source SVG viewBox). Drawn at r * scale for entity size.
-const S_ENEMY = 64;        // all enemy sprites are 64×64
-const S_BOSS = 128;
-const S_GEM = 32;
-const S_PROJ = 24;
-const S_PLAYER = 64;
-
 // Draw size relative to entity radius. `draw = r * SCALE` (diameter).
 const ENEMY_SCALE = 2.4;   // slightly oversized so the sprite outline breathes past the hitbox
 const BOSS_SCALE = 2.25;
-const GEM_SCALE = 3.5;
 const PROJ_SCALE = 3.2;
 const PLAYER_SCALE = 2.5;
+// Gem diameters are absolute — they need to read as "food" at any distance.
+const GEM_DIAM = { 1: 24, 2: 30, 3: 42 };
 
 // Palette for procedural effects (particles, vignettes, frame glow) only.
 const FX = {
@@ -157,26 +151,51 @@ function drawProjectiles(ctx) {
 function drawGems(ctx) {
   for (let i = 0; i < pools.gems.length; i++) {
     const g = pools.gems[i]; if (!g.active) continue;
-    const bob = Math.sin(g.bob) * 1.6;
+    const bob = Math.sin(g.bob) * 2;
+    const breathe = 1 + Math.sin(g.bob * 1.3) * 0.08;
     const img = gemSprite(g.tier);
-    const d = (6 + g.tier * 2) * GEM_SCALE / 4; // ~14..22 px diameter depending on tier
+    const d = (GEM_DIAM[g.tier] || 24) * breathe;
+    const gx = g.x, gy = g.y + bob;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    // sparkle cross behind the sprite
-    const sp = 0.3 + 0.4 * (0.5 + 0.5 * Math.sin(g.bob * 2.4));
+    // soft halo so the gem reads as "food" at a glance
+    const haloA = 0.25 + 0.25 * (0.5 + 0.5 * Math.sin(g.bob * 1.7));
+    ctx.globalAlpha = haloA;
+    ctx.fillStyle = g.tier === 3 ? '#ffe08a' : g.tier === 2 ? '#d4a8ff' : '#7cf6ff';
+    ctx.beginPath();
+    ctx.arc(gx, gy, d * 0.85, 0, Math.PI * 2);
+    ctx.fill();
+    // sparkle cross
+    const sp = 0.4 + 0.45 * (0.5 + 0.5 * Math.sin(g.bob * 2.4));
     ctx.globalAlpha = sp;
     ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1.1;
+    ctx.lineWidth = 1.4;
     ctx.lineCap = 'round';
-    const ext = d / 2 + 5;
+    const ext = d / 2 + 8;
     ctx.beginPath();
-    ctx.moveTo(g.x, g.y + bob - ext); ctx.lineTo(g.x, g.y + bob + ext);
-    ctx.moveTo(g.x - ext, g.y + bob); ctx.lineTo(g.x + ext, g.y + bob);
+    ctx.moveTo(gx, gy - ext); ctx.lineTo(gx, gy + ext);
+    ctx.moveTo(gx - ext, gy); ctx.lineTo(gx + ext, gy);
     ctx.stroke();
     ctx.globalAlpha = 1;
     ctx.restore();
-    drawSprite(ctx, img, g.x, g.y + bob, d);
+    drawSprite(ctx, img, gx, gy, d);
   }
+}
+
+function drawPickupRing(ctx) {
+  // Soft hint ring showing the magnet radius — subtle, always visible.
+  const a = 0.06 + 0.04 * Math.sin(state.t * 2.4);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = a;
+  ctx.strokeStyle = '#8feaff';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 6]);
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, player.pickupR, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
 }
 
 function drawParticles(ctx) {
@@ -292,6 +311,7 @@ export function renderAll(ctx) {
   applyShake(ctx);
   drawStarfield(ctx);
   drawSigilFrame(ctx);
+  drawPickupRing(ctx);
   drawGems(ctx);
   drawParticles(ctx);
   drawEnemies(ctx);
