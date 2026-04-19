@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0b1e" />
+  <title>Glyph Siege — GameCompany</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main id="app">
+    <canvas id="stage" width="720" height="960" aria-label="game canvas" role="img"></canvas>
+
+    <div id="hud" aria-live="polite">
+      <div id="hudLeft">
+        <div id="timer" aria-label="time survived">00:00</div>
+        <div id="kills" aria-label="kills">× 0</div>
+      </div>
+      <div id="hudRight">
+        <div id="level" aria-label="level">Lv 1</div>
+        <div id="hearts" aria-label="health"></div>
+      </div>
+      <div id="xpbar"><div id="xpfill"></div></div>
+    </div>
+
+    <button id="muteBtn" class="iconbtn" aria-label="toggle sound" title="mute (M)">♪</button>
+    <button id="pauseBtn" class="iconbtn iconbtn-alt" aria-label="pause" title="pause (Esc)">‖</button>
+
+    <div id="countdown" class="countdown hidden" aria-hidden="true"></div>
+
+    <div id="overlay" class="overlay visible" role="dialog" aria-modal="true" aria-label="start menu">
+      <h1 class="title">Glyph Siege</h1>
+      <p class="hook">Hold the sanctuary. Move to survive. Stack runes.</p>
+      <div class="controls">
+        <div class="row"><span class="k">DRAG</span> steer on touch</div>
+        <div class="row"><span class="k">W A S D</span> / arrows on keyboard</div>
+        <div class="row"><span class="k">auto</span> attack nearest</div>
+      </div>
+      <button id="start" class="btn">Tap to start</button>
+    </div>
+
+    <div id="pauseOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-label="paused">
+      <h2 class="title">Paused</h2>
+      <p class="hook">Take a breath.</p>
+      <button id="resumeBtn" class="btn">Resume</button>
+    </div>
+
+    <div id="upgradeOverlay" class="overlay hidden upgrade-overlay" role="dialog" aria-modal="true" aria-label="choose upgrade">
+      <h2 class="title">Level Up</h2>
+      <p class="hook">Choose one rune.</p>
+      <div id="cards" class="cards"></div>
+    </div>
+
+    <div id="gameover" class="overlay hidden" role="dialog" aria-modal="true" aria-label="game over">
+      <h2 class="title">Fallen</h2>
+      <div class="stats">
+        <div><span class="slabel">Time</span><span id="statTime">0s</span></div>
+        <div><span class="slabel">Kills</span><span id="statKills">0</span></div>
+        <div><span class="slabel">Level</span><span id="statLevel">1</span></div>
+        <div><span class="slabel">Score</span><span id="finalScore">0</span></div>
+      </div>
+      <div id="bestBadge" class="best-badge hidden">NEW BEST</div>
+      <button id="retry" class="btn">Retry</button>
+    </div>
+
+    <div id="bootError" class="overlay hidden" role="alertdialog" aria-modal="true" aria-label="error">
+      <h2 class="title">Something broke</h2>
+      <p class="hook" id="bootErrorMsg">Try resetting.</p>
+      <button id="bootReset" class="btn">Reset &amp; reload</button>
+    </div>
+  </main>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

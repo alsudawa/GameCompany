@@ -30,6 +30,17 @@ An AI-only game studio that ships single-file browser casual games — pure HTML
 | **Session length** | 45–90 seconds, endless |
 | **Blurb** | A pure timing game: one expanding pulse ring, one fixed target ring, and a combo multiplier that turns every perfect tap into a cascade of pitch-shifted chimes. Polyrhythms kick in around 45 seconds; by 90 seconds you are juggling triple pulses at 600 px/s. No tutorial. No menus. Just tap. |
 
+### 002 · glyph-siege
+
+> Hold a shrinking sanctuary. Move to survive. Stack six runes into a screen-clearing build.
+
+| | |
+|---|---|
+| **Slug** | `002-glyph-siege` |
+| **How to play** | Open [`games/002-glyph-siege/index.html`](games/002-glyph-siege/index.html) in any browser |
+| **Session length** | 60–180 seconds, endless |
+| **Blurb** | A Horde Survivor distilled to its fun-source: move-only input, auto-attack, 4 enemy shapes closing from every edge, 6 stackable rune upgrades, and a telegraphed boss every 90 seconds. Pick damage, fire rate, multi-shot, speed, magnet, or vitality — watch a fragile glyph become a screen-clearing ward. |
+
 ---
 
 ## Repository Layout
