@@ -2,7 +2,7 @@ import {
   POOL_ENEMIES, POOL_PROJECTILES, POOL_GEMS, POOL_PARTICLES, POOL_SHOCKS,
   PLAYER_HP_BASE, PLAYER_SPEED_BASE, PLAYER_PICKUP_R_BASE,
   WEAPON_INTERVAL_BASE, WEAPON_DAMAGE_BASE, WEAPON_PROJ_COUNT_BASE,
-  WEAPON_PIERCE_BASE, ORBIT_MAX, POOL_NOVAS,
+  WEAPON_PIERCE_BASE, ORBIT_MAX, POOL_NOVAS, POOL_BOMBS,
   W, H,
 } from './constants.js';
 
@@ -41,6 +41,9 @@ export const state = {
   bossVignetteMs: 0,  // red vignette on boss spawn
   // Weapon — orbit spirit shared angle (each orb = base + i * 2π / count)
   orbitAng: 0,
+  // Bomb inventory (collectible)
+  bombs: 0,
+  bombFlashMs: 0,
   // Spawn timers
   spawnAcc: 0,
   // Canvas
@@ -88,6 +91,7 @@ export const pools = {
   orbits:      makePool(ORBIT_MAX,          () => ({ x: 0, y: 0, hitTimes: new Float32Array(POOL_ENEMIES), bossHit: 0 })),
   // Nova pulses — concurrent expanding rings.
   novas:       makePool(POOL_NOVAS,         () => ({ active: false, x: 0, y: 0, t: 0, duration: 0.38, maxR: 0, damage: 0, bossHit: false })),
+  bombs:       makePool(POOL_BOMBS,         () => ({ active: false, x: 0, y: 0, vx: 0, vy: 0, bob: 0 })),
 };
 
 export const boss = {

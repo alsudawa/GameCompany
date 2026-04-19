@@ -5,7 +5,7 @@ import {
   BOSS_BASE_HP, BOSS_SPEED, BOSS_RADIUS, BOSS_DMG, BOSS_DASH_COOLDOWN_S,
   BOSS_DASH_TELEGRAPH_MS, BOSS_DASH_DURATION_MS, BOSS_DASH_SPEED,
   ORBIT_ANG_SPEED, ORBIT_RADIUS, ORBIT_DAMAGE, ORBIT_HIT_R, ORBIT_HIT_COOLDOWN_MS,
-  NOVA_EXPAND_MS,
+  NOVA_EXPAND_MS, BOMB_DROP_CHANCE, BOMB_MAX_INVENTORY, BOMB_BLAST_BOSS_DMG,
 } from './constants.js';
 import { Sfx } from './sfx.js';
 
@@ -98,8 +98,90 @@ export function killEnemyFx(e) {
   state.shake = Math.max(state.shake, 2 + sizeTier * 1.5);
   Sfx.kill(sizeTier);
   spawnGem(e.x + (Math.random() - 0.5) * 10, e.y + (Math.random() - 0.5) * 10, def.gem);
+  maybeDropBomb(e);
   state.kills++;
   e.active = false;
+}
+
+// -------------------- Bombs (pickup item) --------------------
+export function spawnBomb(x, y) {
+  const b = acquire(pools.bombs); if (!b) return;
+  b.active = true;
+  b.x = x; b.y = y;
+  b.vx = (Math.random() - 0.5) * 80;
+  b.vy = -60 - Math.random() * 60;
+  b.bob = Math.random() * Math.PI * 2;
+}
+
+function maybeDropBomb(e) {
+  const chance = BOMB_DROP_CHANCE[e.type] || 0;
+  if (Math.random() < chance) spawnBomb(e.x, e.y);
+}
+
+function updateBombs(dt) {
+  const pr = player.pickupR;
+  for (let i = 0; i < pools.bombs.length; i++) {
+    const b = pools.bombs[i]; if (!b.active) continue;
+    // drift + gentle magnet toward player (weaker than gems so they sit and
+    // beg to be seen)
+    b.vx *= 0.90;
+    b.vy = b.vy * 0.90 + 30 * dt; // slight gravity so they settle
+    b.bob += dt * 3;
+    const dx = player.x - b.x, dy = player.y - b.y;
+    const d = Math.hypot(dx, dy);
+    if (d < pr * 1.2) {
+      const pull = 320 + (pr - d) * 3;
+      b.vx += (dx / d) * pull * dt;
+      b.vy += (dy / d) * pull * dt;
+    }
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+    // pickup
+    if (d < player.r + 20) {
+      b.active = false;
+      if (state.bombs < BOMB_MAX_INVENTORY) {
+        state.bombs = Math.min(BOMB_MAX_INVENTORY, state.bombs + 1);
+      }
+      Sfx.bombPickup && Sfx.bombPickup();
+      // pickup flash
+      spawnParticles(b.x, b.y, 14, '#ffd36d', 100, 260, 500);
+      spawnShock(b.x, b.y, 50, 260, '#ffd36d', 3);
+    }
+  }
+}
+
+// Detonate one bomb from inventory. Called from UI button or 'B' key.
+export function detonateBomb() {
+  if (state.bombs <= 0) return false;
+  state.bombs -= 1;
+  state.bombFlashMs = 320;
+  state.shake = Math.max(state.shake, 18);
+  Sfx.bomb && Sfx.bomb();
+  // three concentric expanding rings — WHITE + GOLD + PINK
+  spawnShock(player.x, player.y, 520, 700, '#ffffff', 8);
+  spawnShock(player.x, player.y, 460, 650, '#ffd36d', 6);
+  spawnShock(player.x, player.y, 400, 600, '#ff8fb1', 5);
+  // particle storm
+  spawnParticles(player.x, player.y, 60, '#fff1a8', 120, 460, 800);
+  spawnParticles(player.x, player.y, 40, '#ffb04c', 180, 460, 800);
+  spawnSmoke(player.x, player.y, 40, 1400);
+  // wipe all active enemies — lightweight kill (no cascading killEnemyFx
+  // storm). Each still drops a gem for reward rain.
+  for (let i = 0; i < pools.enemies.length; i++) {
+    const e = pools.enemies[i]; if (!e.active) continue;
+    const def = ENEMY_DEFS[e.type];
+    state.kills++;
+    spawnGem(e.x, e.y, def.gem);
+    spawnParticles(e.x, e.y, 5, def.color, 80, 220, 420);
+    e.active = false;
+  }
+  // knock boss hard (but don't one-shot)
+  if (boss.active) {
+    boss.hp = Math.max(1, boss.hp - BOMB_BLAST_BOSS_DMG);
+    boss.flashMs = 240;
+    spawnParticles(boss.x, boss.y, 14, '#d4a8ff', 100, 280, 500);
+  }
+  return true;
 }
 
 // -------------------- Gems --------------------
@@ -149,7 +231,7 @@ export function spawnEnemyAtEdge(type) {
   const e = acquire(pools.enemies); if (!e) return;
   // spawn just off-edge
   const side = Math.floor(Math.random() * 4);
-  const pad = 24;
+  const pad = 28;
   let x, y;
   if (side === 0) { x = Math.random() * W; y = -pad; }
   else if (side === 1) { x = W + pad; y = Math.random() * H; }
@@ -163,6 +245,16 @@ export function spawnEnemyAtEdge(type) {
   e.hp = def.hp;
   e.dmg = def.dmg;
   e.flashMs = 0;
+  e.angle = 0;
+  // For line-behavior enemies, commit to a straight-line vector aimed at
+  // the player's CURRENT position. Player can dodge.
+  if (def.behavior === 'line') {
+    const dx = player.x - x, dy = player.y - y;
+    const d = Math.hypot(dx, dy) || 1;
+    e.vx = (dx / d) * def.speed;
+    e.vy = (dy / d) * def.speed;
+    e.angle = Math.atan2(dy, dx);
+  }
 }
 
 function updateEnemies(dt) {
@@ -171,17 +263,30 @@ function updateEnemies(dt) {
     const e = arr[i];
     if (!e.active) continue;
     const def = ENEMY_DEFS[e.type];
-    const dx = player.x - e.x;
-    const dy = player.y - e.y;
-    const d = Math.hypot(dx, dy) || 1;
-    e.vx = (dx / d) * def.speed;
-    e.vy = (dy / d) * def.speed;
-    e.x += e.vx * dt;
-    e.y += e.vy * dt;
+    if (def.behavior === 'line') {
+      // committed straight line — do not chase
+      e.x += e.vx * dt;
+      e.y += e.vy * dt;
+      // despawn once far enough off the arena on the exit side
+      const pad = 40;
+      if (e.x < -pad || e.x > W + pad || e.y < -pad || e.y > H + pad) {
+        e.active = false;
+      }
+    } else {
+      // seeker behavior
+      const dx = player.x - e.x;
+      const dy = player.y - e.y;
+      const d = Math.hypot(dx, dy) || 1;
+      e.vx = (dx / d) * def.speed;
+      e.vy = (dy / d) * def.speed;
+      e.x += e.vx * dt;
+      e.y += e.vy * dt;
+    }
     if (e.flashMs > 0) e.flashMs -= dt * 1000;
     // contact damage
-    const contact = d < e.r + player.r;
-    if (contact && player.invulnMs <= 0) {
+    const dx2 = player.x - e.x, dy2 = player.y - e.y;
+    const dc = Math.hypot(dx2, dy2);
+    if (dc < e.r + player.r && player.invulnMs <= 0) {
       player.hp -= e.dmg;
       player.invulnMs = PLAYER_INVULN_MS;
       state.hitFlashMs = 300;
@@ -189,11 +294,14 @@ function updateEnemies(dt) {
       Sfx.hurt();
     }
   }
-  // gentle separation pass (O(n^2) but capped by pool)
+  // gentle separation pass — skip line-behavior enemies (darts should keep
+  // their committed vector, they look silly being nudged).
   for (let i = 0; i < arr.length; i++) {
     const a = arr[i]; if (!a.active) continue;
+    if (ENEMY_DEFS[a.type].behavior === 'line') continue;
     for (let j = i + 1; j < arr.length; j++) {
       const b = arr[j]; if (!b.active) continue;
+      if (ENEMY_DEFS[b.type].behavior === 'line') continue;
       const dx = b.x - a.x, dy = b.y - a.y;
       const d = Math.hypot(dx, dy);
       const minD = a.r + b.r - 1;
@@ -361,14 +469,17 @@ function updateBoss(dt) {
   // death
   if (boss.hp <= 0) {
     boss.active = false;
-    state.shake = Math.max(state.shake, 10);
-    // drop 12 T2 gems
+    state.shake = Math.max(state.shake, 12);
+    // drop 12 T2 gems + guaranteed 2 bombs
     for (let i = 0; i < 12; i++) {
       const ang = (i / 12) * Math.PI * 2;
       spawnGem(boss.x + Math.cos(ang) * 40, boss.y + Math.sin(ang) * 40, 2);
     }
+    spawnBomb(boss.x - 18, boss.y);
+    spawnBomb(boss.x + 18, boss.y);
     spawnParticles(boss.x, boss.y, 30, '#ffd36d', 80, 320, 700);
     spawnParticles(boss.x, boss.y, 20, '#b98aff', 80, 280, 700);
+    spawnShock(boss.x, boss.y, 260, 500, '#ffd36d', 5);
     Sfx.bossDown();
   }
 }
@@ -503,6 +614,7 @@ export function updateAll(dt) {
   updateProjectiles(dt);
   updateOrbits(dt);
   updateNovas(dt);
+  updateBombs(dt);
   updateGems(dt);
   updateParticles(dt);
   updateShocks(dt);
