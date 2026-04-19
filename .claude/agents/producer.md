@@ -15,7 +15,11 @@ Depending on the task, you handle one of:
 
 2. **Postmortem** (`company/postmortems/<id>.md`) — at the end. Sections: What went well / What could be improved / Reusable patterns discovered / Suggested next game.
 
-3. **README update** — add the finished game to the catalog in the root `README.md`, with a one-line hook and a direct link to `games/<id>/index.html`.
+3. **Catalog update** — add the finished game to **both** surfaces:
+   - Root `README.md` (repo-reader catalog) — one-line hook + direct link to `games/<id>-<slug>/index.html`.
+   - Root `index.html` (Pages visitor catalog) — append a new `<a class="card" href="games/<id>-<slug>/index.html">…</a>` under `.games`, replacing any `card.soon` placeholder. This is the surface that goes live on GitHub Pages.
+
+   Both are required. Skipping the `index.html` update orphans the game — it ships to Pages but is unreachable from the landing page. See [`company/skills/distribution/github-pages.md`](../../company/skills/distribution/github-pages.md).
 
 ## Principles
 

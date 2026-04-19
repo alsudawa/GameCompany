@@ -88,6 +88,9 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 ### QA
 - [`qa/casual-checklist.md`](qa/casual-checklist.md) — pre-ship checklist + multi-perspective sweep (player / mobile / onboarding / retention / distribution)
 
+### Distribution
+- [`distribution/github-pages.md`](distribution/github-pages.md) — GitHub Actions-based Pages publishing (one-time repo setup + per-ship automatic deploy + catalog-link discipline + ES-module/case-sensitivity/cache gotchas) — extracted from `002-glyph-siege` ship
+
 ## Conventions
 
 - Each doc has a **When to use** section + runnable code snippets.
