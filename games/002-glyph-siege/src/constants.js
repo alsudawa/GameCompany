@@ -23,10 +23,13 @@ export const WEAPON_FAN_DEG = 10;
 
 // Enemies
 export const ENEMY_DEFS = {
-  grunt: { hp: 1, speed: 70,  dmg: 1, radius: 12, color: '#9aa3c9', shape: 'circle',  gem: 1, cost: 1 },
-  scout: { hp: 1, speed: 140, dmg: 1, radius: 11, color: '#ffd36d', shape: 'triangle', gem: 1, cost: 1 },
-  heavy: { hp: 4, speed: 50,  dmg: 1, radius: 18, color: '#ff5d73', shape: 'square',  gem: 2, cost: 3 },
-  elite: { hp: 2, speed: 100, dmg: 1, radius: 14, color: '#b98aff', shape: 'hexagon', gem: 2, cost: 4 },
+  grunt: { hp: 1, speed: 70,  dmg: 1, radius: 12, color: '#9aa3c9', shape: 'circle',  gem: 1, cost: 1, behavior: 'seek' },
+  scout: { hp: 1, speed: 140, dmg: 1, radius: 11, color: '#ffd36d', shape: 'triangle', gem: 1, cost: 1, behavior: 'seek' },
+  heavy: { hp: 4, speed: 50,  dmg: 1, radius: 18, color: '#ff5d73', shape: 'square',  gem: 2, cost: 3, behavior: 'seek' },
+  elite: { hp: 2, speed: 100, dmg: 1, radius: 14, color: '#b98aff', shape: 'hexagon', gem: 2, cost: 4, behavior: 'seek' },
+  // Dart: commits to a straight-line vector at spawn. Player can dodge by
+  // sidestepping. Does not chase. Despawns off-arena.
+  dart:  { hp: 1, speed: 210, dmg: 1, radius: 10, color: '#ff7a4c', shape: 'arrow',   gem: 1, cost: 2, behavior: 'line' },
 };
 
 // XP / leveling — gentle early ramp: first level-up at 10 XP, then +5 per level.
@@ -39,8 +42,9 @@ export const WAVE_WAYPOINTS = [
   { t: 0,   interval: 1.2, budget: 1, types: ['grunt'] },
   { t: 15,  interval: 1.0, budget: 2, types: ['grunt'] },
   { t: 30,  interval: 0.95, budget: 3, types: ['grunt','scout'] },
-  { t: 90,  interval: 0.8, budget: 4, types: ['grunt','scout','heavy'] },
-  { t: 180, interval: 0.6, budget: 6, types: ['grunt','scout','heavy','elite'] },
+  { t: 60,  interval: 0.9, budget: 3, types: ['grunt','scout','dart'] },
+  { t: 90,  interval: 0.8, budget: 4, types: ['grunt','scout','heavy','dart'] },
+  { t: 180, interval: 0.6, budget: 6, types: ['grunt','scout','heavy','elite','dart'] },
 ];
 
 // Boss
@@ -80,6 +84,18 @@ export const NOVA_TIERS = [
   { interval: 2.0, maxR: 230, damage: 5 },
 ];
 export const POOL_NOVAS = 4;                 // concurrent active pulses
+
+// Bombs (pickup item — collectible screen-clear)
+export const POOL_BOMBS = 10;
+export const BOMB_MAX_INVENTORY = 3;
+export const BOMB_DROP_CHANCE = {
+  grunt: 0.012,
+  scout: 0.018,
+  heavy: 0.08,
+  elite: 0.12,
+  dart:  0.015,
+};
+export const BOMB_BLAST_BOSS_DMG = 20;
 
 // Upgrades
 export const UPGRADES = {

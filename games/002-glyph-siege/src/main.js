@@ -9,6 +9,7 @@ import { renderAll } from './render.js';
 import { tickWaves, tickBoss } from './waves.js';
 import { checkLevelUp } from './upgrades.js';
 import { loadAssets } from './assets.js';
+import { detonateBomb } from './entities.js';
 import {
   updateHud, setupUiButtons, showGameOver, hideGameOver, hideStart,
   setMutedUi, runCountdown,
@@ -35,6 +36,7 @@ const doms = {
   bestBadge: document.getElementById('bestBadge'),
   muteBtn:   document.getElementById('muteBtn'),
   pauseBtn:  document.getElementById('pauseBtn'),
+  bombBtn:   document.getElementById('bombBtn'),
   pauseOverlay: document.getElementById('pauseOverlay'),
   resumeBtn: document.getElementById('resumeBtn'),
   upgradeOverlay: document.getElementById('upgradeOverlay'),
@@ -102,6 +104,8 @@ function resetRun() {
   player.invulnMs = 0;
   player.ranks = { DMG: 0, RATE: 0, MULTI: 0, ORBIT: 0, NOVA: 0, SPD: 0, MAGNET: 0, VIT: 0 };
   state.orbitAng = 0;
+  state.bombs = 0;
+  state.bombFlashMs = 0;
   // zero each orb's hit-cooldown array
   for (let i = 0; i < pools.orbits.length; i++) {
     const orb = pools.orbits[i];
@@ -115,6 +119,7 @@ function resetRun() {
   resetPool(pools.particles);
   resetPool(pools.shocks);
   resetPool(pools.novas);
+  resetPool(pools.bombs);
   state.input.active = false; state.input.dx = 0; state.input.dy = 0; state.input.mag = 0;
 }
 
@@ -189,6 +194,7 @@ function step(dt) {
   if (state.hitFlashMs > 0) state.hitFlashMs -= dt * 1000;
   if (state.levelFlashMs > 0) state.levelFlashMs -= dt * 1000;
   if (state.bossVignetteMs > 0) state.bossVignetteMs -= dt * 1000;
+  if (state.bombFlashMs > 0) state.bombFlashMs -= dt * 1000;
   // death
   if (player.hp <= 0) { endRun(); return; }
   // level up (may pause state)
@@ -230,6 +236,9 @@ function boot() {
       resume: resumeRun,
       togglePause: togglePause,
       toggleMute: toggleMute,
+      detonateBomb: () => {
+        if (state.running && !state.paused && !state.over) detonateBomb();
+      },
     });
     // persisted mute
     try {

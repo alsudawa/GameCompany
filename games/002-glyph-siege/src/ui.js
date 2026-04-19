@@ -15,6 +15,21 @@ export function updateHud(doms) {
   const pct = Math.max(0, Math.min(1, state.xp / state.xpNeeded));
   doms.xpfill.style.width = `${pct * 100}%`;
   renderHearts(doms.hearts);
+  renderBombBtn(doms);
+}
+
+function renderBombBtn(doms) {
+  const btn = doms.bombBtn;
+  if (!btn) return;
+  if (state.bombs > 0) {
+    btn.classList.remove('hidden');
+    btn.classList.toggle('pulse', state.bombs > 0);
+    const countEl = btn.querySelector('.count');
+    if (countEl) countEl.textContent = state.bombs;
+  } else {
+    btn.classList.add('hidden');
+    btn.classList.remove('pulse');
+  }
 }
 
 function renderHearts(el) {
@@ -41,6 +56,9 @@ export function setupUiButtons(doms, fns) {
   doms.resumeBtn.addEventListener('click', () => fns.resume());
   doms.muteBtn.addEventListener('click', () => fns.toggleMute());
   doms.pauseBtn.addEventListener('click', () => fns.togglePause());
+  if (doms.bombBtn) {
+    doms.bombBtn.addEventListener('click', (e) => { e.preventDefault(); fns.detonateBomb(); });
+  }
   doms.bootReset.addEventListener('click', () => {
     try { localStorage.clear(); } catch (e) {}
     location.reload();
@@ -48,6 +66,7 @@ export function setupUiButtons(doms, fns) {
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyM') fns.toggleMute();
     if (e.code === 'Escape') fns.togglePause();
+    if (e.code === 'KeyB') { e.preventDefault(); fns.detonateBomb(); }
     if (e.code === 'Space' || e.code === 'Enter') {
       if (doms.overlay.classList.contains('visible')) { e.preventDefault(); fns.start(); }
       else if (doms.gameover.classList.contains('visible')) { e.preventDefault(); fns.start(); }

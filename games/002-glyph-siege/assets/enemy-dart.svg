@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="dart-body" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffb88a"/>
+      <stop offset="55%" stop-color="#ff6b3a"/>
+      <stop offset="100%" stop-color="#8a1e07"/>
+    </linearGradient>
+    <radialGradient id="dart-glow" cx="70%" cy="50%" r="45%">
+      <stop offset="0%" stop-color="#fff0d0" stop-opacity="0.75"/>
+      <stop offset="100%" stop-color="#ff7a4c" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="48" cy="32" rx="20" ry="14" fill="url(#dart-glow)"/>
+  <!-- trail stripes -->
+  <g stroke="#ffffff" stroke-width="1.4" stroke-linecap="round" opacity="0.5">
+    <line x1="6" y1="28" x2="18" y2="28"/>
+    <line x1="8" y1="32" x2="22" y2="32"/>
+    <line x1="6" y1="36" x2="18" y2="36"/>
+  </g>
+  <!-- arrow body — points to the right (+x) so rotation in render matches velocity atan2 -->
+  <polygon points="12,20 44,32 12,44 20,32" fill="url(#dart-body)" stroke="#3a0900" stroke-width="2" stroke-linejoin="round"/>
+  <polygon points="44,32 58,24 56,32 58,40" fill="#fff7d0" stroke="#3a0900" stroke-width="2" stroke-linejoin="round"/>
+  <!-- single angry eye -->
+  <circle cx="28" cy="32" r="3.5" fill="#fff8d4"/>
+  <circle cx="29" cy="32" r="1.8" fill="#0a0b1e"/>
+</svg>

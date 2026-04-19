@@ -115,10 +115,10 @@ function drawEnemies(ctx) {
     const e = arr[i]; if (!e.active) continue;
     const def = ENEMY_DEFS[e.type];
     const img = enemySprite(e.type);
-    const d = e.r * ENEMY_SCALE;
-    const wobble = Math.sin(state.t * 4 + e.x * 0.07) * d * 0.02;
-    if (!drawSprite(ctx, img, e.x, e.y + wobble, d, e.flashMs > 0)) {
-      // Fallback if sprite missing: draw a solid circle in type color.
+    const d = e.r * ENEMY_SCALE * (def.behavior === 'line' ? 1.3 : 1);
+    const wobble = def.behavior === 'line' ? 0 : Math.sin(state.t * 4 + e.x * 0.07) * d * 0.02;
+    const rot = def.behavior === 'line' ? e.angle : 0;
+    if (!drawSprite(ctx, img, e.x, e.y + wobble, d, e.flashMs > 0, rot)) {
       ctx.save();
       ctx.fillStyle = e.flashMs > 0 ? '#fff' : def.color;
       ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2); ctx.fill();
@@ -256,6 +256,34 @@ function drawOrbits(ctx) {
     ctx.arc(orb.x, orb.y, 5, 0, Math.PI * 2);
     ctx.fill();
   }
+  ctx.restore();
+}
+
+function drawBombs(ctx) {
+  for (let i = 0; i < pools.bombs.length; i++) {
+    const b = pools.bombs[i]; if (!b.active) continue;
+    const bob = Math.sin(b.bob) * 3;
+    const wobble = Math.cos(b.bob * 1.3) * 1.5;
+    const d = 40;
+    // soft orange halo to draw attention — bombs are rare
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.35 + 0.25 * Math.sin(b.bob * 2);
+    ctx.fillStyle = '#ff9a3c';
+    ctx.beginPath();
+    ctx.arc(b.x, b.y + bob, 24, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    drawSprite(ctx, sprites.bomb, b.x + wobble, b.y + bob, d);
+  }
+}
+
+function drawBombFlash(ctx) {
+  if (state.bombFlashMs <= 0) return;
+  const a = Math.min(1, state.bombFlashMs / 320);
+  ctx.save();
+  ctx.fillStyle = `rgba(255,244,200,${a * 0.9})`;
+  ctx.fillRect(0, 0, W, H);
   ctx.restore();
 }
 
@@ -417,6 +445,7 @@ export function renderAll(ctx) {
   drawSigilFrame(ctx);
   drawPickupRing(ctx);
   drawGems(ctx);
+  drawBombs(ctx);
   drawParticles(ctx);
   drawEnemies(ctx);
   drawBoss(ctx);
@@ -427,5 +456,6 @@ export function renderAll(ctx) {
   drawPlayer(ctx);
   drawJoystick(ctx);
   ctx.restore();
+  drawBombFlash(ctx);
   drawVignettes(ctx);
 }

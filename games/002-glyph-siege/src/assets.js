@@ -7,11 +7,13 @@ const FILES = {
   enemyScout:  'assets/enemy-scout.svg',
   enemyHeavy:  'assets/enemy-heavy.svg',
   enemyElite:  'assets/enemy-elite.svg',
+  enemyDart:   'assets/enemy-dart.svg',
   boss:        'assets/boss.svg',
   gem1:        'assets/gem-t1.svg',
   gem2:        'assets/gem-t2.svg',
   gem3:        'assets/gem-t3.svg',
   projectile:  'assets/projectile.svg',
+  bomb:        'assets/bomb.svg',
 };
 
 export const sprites = {};
@@ -45,6 +47,7 @@ export function enemySprite(type) {
     scout: sprites.enemyScout,
     heavy: sprites.enemyHeavy,
     elite: sprites.enemyElite,
+    dart:  sprites.enemyDart,
   }[type] || null;
 }
 
