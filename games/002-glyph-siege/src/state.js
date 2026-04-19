@@ -2,6 +2,7 @@ import {
   POOL_ENEMIES, POOL_PROJECTILES, POOL_GEMS, POOL_PARTICLES,
   PLAYER_HP_BASE, PLAYER_SPEED_BASE, PLAYER_PICKUP_R_BASE,
   WEAPON_INTERVAL_BASE, WEAPON_DAMAGE_BASE, WEAPON_PROJ_COUNT_BASE,
+  WEAPON_PIERCE_BASE,
   W, H,
 } from './constants.js';
 
@@ -63,6 +64,7 @@ export const player = {
   fireAcc: 0,
   damage: WEAPON_DAMAGE_BASE,
   projCount: WEAPON_PROJ_COUNT_BASE,
+  pierce: WEAPON_PIERCE_BASE,
   invulnMs: 0,
   rot: 0,
   // per-upgrade rank
@@ -71,7 +73,7 @@ export const player = {
 
 export const pools = {
   enemies:     makePool(POOL_ENEMIES,     () => ({ active: false, type: 'grunt', x: 0, y: 0, vx: 0, vy: 0, r: 12, hp: 1, dmg: 1, flashMs: 0 })),
-  projectiles: makePool(POOL_PROJECTILES, () => ({ active: false, x: 0, y: 0, vx: 0, vy: 0, r: 6, dmg: 1, life: 0 })),
+  projectiles: makePool(POOL_PROJECTILES, () => ({ active: false, x: 0, y: 0, vx: 0, vy: 0, r: 6, dmg: 1, life: 0, pierce: 0 })),
   gems:        makePool(POOL_GEMS,        () => ({ active: false, x: 0, y: 0, vx: 0, vy: 0, tier: 1, bob: 0 })),
   particles:   makePool(POOL_PARTICLES,   () => ({ active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 0, color: '#fff', size: 2 })),
 };
