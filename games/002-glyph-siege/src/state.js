@@ -88,7 +88,7 @@ export const pools = {
   particles:   makePool(POOL_PARTICLES,   () => ({ active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 0, color: '#fff', size: 2, smoke: false })),
   shocks:      makePool(POOL_SHOCKS,       () => ({ active: false, x: 0, y: 0, life: 0, maxLife: 0, maxR: 0, width: 3, color: '#fff' })),
   // Orbit orbs — fixed-size array. Position derived from state.orbitAng each frame.
-  orbits:      makePool(ORBIT_MAX,          () => ({ x: 0, y: 0, hitTimes: new Float32Array(POOL_ENEMIES), bossHit: 0 })),
+  orbits:      makePool(ORBIT_MAX,          () => ({ x: 0, y: 0, hitTimes: new Float32Array(POOL_ENEMIES), bossHit: 0, lastTrailT: 0 })),
   // Nova pulses — concurrent expanding rings.
   novas:       makePool(POOL_NOVAS,         () => ({ active: false, x: 0, y: 0, t: 0, duration: 0.38, maxR: 0, damage: 0, bossHit: false })),
   bombs:       makePool(POOL_BOMBS,         () => ({ active: false, x: 0, y: 0, vx: 0, vy: 0, bob: 0 })),

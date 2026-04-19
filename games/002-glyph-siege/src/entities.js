@@ -516,6 +516,23 @@ function updateOrbits(dt) {
     const ox = player.x + Math.cos(a) * ORBIT_RADIUS;
     const oy = player.y + Math.sin(a) * ORBIT_RADIUS;
     orb.x = ox; orb.y = oy;
+    // Trail emission: a few sparkles behind the orb as it sweeps.
+    if (state.t - orb.lastTrailT > 0.045) {
+      orb.lastTrailT = state.t;
+      const tp = acquire(pools.particles);
+      if (tp) {
+        tp.active = true;
+        tp.x = ox + (Math.random() - 0.5) * 4;
+        tp.y = oy + (Math.random() - 0.5) * 4;
+        tp.vx = -Math.cos(a) * 28 + (Math.random() - 0.5) * 24;
+        tp.vy = -Math.sin(a) * 28 + (Math.random() - 0.5) * 24;
+        tp.color = '#a5f0ff';
+        tp.size = 2 + Math.random() * 1.6;
+        tp.maxLife = 0.42;
+        tp.life = tp.maxLife;
+        tp.smoke = false;
+      }
+    }
     // collide with enemies
     for (let j = 0; j < pools.enemies.length; j++) {
       const e = pools.enemies[j]; if (!e.active) continue;

@@ -32,6 +32,8 @@ function renderBombBtn(doms) {
   }
 }
 
+const HEART_SVG = '<svg viewBox="0 0 24 24"><path d="M12 21.2 C 5 17 1.5 13.5 1.5 9 a5.5 5.5 0 0 1 10.5 -2.4 A 5.5 5.5 0 0 1 22.5 9 c 0 4.5 -3.5 8 -10.5 12.2 z" fill="currentColor" stroke="rgba(0,0,0,0.4)" stroke-width="1.2"/></svg>';
+
 function renderHearts(el) {
   const max = player.hpMax;
   const cur = player.hp;
@@ -40,6 +42,7 @@ function renderHearts(el) {
     for (let i = 0; i < max; i++) {
       const d = document.createElement('div');
       d.className = 'heart';
+      d.innerHTML = HEART_SVG;
       el.appendChild(d);
     }
   }
@@ -57,7 +60,18 @@ export function setupUiButtons(doms, fns) {
   doms.muteBtn.addEventListener('click', () => fns.toggleMute());
   doms.pauseBtn.addEventListener('click', () => fns.togglePause());
   if (doms.bombBtn) {
-    doms.bombBtn.addEventListener('click', (e) => { e.preventDefault(); fns.detonateBomb(); });
+    let lastBomb = 0;
+    const bombTrigger = (e) => {
+      e.preventDefault();
+      const now = performance.now();
+      if (now - lastBomb < 220) return;   // debounce against double-fire
+      lastBomb = now;
+      fns.detonateBomb();
+    };
+    // pointerdown fires immediately on touch (no 300ms delay).
+    doms.bombBtn.addEventListener('pointerdown', bombTrigger);
+    // click as a safety net for desktop / a11y (debounced, won't double-fire).
+    doms.bombBtn.addEventListener('click', bombTrigger);
   }
   doms.bootReset.addEventListener('click', () => {
     try { localStorage.clear(); } catch (e) {}
@@ -98,8 +112,8 @@ export function hideStart(doms) {
 }
 
 export function setMutedUi(doms, muted) {
-  doms.muteBtn.textContent = muted ? 'M' : '♪';
   doms.muteBtn.classList.toggle('muted', muted);
+  doms.muteBtn.setAttribute('aria-pressed', muted ? 'true' : 'false');
 }
 
 export function runCountdown(doms, onDone) {

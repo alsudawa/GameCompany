@@ -111,6 +111,7 @@ function resetRun() {
     const orb = pools.orbits[i];
     orb.hitTimes.fill(0);
     orb.bossHit = 0;
+    orb.lastTrailT = 0;
   }
   boss.active = false;
   resetPool(pools.enemies);
