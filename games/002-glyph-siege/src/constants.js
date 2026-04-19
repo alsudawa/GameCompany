@@ -58,7 +58,8 @@ export const BOSS_DASH_COOLDOWN_S = 4;
 export const POOL_ENEMIES = 200;
 export const POOL_PROJECTILES = 140;
 export const POOL_GEMS = 120;
-export const POOL_PARTICLES = 360;
+export const POOL_PARTICLES = 480;
+export const POOL_SHOCKS = 40;   // expanding kill rings
 
 // Upgrades
 export const UPGRADES = {

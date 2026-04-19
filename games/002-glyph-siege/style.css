@@ -150,6 +150,89 @@ html, body {
 #pauseBtn { right: 14px; }
 .iconbtn.muted { color: var(--fg-dim); text-decoration: line-through; }
 
+/* ---------- Fixed joystick pad ---------- */
+#joypad {
+  position: absolute;
+  left: 18px;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  width: 130px; height: 130px;
+  border-radius: 50%;
+  background: radial-gradient(circle at center, rgba(124,246,255,0.12), rgba(10,11,30,0.55));
+  border: 1.5px solid rgba(124, 246, 255, 0.35);
+  backdrop-filter: blur(4px);
+  touch-action: none;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  box-shadow:
+    inset 0 0 30px rgba(124, 246, 255, 0.12),
+    0 6px 18px rgba(0, 0, 0, 0.45);
+  transition: opacity .2s ease, transform .15s ease;
+}
+#joypad::before {
+  content: "";
+  position: absolute;
+  inset: 18px;
+  border-radius: 50%;
+  border: 1px dashed rgba(124, 246, 255, 0.25);
+}
+#joypad.active {
+  border-color: rgba(143, 234, 255, 0.75);
+  box-shadow:
+    inset 0 0 40px rgba(143, 234, 255, 0.25),
+    0 8px 28px rgba(124, 246, 255, 0.35);
+}
+#joyknob {
+  width: 54px; height: 54px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #e8faff 0%, #8feaff 60%, #3da0b5 100%);
+  box-shadow:
+    0 0 16px rgba(143, 234, 255, 0.55),
+    inset 0 2px 4px rgba(255, 255, 255, 0.55),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  will-change: transform;
+  transition: transform .06s linear;
+}
+
+/* ---------- Bomb button ---------- */
+.bombbtn {
+  position: absolute;
+  right: 18px;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  width: 78px; height: 78px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 154, 60, 0.65);
+  background: radial-gradient(circle at 35% 30%, #fff2c0 0%, #ffb04c 55%, #a34010 100%);
+  display: grid; place-items: center;
+  font: inherit;
+  color: #3a1a03;
+  cursor: pointer;
+  box-shadow:
+    0 0 24px rgba(255, 154, 60, 0.45),
+    0 6px 18px rgba(0, 0, 0, 0.5),
+    inset 0 2px 4px rgba(255, 255, 255, 0.55);
+  touch-action: manipulation;
+  z-index: 6;
+  transition: transform .1s ease, opacity .2s ease;
+}
+.bombbtn.hidden { display: none; }
+.bombbtn:active { transform: scale(.93); }
+.bombbtn .glyph { font-size: 28px; line-height: 1; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.35)); }
+.bombbtn .count {
+  position: absolute;
+  top: 6px; right: 10px;
+  font-size: 13px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+}
+.bombbtn.pulse { animation: bombPulse 0.9s ease-in-out infinite; }
+@keyframes bombPulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 24px rgba(255,154,60,0.45), 0 6px 18px rgba(0,0,0,0.5), inset 0 2px 4px rgba(255,255,255,0.55); }
+  50%      { transform: scale(1.05); box-shadow: 0 0 36px rgba(255,200,120,0.8), 0 6px 18px rgba(0,0,0,0.5), inset 0 2px 4px rgba(255,255,255,0.55); }
+}
+
 /* ---------- Overlays ---------- */
 .overlay {
   position: absolute;

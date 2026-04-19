@@ -21,7 +21,39 @@ export function spawnParticles(x, y, count, color, speedMin, speedMax, lifeMs) {
     p.size = 1.5 + Math.random() * 2.5;
     p.maxLife = lifeMs / 1000;
     p.life = p.maxLife;
+    p.smoke = false;
   }
+}
+
+// Soft gray smoke puff — slower, fatter, fades to transparent.
+export function spawnSmoke(x, y, count, lifeMs) {
+  for (let i = 0; i < count; i++) {
+    const p = acquire(pools.particles); if (!p) return;
+    const ang = Math.random() * Math.PI * 2;
+    const sp = 30 + Math.random() * 40;
+    p.active = true;
+    p.x = x + (Math.random() - 0.5) * 6;
+    p.y = y + (Math.random() - 0.5) * 6;
+    p.vx = Math.cos(ang) * sp;
+    p.vy = Math.sin(ang) * sp;
+    p.color = '#ced9ff';
+    p.size = 6 + Math.random() * 6;
+    p.maxLife = lifeMs / 1000;
+    p.life = p.maxLife;
+    p.smoke = true;
+  }
+}
+
+// Expanding ring on kills / impacts. Grows from 0 to maxR over life.
+export function spawnShock(x, y, maxR, lifeMs, color, width = 3) {
+  const s = acquire(pools.shocks); if (!s) return;
+  s.active = true;
+  s.x = x; s.y = y;
+  s.maxR = maxR;
+  s.maxLife = lifeMs / 1000;
+  s.life = s.maxLife;
+  s.width = width;
+  s.color = color;
 }
 
 function updateParticles(dt) {
@@ -32,8 +64,23 @@ function updateParticles(dt) {
     if (p.life <= 0) { p.active = false; continue; }
     p.x += p.vx * dt;
     p.y += p.vy * dt;
-    p.vx *= 0.92;
-    p.vy *= 0.92;
+    if (p.smoke) {
+      p.vx *= 0.90;
+      p.vy *= 0.90;
+      p.size += dt * 18;  // smoke expands
+    } else {
+      p.vx *= 0.92;
+      p.vy *= 0.92;
+    }
+  }
+}
+
+function updateShocks(dt) {
+  for (let i = 0; i < pools.shocks.length; i++) {
+    const s = pools.shocks[i];
+    if (!s.active) continue;
+    s.life -= dt;
+    if (s.life <= 0) s.active = false;
   }
 }
 
@@ -203,15 +250,25 @@ function updateProjectiles(dt) {
           state.kills++;
           const color = def.color;
           const sizeTier = def.radius > 15 ? 3 : def.radius > 12 ? 2 : 1;
-          spawnParticles(e.x, e.y, 7 + sizeTier * 2, color, 60, 180, 450);
+          // POP: fast colored sparks
+          spawnParticles(e.x, e.y, 12 + sizeTier * 4, color, 80, 240, 500);
+          // bright white highlight spark
+          spawnParticles(e.x, e.y, 4 + sizeTier, '#ffffff', 120, 280, 250);
+          // puff of smoke
+          spawnSmoke(e.x, e.y, 3 + sizeTier, 480);
+          // shockwave ring — bigger for tankier kills
+          const ringR = 22 + sizeTier * 12;
+          spawnShock(e.x, e.y, ringR, 300, e.type === 'elite' ? '#ffe08a' : '#ffffff', 3);
+          // kill shake (damped — small, snappy)
+          state.shake = Math.max(state.shake, 2 + sizeTier * 1.5);
           Sfx.kill(sizeTier);
           spawnGem(e.x + (Math.random() - 0.5) * 10, e.y + (Math.random() - 0.5) * 10, def.gem);
           // pierce through the kill
           p.pierce--;
           if (p.pierce < 0) { p.active = false; break; }
-          // keep scanning remaining enemies this frame
         } else {
-          // non-kill hit: projectile dies
+          // non-kill hit: projectile dies, add a small spark
+          spawnParticles(p.x, p.y, 2, '#ffffff', 60, 160, 180);
           p.active = false;
           break;
         }
@@ -342,4 +399,5 @@ export function updateAll(dt) {
   updateProjectiles(dt);
   updateGems(dt);
   updateParticles(dt);
+  updateShocks(dt);
 }

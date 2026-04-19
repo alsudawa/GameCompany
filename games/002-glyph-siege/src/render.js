@@ -199,16 +199,49 @@ function drawPickupRing(ctx) {
 }
 
 function drawParticles(ctx) {
+  // Sparks (additive-blend, bright)
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for (let i = 0; i < pools.particles.length; i++) {
-    const p = pools.particles[i]; if (!p.active) continue;
+    const p = pools.particles[i]; if (!p.active || p.smoke) continue;
     const a = Math.max(0, Math.min(1, p.life / p.maxLife));
     ctx.globalAlpha = a;
     ctx.fillStyle = p.color;
     ctx.beginPath();
     ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
     ctx.fill();
+  }
+  ctx.restore();
+  // Smoke (normal blend, soft, fades)
+  ctx.save();
+  for (let i = 0; i < pools.particles.length; i++) {
+    const p = pools.particles[i]; if (!p.active || !p.smoke) continue;
+    const a = Math.max(0, Math.min(1, p.life / p.maxLife));
+    ctx.globalAlpha = a * 0.35;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawShocks(ctx) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < pools.shocks.length; i++) {
+    const s = pools.shocks[i]; if (!s.active) continue;
+    const t = 1 - Math.max(0, Math.min(1, s.life / s.maxLife));  // 0..1 progress
+    const r = s.maxR * (0.15 + t * 0.95);
+    const a = (1 - t) * 0.9;
+    ctx.globalAlpha = a;
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = s.width * (1 - t * 0.4);
+    ctx.shadowColor = s.color;
+    ctx.shadowBlur = 14;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+    ctx.stroke();
   }
   ctx.restore();
 }
@@ -317,6 +350,7 @@ export function renderAll(ctx) {
   drawEnemies(ctx);
   drawBoss(ctx);
   drawProjectiles(ctx);
+  drawShocks(ctx);   // shockwaves OVER enemies so they pop on top
   drawPlayer(ctx);
   drawJoystick(ctx);
   ctx.restore();

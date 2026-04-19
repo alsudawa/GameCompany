@@ -101,6 +101,7 @@ function resetRun() {
   resetPool(pools.projectiles);
   resetPool(pools.gems);
   resetPool(pools.particles);
+  resetPool(pools.shocks);
   state.input.active = false; state.input.dx = 0; state.input.dy = 0; state.input.mag = 0;
 }
 
