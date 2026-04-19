@@ -23,6 +23,8 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`gameplay/seeded-daily.md`](gameplay/seeded-daily.md) — deterministic daily challenge via `?seed=` + per-seed best
 - [`gameplay/rhythm-chart.md`](gameplay/rhythm-chart.md) — fixed-BPM deterministic chart (templates × band schedule + exact-max simulation + schema versioning)
 - [`gameplay/reactive-hazard.md`](gameplay/reactive-hazard.md) — don't-tap hazard events woven into a chart (visual triple-redundancy + bonus/penalty + placement heuristics)
+- [`gameplay/virtual-joystick.md`](gameplay/virtual-joystick.md) — floating touch joystick (origin on pointerdown, 60px radius, 6px dead zone) + keyboard parity — extracted from `002-glyph-siege`
+- [`gameplay/horde-survivor-loop.md`](gameplay/horde-survivor-loop.md) — meta-pattern: move-only input + auto-attack + XP-level-up + waypoint waves + interval boss — extracted from `002-glyph-siege`
 
 ### Graphics
 - [`graphics/svg-sprites.md`](graphics/svg-sprites.md) — inline SVG sprite patterns, no image files
@@ -72,6 +74,7 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`ux/stats-export.md`](ux/stats-export.md) — copy-as-text lifetime-stats export (human-readable multi-line snapshot + mirrors share-btn clipboard-flow UX + hidden-until-data + positive-action-left positioning vs destructive Reset)
 - [`ux/sparkline.md`](ux/sparkline.md) — inline SVG sparkline renderer, shared across gameover + stats panel surfaces (fillSparkline(el,scores,W,H,SLOTS) + .spark-svg shared CSS class + right-align-latest + role-color rule with best/latest tie preference)
 - [`ux/screen-reader-announcements.md`](ux/screen-reader-announcements.md) — single polite live region + tier-change gating + `aria-atomic` composed gameover line + `prefers-contrast` pass + `sr-only` clip utility
+- [`ux/upgrade-choice.md`](ux/upgrade-choice.md) — pause + 3-card weighted-roll upgrade overlay (staggered cardIn + confirm-scale-out + button-based a11y + reduced-motion fallback) — extracted from `002-glyph-siege`
 - [`ux/modal-focus-trap.md`](ux/modal-focus-trap.md) — Tab/Shift+Tab focus trap + focus-restore-to-trigger for modals (live-query focusables + `offsetParent` filter for CSS-hidden + body/detached fallbacks + selector constant)
 - [`ux/reduced-motion-audit.md`](ux/reduced-motion-audit.md) — periodic four-layer audit for `prefers-reduced-motion` drift (CSS animation + CSS transition + JS DOM + canvas/WebGL render-loop), live MQL listener, decision rubric, dampen-don't-delete particles rule
 - [`ux/keyboard-flow-audit.md`](ux/keyboard-flow-audit.md) — periodic tab-order + reachability audit (opacity-0 overlay leak, radiogroup arrow-key contract, page-load initial focus, role="button" paragraphs)
