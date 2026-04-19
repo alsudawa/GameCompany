@@ -1,5 +1,5 @@
 import { state, player, pools } from './state.js';
-import { UPGRADES, PLAYER_SPEED_BASE, PLAYER_PICKUP_R_BASE, WEAPON_INTERVAL_BASE } from './constants.js';
+import { UPGRADES, XP_TABLE, PLAYER_SPEED_BASE, PLAYER_PICKUP_R_BASE, WEAPON_INTERVAL_BASE } from './constants.js';
 import { Sfx } from './sfx.js';
 
 // SVG icon set — inline to avoid files. 24×24 viewBox.
@@ -92,7 +92,7 @@ export function checkLevelUp(doms, resumeFn) {
   if (state.xp >= state.xpNeeded) {
     state.xp -= state.xpNeeded;
     state.level += 1;
-    state.xpNeeded = 20 + (state.level - 1) * 8;
+    state.xpNeeded = XP_TABLE(state.level);
     handleLevelUp(doms, resumeFn);
     return true;
   }

@@ -27,7 +27,7 @@ export const state = {
   score: 0,
   level: 1,
   xp: 0,
-  xpNeeded: 20,
+  xpNeeded: 10,
   // Best
   best: 0,
   isNewBest: false,

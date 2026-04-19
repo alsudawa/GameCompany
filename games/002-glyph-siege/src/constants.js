@@ -28,16 +28,17 @@ export const ENEMY_DEFS = {
   elite: { hp: 2, speed: 100, dmg: 1, radius: 14, color: '#b98aff', shape: 'hexagon', gem: 2, cost: 4 },
 };
 
-// XP / leveling
-export const XP_TABLE = (n) => 20 + (n - 1) * 8;
+// XP / leveling — gentle early ramp: first level-up at 10 XP, then +5 per level.
+export const XP_TABLE = (n) => 5 + n * 5;
 export const GEM_XP = { 1: 1, 2: 3, 3: 10 };
 
 // Wave waypoints (time s, spawn interval s, batch budget, allowed types)
 export const WAVE_WAYPOINTS = [
-  { t: 0,   interval: 2.0, budget: 1, types: ['grunt'] },
-  { t: 30,  interval: 1.2, budget: 3, types: ['grunt','scout'] },
-  { t: 90,  interval: 0.8, budget: 5, types: ['grunt','scout','heavy'] },
-  { t: 180, interval: 0.5, budget: 8, types: ['grunt','scout','heavy','elite'] },
+  { t: 0,   interval: 1.2, budget: 1, types: ['grunt'] },
+  { t: 15,  interval: 1.0, budget: 2, types: ['grunt'] },
+  { t: 30,  interval: 0.9, budget: 3, types: ['grunt','scout'] },
+  { t: 90,  interval: 0.7, budget: 5, types: ['grunt','scout','heavy'] },
+  { t: 180, interval: 0.45, budget: 8, types: ['grunt','scout','heavy','elite'] },
 ];
 
 // Boss
