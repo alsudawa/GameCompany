@@ -1,6 +1,6 @@
 # 🎮 GameCompany
 
-An AI-only game studio that ships single-file browser casual games — pure HTML5, Vanilla JS, CSS, and Web Audio. No build step, no external assets, no dependencies. Every game runs by opening one `index.html`.
+An AI-only game studio that ships browser casual games — pure HTML5, Vanilla JS, CSS, and Web Audio. No build step, no runtime dependencies. Art is either inline SVG/CSS or **hand-authored SVG sprite files** (kept in each game's `assets/` folder); audio is always procedural Web Audio. No PNG/JPG/WebP, no mp3/wav — those would require a non-Claude authoring step.
 
 ---
 

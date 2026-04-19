@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="elite-body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e8d0ff"/>
+      <stop offset="60%" stop-color="#b98aff"/>
+      <stop offset="100%" stop-color="#6a3fa0"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="32" cy="58" rx="18" ry="3" fill="#000" opacity="0.3"/>
+  <polygon points="32,6 54,20 54,44 32,58 10,44 10,20"
+           fill="url(#elite-body)" stroke="#2a1054" stroke-width="2" stroke-linejoin="round"/>
+  <polygon points="32,12 48,22 48,42 32,52 16,42 16,22"
+           fill="none" stroke="#ffffff" stroke-width="1.1" opacity="0.4" stroke-linejoin="round"/>
+  <circle cx="24" cy="30" r="4" fill="#0a0b1e"/>
+  <circle cx="40" cy="30" r="4" fill="#0a0b1e"/>
+  <circle cx="22.8" cy="28.6" r="1.4" fill="#fff3ff"/>
+  <circle cx="38.8" cy="28.6" r="1.4" fill="#fff3ff"/>
+  <circle cx="25.5" cy="31.4" r="0.7" fill="#fff3ff" opacity="0.8"/>
+  <circle cx="41.5" cy="31.4" r="0.7" fill="#fff3ff" opacity="0.8"/>
+  <ellipse cx="18" cy="40" rx="3" ry="2" fill="#ffb4e0" opacity="0.8"/>
+  <ellipse cx="46" cy="40" rx="3" ry="2" fill="#ffb4e0" opacity="0.8"/>
+  <path d="M26 42 Q32 46 38 42" fill="none" stroke="#0a0b1e" stroke-width="1.6" stroke-linecap="round"/>
+  <g opacity="0.85">
+    <path d="M50 16 l2 0 m-1 -1 l0 2" stroke="#fff3ff" stroke-width="1.2" stroke-linecap="round"/>
+    <path d="M12 46 l2 0 m-1 -1 l0 2" stroke="#fff3ff" stroke-width="1.2" stroke-linecap="round"/>
+  </g>
+</svg>

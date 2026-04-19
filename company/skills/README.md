@@ -27,7 +27,8 @@ Reusable know-how extracted from past projects. Every game ships with a postmort
 - [`gameplay/horde-survivor-loop.md`](gameplay/horde-survivor-loop.md) — meta-pattern: move-only input + auto-attack + XP-level-up + waypoint waves + interval boss — extracted from `002-glyph-siege`
 
 ### Graphics
-- [`graphics/svg-sprites.md`](graphics/svg-sprites.md) — inline SVG sprite patterns, no image files
+- [`graphics/svg-sprites.md`](graphics/svg-sprites.md) — inline SVG sprite patterns (DOM HUD icons, small shapes)
+- [`graphics/svg-asset-files.md`](graphics/svg-asset-files.md) — standalone SVG sprite files in `games/<id>/assets/`, loaded via `Image()` + `ctx.drawImage` (for characters/bosses/gems — any entity with 3+ internal shapes) — extracted from `002-glyph-siege` art upgrade
 - [`graphics/css-animation.md`](graphics/css-animation.md) — shake / pop / flash keyframes
 - [`graphics/particle-fx.md`](graphics/particle-fx.md) — canvas particle pool
 - [`graphics/backdrop.md`](graphics/backdrop.md) — zero-alloc starfield, depth via twinkle
