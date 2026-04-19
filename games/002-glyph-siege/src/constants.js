@@ -5,11 +5,11 @@ export const FIXED_DT = 1 / 60;
 export const MAX_DT = 1 / 30;
 
 // Player
-export const PLAYER_SPEED_BASE = 200;
+export const PLAYER_SPEED_BASE = 210;
 export const PLAYER_HP_BASE = 5;
 export const PLAYER_RADIUS = 14;
 export const PLAYER_INVULN_MS = 400;
-export const PLAYER_PICKUP_R_BASE = 60;
+export const PLAYER_PICKUP_R_BASE = 110;
 
 // Weapon
 export const WEAPON_INTERVAL_BASE = 0.9;
