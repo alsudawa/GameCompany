@@ -2,7 +2,7 @@ import {
   POOL_ENEMIES, POOL_PROJECTILES, POOL_GEMS, POOL_PARTICLES, POOL_SHOCKS,
   PLAYER_HP_BASE, PLAYER_SPEED_BASE, PLAYER_PICKUP_R_BASE,
   WEAPON_INTERVAL_BASE, WEAPON_DAMAGE_BASE, WEAPON_PROJ_COUNT_BASE,
-  WEAPON_PIERCE_BASE,
+  WEAPON_PIERCE_BASE, ORBIT_MAX, POOL_NOVAS,
   W, H,
 } from './constants.js';
 
@@ -39,6 +39,8 @@ export const state = {
   hitFlashMs: 0,      // full-screen red flash after player hit
   levelFlashMs: 0,    // cyan flash on level-up
   bossVignetteMs: 0,  // red vignette on boss spawn
+  // Weapon — orbit spirit shared angle (each orb = base + i * 2π / count)
+  orbitAng: 0,
   // Spawn timers
   spawnAcc: 0,
   // Canvas
@@ -65,10 +67,15 @@ export const player = {
   damage: WEAPON_DAMAGE_BASE,
   projCount: WEAPON_PROJ_COUNT_BASE,
   pierce: WEAPON_PIERCE_BASE,
+  orbitCount: 0,        // active orbit spirit orbs (0..ORBIT_MAX)
+  novaInterval: 0,      // 0 = disabled, else seconds between pulses
+  novaCd: 0,
+  novaMaxR: 0,
+  novaDamage: 0,
   invulnMs: 0,
   rot: 0,
   // per-upgrade rank
-  ranks: { DMG: 0, RATE: 0, MULTI: 0, SPD: 0, MAGNET: 0, VIT: 0 },
+  ranks: { DMG: 0, RATE: 0, MULTI: 0, ORBIT: 0, NOVA: 0, SPD: 0, MAGNET: 0, VIT: 0 },
 };
 
 export const pools = {
@@ -77,6 +84,10 @@ export const pools = {
   gems:        makePool(POOL_GEMS,        () => ({ active: false, x: 0, y: 0, vx: 0, vy: 0, tier: 1, bob: 0 })),
   particles:   makePool(POOL_PARTICLES,   () => ({ active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 0, color: '#fff', size: 2, smoke: false })),
   shocks:      makePool(POOL_SHOCKS,       () => ({ active: false, x: 0, y: 0, life: 0, maxLife: 0, maxR: 0, width: 3, color: '#fff' })),
+  // Orbit orbs — fixed-size array. Position derived from state.orbitAng each frame.
+  orbits:      makePool(ORBIT_MAX,          () => ({ x: 0, y: 0, hitTimes: new Float32Array(POOL_ENEMIES), bossHit: 0 })),
+  // Nova pulses — concurrent expanding rings.
+  novas:       makePool(POOL_NOVAS,         () => ({ active: false, x: 0, y: 0, t: 0, duration: 0.38, maxR: 0, damage: 0, bossHit: false })),
 };
 
 export const boss = {

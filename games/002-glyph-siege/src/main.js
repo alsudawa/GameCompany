@@ -94,14 +94,27 @@ function resetRun() {
   player.damage = WEAPON_DAMAGE_BASE;
   player.projCount = WEAPON_PROJ_COUNT_BASE;
   player.pierce = WEAPON_PIERCE_BASE;
+  player.orbitCount = 0;
+  player.novaInterval = 0;
+  player.novaCd = 0;
+  player.novaMaxR = 0;
+  player.novaDamage = 0;
   player.invulnMs = 0;
-  player.ranks = { DMG: 0, RATE: 0, MULTI: 0, SPD: 0, MAGNET: 0, VIT: 0 };
+  player.ranks = { DMG: 0, RATE: 0, MULTI: 0, ORBIT: 0, NOVA: 0, SPD: 0, MAGNET: 0, VIT: 0 };
+  state.orbitAng = 0;
+  // zero each orb's hit-cooldown array
+  for (let i = 0; i < pools.orbits.length; i++) {
+    const orb = pools.orbits[i];
+    orb.hitTimes.fill(0);
+    orb.bossHit = 0;
+  }
   boss.active = false;
   resetPool(pools.enemies);
   resetPool(pools.projectiles);
   resetPool(pools.gems);
   resetPool(pools.particles);
   resetPool(pools.shocks);
+  resetPool(pools.novas);
   state.input.active = false; state.input.dx = 0; state.input.dy = 0; state.input.mag = 0;
 }
 

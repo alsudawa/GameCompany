@@ -226,6 +226,77 @@ function drawParticles(ctx) {
   ctx.restore();
 }
 
+function drawOrbits(ctx) {
+  const n = player.orbitCount;
+  if (n <= 0) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.shadowColor = '#8feaff';
+  ctx.shadowBlur = 18;
+  for (let i = 0; i < n; i++) {
+    const orb = pools.orbits[i];
+    // trailing ghost
+    const tx = orb.x - Math.cos(state.orbitAng + (i * Math.PI * 2) / n - 0.12) * 6;
+    const ty = orb.y - Math.sin(state.orbitAng + (i * Math.PI * 2) / n - 0.12) * 6;
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = '#8feaff';
+    ctx.beginPath();
+    ctx.arc(tx, ty, 7, 0, Math.PI * 2);
+    ctx.fill();
+    // core
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#e8faff';
+    ctx.beginPath();
+    ctx.arc(orb.x, orb.y, 8, 0, Math.PI * 2);
+    ctx.fill();
+    // halo
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = '#8feaff';
+    ctx.beginPath();
+    ctx.arc(orb.x, orb.y, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawNovas(ctx) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < pools.novas.length; i++) {
+    const p = pools.novas[i]; if (!p.active) continue;
+    const prog = Math.min(1, p.t / p.duration);
+    const r = p.maxR * prog;
+    const a = (1 - prog) * 0.85;
+    // outer thick ring
+    ctx.globalAlpha = a;
+    ctx.strokeStyle = '#d4a8ff';
+    ctx.lineWidth = 6;
+    ctx.shadowColor = '#d4a8ff';
+    ctx.shadowBlur = 20;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    // inner bright ring
+    ctx.globalAlpha = a * 0.8;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r * 0.96, 0, Math.PI * 2);
+    ctx.stroke();
+    // fill disk (fading)
+    ctx.globalAlpha = a * 0.15;
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+    g.addColorStop(0, 'rgba(214,170,255,0.2)');
+    g.addColorStop(1, 'rgba(214,170,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawShocks(ctx) {
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
@@ -350,6 +421,8 @@ export function renderAll(ctx) {
   drawEnemies(ctx);
   drawBoss(ctx);
   drawProjectiles(ctx);
+  drawOrbits(ctx);
+  drawNovas(ctx);
   drawShocks(ctx);   // shockwaves OVER enemies so they pop on top
   drawPlayer(ctx);
   drawJoystick(ctx);
