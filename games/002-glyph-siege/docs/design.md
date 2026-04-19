@@ -94,7 +94,7 @@ You are the last glyph of light in a bounded sigil-ring. Dark shapes close in fr
 
 ## Leveling
 
-- XP required for level N → N+1: `20 + (N-1) × 8` (level 1→2 = 20 XP, 2→3 = 28, 3→4 = 36...).
+- XP required for level N → N+1: `5 + N × 5` (level 1→2 = 10 XP, 2→3 = 15, 3→4 = 20...). Tuned gentler after CEO playtest — original `20 + (N-1) × 8` made the first level-up land around t=30–40s; new curve targets t=15–20s for first choice.
 - On level-up: game enters pause mode, overlay animates in with 3 randomly rolled upgrade cards.
 - Max level: 50 (soft cap; all upgrades eventually max out).
 
@@ -126,10 +126,11 @@ Difficulty is a continuous curve interpolated between 4 waypoints. At each tick 
 
 | t (s) | Types | Spawn interval | Batch budget | Feel |
 |-------|-------|----------------|--------------|------|
-| 0     | Grunt | 2.0s | 1 | Intro. Enemies sparse. First kill within 2s. |
-| 30    | Grunt, Scout | 1.2s | 3 | Velocity creeps in. First level-up fired. |
-| 90    | Grunt, Scout, Heavy + **Boss #1** | 0.8s | 5 | Build must matter. Boss teaches positioning. |
-| 180+  | All + Elite + **Boss #2,#3…** | 0.5s | 8 | Screen-clearing fantasy. Number-go-up dopamine. |
+| 0     | Grunt | 1.2s | 1 | Intro. First enemy arrives in <1s. |
+| 15    | Grunt | 1.0s | 2 | First level-up around here. Density creeps in. |
+| 30    | Grunt, Scout | 0.9s | 3 | Velocity bump. Scout introduced. |
+| 90    | Grunt, Scout, Heavy + **Boss #1** | 0.7s | 5 | Build must matter. Boss teaches positioning. |
+| 180+  | All + Elite + **Boss #2,#3…** | 0.45s | 8 | Screen-clearing fantasy. Number-go-up dopamine. |
 
 Interpolation: linear on all axes (spawn interval, batch budget, enemy mix weights).
 
@@ -238,13 +239,14 @@ WEAPON_PROJ_COUNT_BASE = 1
 WEAPON_PROJ_SPEED = 420
 WEAPON_PROJ_LIFETIME = 1.2
 
-XP_TO_LEVEL = (n) => 20 + (n-1) * 8
+XP_TO_LEVEL = (n) => 5 + n * 5
 
 SPAWN_WAYPOINTS = [
-  { t: 0,   interval: 2.0, budget: 1, types: ['grunt'] },
-  { t: 30,  interval: 1.2, budget: 3, types: ['grunt','scout'] },
-  { t: 90,  interval: 0.8, budget: 5, types: ['grunt','scout','heavy'] },
-  { t: 180, interval: 0.5, budget: 8, types: ['grunt','scout','heavy','elite'] },
+  { t: 0,   interval: 1.2,  budget: 1, types: ['grunt'] },
+  { t: 15,  interval: 1.0,  budget: 2, types: ['grunt'] },
+  { t: 30,  interval: 0.9,  budget: 3, types: ['grunt','scout'] },
+  { t: 90,  interval: 0.7,  budget: 5, types: ['grunt','scout','heavy'] },
+  { t: 180, interval: 0.45, budget: 8, types: ['grunt','scout','heavy','elite'] },
 ]
 
 BOSS_INTERVAL = 90         // s

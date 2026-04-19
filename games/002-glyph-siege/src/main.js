@@ -74,12 +74,12 @@ function resetRun() {
   state.score = 0;
   state.level = 1;
   state.xp = 0;
-  state.xpNeeded = 20;
+  state.xpNeeded = 10;
   state.shake = 0;
   state.hitFlashMs = 0;
   state.levelFlashMs = 0;
   state.bossVignetteMs = 0;
-  state.spawnAcc = 0;
+  state.spawnAcc = 0.9; // prime for near-immediate first spawn
   state.bossNext = BOSS_INTERVAL;
   state.bossIndex = 0;
   state.isNewBest = false;
