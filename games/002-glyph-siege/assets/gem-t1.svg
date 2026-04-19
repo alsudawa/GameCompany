@@ -1,18 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
   <defs>
     <radialGradient id="g1-glow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#e8ffff" stop-opacity="0.85"/>
-      <stop offset="60%" stop-color="#7cf6ff" stop-opacity="0.4"/>
+      <stop offset="0%" stop-color="#e8ffff" stop-opacity="0.9"/>
+      <stop offset="55%" stop-color="#7cf6ff" stop-opacity="0.4"/>
       <stop offset="100%" stop-color="#7cf6ff" stop-opacity="0"/>
     </radialGradient>
-    <linearGradient id="g1-body" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#e8ffff"/>
-      <stop offset="50%" stop-color="#7cf6ff"/>
-      <stop offset="100%" stop-color="#2d8fa2"/>
-    </linearGradient>
+    <radialGradient id="g1-core" cx="38%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="40%" stop-color="#a5f0ff"/>
+      <stop offset="80%" stop-color="#4bc4d8"/>
+      <stop offset="100%" stop-color="#1a6070"/>
+    </radialGradient>
   </defs>
   <circle cx="16" cy="16" r="15" fill="url(#g1-glow)"/>
-  <polygon points="16,4 24,12 16,28 8,12" fill="url(#g1-body)" stroke="#0e3b45" stroke-width="1.5" stroke-linejoin="round"/>
-  <polygon points="16,4 24,12 16,14 8,12" fill="#ffffff" opacity="0.55"/>
-  <circle cx="13" cy="10" r="1.2" fill="#ffffff"/>
+  <circle cx="16" cy="16" r="9.5" fill="url(#g1-core)" stroke="#0e3b45" stroke-width="1.1"/>
+  <ellipse cx="12.5" cy="12" rx="3.2" ry="2.2" fill="#ffffff" opacity="0.85"/>
+  <circle cx="18.5" cy="19" r="1" fill="#ffffff" opacity="0.6"/>
 </svg>

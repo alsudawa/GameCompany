@@ -15,6 +15,7 @@ export const PLAYER_PICKUP_R_BASE = 110;
 export const WEAPON_INTERVAL_BASE = 0.9;
 export const WEAPON_DAMAGE_BASE = 1;
 export const WEAPON_PROJ_COUNT_BASE = 1;
+export const WEAPON_PIERCE_BASE = 1;      // hits 2 enemies per shot if both die
 export const WEAPON_PROJ_SPEED = 420;
 export const WEAPON_PROJ_LIFETIME = 1.2;
 export const WEAPON_PROJ_RADIUS = 6;
@@ -33,12 +34,13 @@ export const XP_TABLE = (n) => 5 + n * 5;
 export const GEM_XP = { 1: 1, 2: 3, 3: 10 };
 
 // Wave waypoints (time s, spawn interval s, batch budget, allowed types)
+// Budgets tuned after CEO playtest: base weapon + pierce needed breathing room.
 export const WAVE_WAYPOINTS = [
   { t: 0,   interval: 1.2, budget: 1, types: ['grunt'] },
   { t: 15,  interval: 1.0, budget: 2, types: ['grunt'] },
-  { t: 30,  interval: 0.9, budget: 3, types: ['grunt','scout'] },
-  { t: 90,  interval: 0.7, budget: 5, types: ['grunt','scout','heavy'] },
-  { t: 180, interval: 0.45, budget: 8, types: ['grunt','scout','heavy','elite'] },
+  { t: 30,  interval: 0.95, budget: 3, types: ['grunt','scout'] },
+  { t: 90,  interval: 0.8, budget: 4, types: ['grunt','scout','heavy'] },
+  { t: 180, interval: 0.6, budget: 6, types: ['grunt','scout','heavy','elite'] },
 ];
 
 // Boss

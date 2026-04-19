@@ -244,10 +244,12 @@ XP_TO_LEVEL = (n) => 5 + n * 5
 SPAWN_WAYPOINTS = [
   { t: 0,   interval: 1.2,  budget: 1, types: ['grunt'] },
   { t: 15,  interval: 1.0,  budget: 2, types: ['grunt'] },
-  { t: 30,  interval: 0.9,  budget: 3, types: ['grunt','scout'] },
-  { t: 90,  interval: 0.7,  budget: 5, types: ['grunt','scout','heavy'] },
-  { t: 180, interval: 0.45, budget: 8, types: ['grunt','scout','heavy','elite'] },
+  { t: 30,  interval: 0.95, budget: 3, types: ['grunt','scout'] },
+  { t: 90,  interval: 0.8,  budget: 4, types: ['grunt','scout','heavy'] },
+  { t: 180, interval: 0.6,  budget: 6, types: ['grunt','scout','heavy','elite'] },
 ]
+
+WEAPON_PIERCE_BASE = 1   // one base-weapon shot cleaves up to 2 kills
 
 BOSS_INTERVAL = 90         // s
 BOSS_HP = (n) => 40 * n    // n = 1,2,3...

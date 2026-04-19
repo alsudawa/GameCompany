@@ -172,6 +172,7 @@ export function fireWeapon() {
     p.r = WEAPON_PROJ_RADIUS;
     p.dmg = player.damage;
     p.life = WEAPON_PROJ_LIFETIME;
+    p.pierce = player.pierce;
   }
 }
 
@@ -184,7 +185,8 @@ function updateProjectiles(dt) {
     p.x += p.vx * dt;
     p.y += p.vy * dt;
     if (p.x < -20 || p.x > W + 20 || p.y < -20 || p.y > H + 20) { p.active = false; continue; }
-    // collide with enemies
+    // collide with enemies — pierce only continues through KILLS.
+    // Hitting a survivor (e.g. Heavy tanking 1/4 hp) stops the projectile.
     for (let j = 0; j < pools.enemies.length; j++) {
       const e = pools.enemies[j];
       if (!e.active) continue;
@@ -196,7 +198,6 @@ function updateProjectiles(dt) {
         const def = ENEMY_DEFS[e.type];
         spawnParticles(p.x, p.y, 3, def.color, 40, 120, 200);
         Sfx.hit();
-        p.active = false;
         if (e.hp <= 0) {
           e.active = false;
           state.kills++;
@@ -204,12 +205,16 @@ function updateProjectiles(dt) {
           const sizeTier = def.radius > 15 ? 3 : def.radius > 12 ? 2 : 1;
           spawnParticles(e.x, e.y, 7 + sizeTier * 2, color, 60, 180, 450);
           Sfx.kill(sizeTier);
-          const drops = def.gem === 2 ? 1 : 1;
-          for (let d = 0; d < drops; d++) {
-            spawnGem(e.x + (Math.random() - 0.5) * 10, e.y + (Math.random() - 0.5) * 10, def.gem);
-          }
+          spawnGem(e.x + (Math.random() - 0.5) * 10, e.y + (Math.random() - 0.5) * 10, def.gem);
+          // pierce through the kill
+          p.pierce--;
+          if (p.pierce < 0) { p.active = false; break; }
+          // keep scanning remaining enemies this frame
+        } else {
+          // non-kill hit: projectile dies
+          p.active = false;
+          break;
         }
-        break;
       }
     }
     // collide with boss

@@ -1,6 +1,6 @@
 import { W, H, FIXED_DT, MAX_DT, PLAYER_HP_BASE, PLAYER_SPEED_BASE,
          PLAYER_PICKUP_R_BASE, WEAPON_INTERVAL_BASE, WEAPON_DAMAGE_BASE,
-         WEAPON_PROJ_COUNT_BASE, BOSS_INTERVAL } from './constants.js';
+         WEAPON_PROJ_COUNT_BASE, WEAPON_PIERCE_BASE, BOSS_INTERVAL } from './constants.js';
 import { state, player, pools, boss, resetPool } from './state.js';
 import { Sfx } from './sfx.js';
 import { installInput } from './input.js';
@@ -93,6 +93,7 @@ function resetRun() {
   player.fireAcc = 0;
   player.damage = WEAPON_DAMAGE_BASE;
   player.projCount = WEAPON_PROJ_COUNT_BASE;
+  player.pierce = WEAPON_PIERCE_BASE;
   player.invulnMs = 0;
   player.ranks = { DMG: 0, RATE: 0, MULTI: 0, SPD: 0, MAGNET: 0, VIT: 0 };
   boss.active = false;
